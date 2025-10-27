@@ -41,8 +41,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'api',
     'django_currentuser',
-    'api.users.apps.UsersConfig',
-    'api.odontogram.apps.OdontogramConfig'
+    'api.users.apps.UsersConfig'
    
  
 ]
