@@ -1,123 +1,251 @@
 # odontogram/serializers.py
 
-"""Serializadores para la API REST del sistema de odontogramas extensible."""
-
+"""
+Serializers para la estructura alineada de Odontograma
+Paciente -> Diente -> Superficie -> DiagnosticoDental
+"""
 from rest_framework import serializers
-from .models import (CategoriaDiagnostico, Diagnostico, AreaAfectada, DiagnosticoAreaAfectada ,TipoAtributoClinico, OpcionAtributoClinico ,DiagnosticoAtributoClinico,
+from django.contrib.auth import get_user_model
+
+from .models import (
+    Paciente,
+    Diente,
+    SuperficieDental,
+    DiagnosticoDental,
+    HistorialOdontograma,
+    Diagnostico,
 )
+from api.odontogram import models
 
-# Serializadores basicos
+User = get_user_model()
 
-class AreaAfectadaSerializer(serializers.ModelSerializer):
+
+# =============================================================================
+# SERIALIZERS BÁSICOS
+# =============================================================================
+
+class UserMinimalSerializer(serializers.ModelSerializer):
     class Meta:
-        model = AreaAfectada
-        fields = ['id', 'key', 'nombre', 'activo']
+        model = User
+        fields = ['id', 'first_name', 'last_name', 'email']
 
 
-class OpcionAtributoClinicoSerializer(serializers.ModelSerializer):
+class PacienteBasicSerializer(serializers.ModelSerializer):
+    nombre_completo = serializers.ReadOnlyField()
+
     class Meta:
-        model = OpcionAtributoClinico
+        model = Paciente
+        fields = ['id', 'nombres', 'apellidos', 'nombre_completo', 'cedula', 'email', 'telefono']
+
+
+# =============================================================================
+# SERIALIZERS PARA DIAGNÓSTICO DENTAL
+# =============================================================================
+
+class DiagnosticoDentalListSerializer(serializers.ModelSerializer):
+    """Serializer para listar diagnósticos dentales"""
+    diagnostico_nombre = serializers.CharField(source='diagnostico_catalogo.nombre', read_only=True)
+    diagnostico_siglas = serializers.CharField(source='diagnostico_catalogo.siglas', read_only=True)
+    diagnostico_key = serializers.CharField(source='diagnostico_catalogo.key', read_only=True)
+    codigo_fdi = serializers.CharField(source='superficie.diente.codigo_fdi', read_only=True)
+    superficie_nombre = serializers.CharField(source='superficie.get_nombre_display', read_only=True)
+    odontologo_nombre = serializers.CharField(source='odontologo.get_full_name', read_only=True)
+
+    class Meta:
+        model = DiagnosticoDental
         fields = [
-            'id', 'key', 'nombre', 'prioridad', 
-            'orden', 'activo'
+            'id', 'codigo_fdi', 'superficie_nombre',
+            'diagnostico_nombre', 'diagnostico_siglas', 'diagnostico_key',
+            'descripcion', 'estado_tratamiento', 'prioridad_efectiva',
+            'fecha', 'odontologo_nombre', 'activo'
         ]
 
 
-class TipoAtributoClinicoSerializer(serializers.ModelSerializer):
-    opciones = OpcionAtributoClinicoSerializer(many=True, read_only=True)
+class DiagnosticoDentalDetailSerializer(serializers.ModelSerializer):
+    """Serializer completo para diagnóstico dental"""
+    diagnostico_info = serializers.SerializerMethodField()
+    diente_info = serializers.SerializerMethodField()
+    superficie_info = serializers.SerializerMethodField()
+    odontologo_info = UserMinimalSerializer(source='odontologo', read_only=True)
 
     class Meta:
-        model = TipoAtributoClinico
+        model = DiagnosticoDental
         fields = [
-            'id', 'key', 'nombre', 'descripcion', 
-            'opciones', 'activo'
+            'id', 'diente_info', 'superficie_info',
+            'diagnostico_info', 'descripcion',
+            'atributos_clinicos', 'prioridad_asignada',
+            'prioridad_efectiva', 'estado_tratamiento',
+            'fecha', 'fecha_tratamiento', 'odontologo_info', 'activo'
+        ]
+        read_only_fields = ['id', 'fecha']
+
+    def get_diagnostico_info(self, obj):
+        return {
+            'id': obj.diagnostico_catalogo.id,
+            'key': obj.diagnostico_catalogo.key,
+            'nombre': obj.diagnostico_catalogo.nombre,
+            'siglas': obj.diagnostico_catalogo.siglas,
+            'simbolo_color': obj.diagnostico_catalogo.simbolo_color,
+            'prioridad_catalogo': obj.diagnostico_catalogo.prioridad,
+        }
+
+    def get_diente_info(self, obj):
+        return {
+            'codigo_fdi': obj.superficie.diente.codigo_fdi,
+            'nombre': obj.superficie.diente.nombre,
+            'ausente': obj.superficie.diente.ausente,
+        }
+
+    def get_superficie_info(self, obj):
+        return {
+            'nombre': obj.superficie.nombre,
+            'nombre_display': obj.superficie.get_nombre_display(),
+        }
+
+
+class DiagnosticoDentalCreateSerializer(serializers.ModelSerializer):
+    """Serializer para crear diagnóstico dental"""
+    class Meta:
+        model = DiagnosticoDental
+        fields = [
+            'diagnostico_catalogo', 'odontologo',
+            'descripcion', 'atributos_clinicos',
+            'prioridad_asignada', 'estado_tratamiento'
         ]
 
-# Serializadores anidados por diagnostico
-class DiagnosticoListSerializer(serializers.ModelSerializer):
-    """Serializer ligero para listados"""
-    categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
+
+# =============================================================================
+# SERIALIZERS PARA SUPERFICIE DENTAL
+# =============================================================================
+
+class SuperficieDentalListSerializer(serializers.ModelSerializer):
+    diagnosticos_count = serializers.SerializerMethodField()
+    diagnosticos = DiagnosticoDentalListSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Diagnostico
-        fields = [
-            'id', 'key', 'nombre', 'siglas', 
-            'categoria', 'categoria_nombre', 
-            'simbolo_color', 'prioridad', 'activo'
-        ]
+        model = SuperficieDental
+        fields = ['id', 'nombre', 'diagnosticos_count', 'diagnosticos']
+
+    def get_diagnosticos_count(self, obj):
+        return obj.diagnosticos.filter(activo=True).count()
 
 
-class DiagnosticoDetailSerializer(serializers.ModelSerializer):
-    """Serializer completo con áreas y atributos"""
-    categoria = serializers.CharField(source='categoria.nombre', read_only=True)
-    categoria_id = serializers.IntegerField(source='categoria.id', read_only=True)
-    areas_afectadas = serializers.SerializerMethodField()
-    atributos_clinicos = serializers.SerializerMethodField()
+# =============================================================================
+# SERIALIZERS PARA DIENTE
+# =============================================================================
 
-    class Meta:
-        model = Diagnostico
-        fields = [
-            'id', 'key', 'nombre', 'siglas',
-            'categoria', 'categoria_id',
-            'simbolo_color', 'prioridad',
-            'areas_afectadas',
-            'atributos_clinicos',
-            'activo'
-        ]
-
-    def get_areas_afectadas(self, obj):
-        """Obtiene las áreas afectadas relacionadas"""
-        relaciones = DiagnosticoAreaAfectada.objects.filter(
-            diagnostico=obj
-        ).select_related('area')
-        return [
-            {'key': rel.area.key, 'nombre': rel.area.nombre}
-            for rel in relaciones
-        ]
-
-    def get_atributos_clinicos(self, obj):
-        """Obtiene los atributos clínicos aplicables con sus opciones"""
-        relaciones = DiagnosticoAtributoClinico.objects.filter(
-            diagnostico=obj
-        ).select_related('tipo_atributo')
-
-        resultado = {}
-        for rel in relaciones:
-            tipo = rel.tipo_atributo
-            opciones = OpcionAtributoClinico.objects.filter(
-                tipo_atributo=tipo,
-                activo=True
-            ).order_by('orden', 'nombre')
-
-            resultado[tipo.key] = [
-                {
-                    'key': opcion.key,
-                    'nombre': opcion.nombre,
-                    'prioridad': opcion.prioridad,
-                }
-                for opcion in opciones
-            ]
-
-        return resultado
-
-
-class CategoriaDiagnosticoSerializer(serializers.ModelSerializer):
-    diagnosticos = DiagnosticoListSerializer(many=True, read_only=True)
+class DienteDetailSerializer(serializers.ModelSerializer):
+    """Serializer completo para diente con superficies y diagnósticos"""
+    superficies = SuperficieDentalListSerializer(many=True, read_only=True)
+    diagnosticos_total = serializers.SerializerMethodField()
+    diagnosticos_criticos = serializers.SerializerMethodField()
 
     class Meta:
-        model = CategoriaDiagnostico
+        model = Diente
         fields = [
-            'id', 'key', 'nombre', 
-            'color_key', 'prioridad_key',
-            'diagnosticos', 'activo'
+            'id', 'codigo_fdi', 'nombre', 'ausente',
+            'superficies', 'diagnosticos_total',
+            'diagnosticos_criticos', 'fecha_creacion'
         ]
 
-# Serializadores completos
-class OdontogramaConfigSerializer(serializers.Serializer):
+    def get_diagnosticos_total(self, obj):
+        return DiagnosticoDental.objects.filter(
+            superficie__diente=obj,
+            activo=True
+        ).count()
+
+    def get_diagnosticos_criticos(self, obj):
+        return DiagnosticoDental.objects.filter(
+            superficie__diente=obj,
+            activo=True
+        ).filter(
+            models.Q(prioridad_asignada__gte=4) |
+            (models.Q(prioridad_asignada__isnull=True) & 
+             models.Q(diagnostico_catalogo__prioridad__gte=4))
+        ).count()
+
+
+# =============================================================================
+# SERIALIZERS PARA PACIENTE
+# =============================================================================
+
+class PacienteDetailSerializer(serializers.ModelSerializer):
+    """Serializer completo para paciente con dientes"""
+    dientes = DienteDetailSerializer(many=True, read_only=True)
+    total_dientes = serializers.SerializerMethodField()
+    total_diagnosticos = serializers.SerializerMethodField()
+    edad = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Paciente
+        fields = [
+            'id', 'nombres', 'apellidos', 'nombre_completo',
+            'cedula', 'fecha_nacimiento', 'edad',
+            'telefono', 'email', 'direccion',
+            'dientes', 'total_dientes', 'total_diagnosticos',
+            'fecha_registro', 'activo'
+        ]
+
+    def get_total_dientes(self, obj):
+        return Diente.objects.filter(paciente=obj).count()
+
+    def get_total_diagnosticos(self, obj):
+        return DiagnosticoDental.objects.filter(
+            superficie__diente__paciente=obj,
+            activo=True
+        ).count()
+
+    def get_edad(self, obj):
+        if not obj.fecha_nacimiento:
+            return None
+        from datetime import date
+        today = date.today()
+        return today.year - obj.fecha_nacimiento.year - (
+            (today.month, today.day) < (obj.fecha_nacimiento.month, obj.fecha_nacimiento.day)
+        )
+
+
+# =============================================================================
+# SERIALIZERS PARA GUARDAR ODONTOGRAMA COMPLETO
+# =============================================================================
+
+class GuardarOdontogramaCompletoSerializer(serializers.Serializer):
     """
-    Serializer que retorna toda la configuración del odontograma
-    para consumo del frontend
+    Serializer para recibir y guardar el odontograma completo del frontend
     """
-    categorias = CategoriaDiagnosticoSerializer(many=True)
-    areas_afectadas = AreaAfectadaSerializer(many=True)
-    tipos_atributos = TipoAtributoClinicoSerializer(many=True)
+    paciente_id = serializers.UUIDField()
+    odontologo_id = serializers.IntegerField()
+    odontograma_data = serializers.DictField(
+        child=serializers.DictField(
+            child=serializers.ListField()
+        ),
+        help_text="Estructura: {codigo_fdi: {superficie: [diagnosticos]}}"
+    )
+
+    def create(self, validated_data):
+        from services.odontogram_service import OdontogramaService
+
+        service = OdontogramaService()
+        return service.guardar_odontograma_completo(
+            paciente_id=validated_data['paciente_id'],
+            odontologo_id=validated_data['odontologo_id'],
+            odontograma_data=validated_data['odontograma_data']
+        )
+
+
+# =============================================================================
+# SERIALIZERS PARA HISTORIAL
+# =============================================================================
+
+class HistorialOdontogramaSerializer(serializers.ModelSerializer):
+    odontologo_nombre = serializers.CharField(source='odontologo.get_full_name', read_only=True)
+    tipo_cambio_display = serializers.CharField(source='get_tipo_cambio_display', read_only=True)
+
+    class Meta:
+        model = HistorialOdontograma
+        fields = [
+            'id', 'tipo_cambio', 'tipo_cambio_display',
+            'descripcion', 'odontologo_nombre', 'fecha',
+            'datos_anteriores', 'datos_nuevos'
+        ]
+        read_only_fields = ['id', 'fecha']

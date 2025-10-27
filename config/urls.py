@@ -8,5 +8,7 @@ urlpatterns = [
     path('api/usuarios/', include('api.users.urls')),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),  # login/logout DRF
     # API de usuarios - incluye todas las URLs de api.users
+    path('admin/', admin.site.urls),
+    path('api/odontogram/', include('api.odontogram.urls')),
 
 ]
