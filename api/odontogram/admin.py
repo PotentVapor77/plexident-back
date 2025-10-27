@@ -9,7 +9,6 @@ from .models import (
     TipoAtributoClinico,
     OpcionAtributoClinico,
     DiagnosticoAtributoClinico,
-    Paciente,
     Diente,
     SuperficieDental,
     DiagnosticoDental,
@@ -24,7 +23,6 @@ admin.site.register(DiagnosticoAreaAfectada)
 admin.site.register(TipoAtributoClinico)
 admin.site.register(OpcionAtributoClinico)
 admin.site.register(DiagnosticoAtributoClinico)
-admin.site.register(Paciente)
 admin.site.register(Diente)
 admin.site.register(SuperficieDental)
 admin.site.register(DiagnosticoDental)

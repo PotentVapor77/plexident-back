@@ -11,6 +11,8 @@ from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
 
+from api.patients.models import Paciente
+
 User = get_user_model()
 
 # =============================================================================
@@ -142,33 +144,6 @@ class DiagnosticoAtributoClinico(models.Model):
 # =============================================================================
 # PARTE 2: ESTRUCTURA DE INSTANCIAS (PACIENTE -> DIENTE -> SUPERFICIE -> DIAGNÓSTICO)
 # =============================================================================
-
-class Paciente(models.Model):
-    """Paciente del sistema (si no existe)"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    nombres = models.CharField(max_length=100)
-    apellidos = models.CharField(max_length=100)
-    cedula = models.CharField(max_length=20, unique=True)
-    fecha_nacimiento = models.DateField(null=True, blank=True)
-    telefono = models.CharField(max_length=20, blank=True)
-    email = models.EmailField(blank=True)
-    direccion = models.TextField(blank=True)
-
-    fecha_registro = models.DateTimeField(auto_now_add=True)
-    activo = models.BooleanField(default=True)
-
-    class Meta:
-        db_table = 'pacientes'
-        verbose_name = 'Paciente'
-        verbose_name_plural = 'Pacientes'
-        ordering = ['apellidos', 'nombres']
-
-    def __str__(self):
-        return f"{self.apellidos}, {self.nombres}"
-
-    @property
-    def nombre_completo(self):
-        return f"{self.nombres} {self.apellidos}"
 
 
 class Diente(models.Model):
