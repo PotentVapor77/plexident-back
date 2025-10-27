@@ -41,7 +41,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'api',
     'django_currentuser',
-    'api.users.apps.UsersConfig'
+    'api.patients.apps.PatientsConfig',
+    'api.users.apps.UsersConfig',
    
  
 ]
