@@ -9,7 +9,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 class CategoriaDiagnostico(models.Model):
     key = models.CharField(max_length=50, unique=True, help_text="Clave única para la categoría de diagnóstico.")
     nombre = models.CharField(max_length=100)
-    color_key = models.CharField(max_length=50, help_text="Color en formato hexadecimal, e.g., #RRGGBB.")
+    color_key = models.CharField(max_length=7, help_text="Color en formato hexadecimal, e.g., #RRGGBB.")
     priodidad_key = models.CharField(max_length=50, help_text="Nivel de priodidad clinica: INFORMATIVA -> BAJA -> MEDIA -> ALTA -> ESTRUCTURAL.")
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
