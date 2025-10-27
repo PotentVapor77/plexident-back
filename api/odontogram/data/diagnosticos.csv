@@ -1,0 +1,18 @@
+key,categoria_key,nombre,siglas,simbolo_color,prioridad,activo
+ausencia_congenita,ausencia,Ausencia Congénita,AC,#95A5A6,1,True
+extraccion,ausencia,Extracción,Ext,#95A5A6,1,True
+caries_icdas_3,patologia_activa,Caries Profunda (ICDAS 3),C3,#FF5733,5,True
+movilidad,patologia_activa,Movilidad,Mov,#FF5733,4,True
+fractura_corona,patologia_activa,Fractura de Corona,FracC,#FF5733,4,True
+fractura_raiz,patologia_activa,Fractura de Raíz,FracR,#FF5733,5,True
+restauracion_resina,restauracion,Restauración Existente,RestE,#3498DB,2,True
+restauracion_gran_extension,restauracion,Restauración de Gran Extensión,RestG,#3498DB,2,True
+corona_provisional,restauracion,Corona Provisional,CorP,#3498DB,2,True
+corona_definitiva,restauracion,Corona Definitiva,CorD,#3498DB,1,True
+endodoncia_completa,tratamiento_conductos,Tratamiento de Conductos,Endo,#9B59B6,3,True
+diente_impactado,anomalia,Diente Impactado,Imp,#F39C12,3,True
+supernumerario,anomalia,Diente Supernumerario,Sup,#F39C12,2,True
+diente_duplicado,anomalia,Diente Duplicado,Dup,#F39C12,2,True
+malposicion,anomalia,Malposición,MalP,#F39C12,2,True
+rotacion,anomalia,Rotación,Rot,#F39C12,2,True
+diente_gemelo,anomalia,Diente Gemelo,Gem,#F39C12,2,True

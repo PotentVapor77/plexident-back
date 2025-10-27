@@ -1,0 +1,10 @@
+key,nombre,descripcion,activo
+estado_restauracion,Estado Restauración,Estado de una restauración existente,True
+material_restauracion,Material Restauración,Material utilizado en una restauración,True
+estado_procedimiento,Estado Procedimiento,Estado del procedimiento/tratamiento,True
+erupcion,Erupción,Estado de erupción del diente,True
+estado_periodontal,Estado Periodontal,Estado de los tejidos periodontales,True
+sensibilidad,Sensibilidad,Tipo de sensibilidad dental,True
+dolor,Dolor,Tipo y características del dolor,True
+movilidad,Movilidad,Grado de movilidad dental,True
+inflamacion,Inflamación,Nivel de inflamación,True

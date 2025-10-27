@@ -1,4 +1,4 @@
-# odontograma/signals.py
+# api/odontogram/signals.py
 """
 Observer Pattern con Django Signals
 Adaptado para la nueva estructura: Catálogo + Instancias de Pacientes
@@ -10,10 +10,11 @@ from django.db.models.signals import (
 from django.dispatch import receiver, Signal
 from django.core.cache import cache
 from django.utils import timezone
+from django.db.models import Q
 import logging
 
 from api.odontogram.models import (
-    # Catálogo (sin cambios)
+    # Catálogo
     CategoriaDiagnostico,
     Diagnostico,
     AreaAfectada,
@@ -21,35 +22,42 @@ from api.odontogram.models import (
     OpcionAtributoClinico,
     DiagnosticoAreaAfectada,
     DiagnosticoAtributoClinico,
-    # Nuevas instancias
+    # Instancias
     Paciente,
     Diente,
     SuperficieDental,
     DiagnosticoDental,
     HistorialOdontograma,
 )
-from api.odontogram import models
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# FUNCIÓN AUXILIAR PARA CACHÉ SEGURO
+# =============================================================================
+
+def safe_delete_pattern(pattern):
+    """
+    Intenta usar delete_pattern solo si está disponible (Redis).
+    En desarrollo con LocMemCache, simplemente ignora el error.
+    """
+    try:
+        cache.delete_pattern(pattern)
+    except (AttributeError, NotImplementedError):
+        # LocMemCache no soporta delete_pattern - ignorar en desarrollo
+        logger.debug(f"delete_pattern no disponible para patrón: {pattern}")
 
 # =============================================================================
 # SEÑALES PERSONALIZADAS
 # =============================================================================
 
-# Señal cuando se crea un diagnóstico crítico en el catálogo
 diagnostico_critico_creado = Signal()
-
-# Señal cuando se registra un diagnóstico en un paciente
 diagnostico_dental_registrado = Signal()
-
-# Señal cuando se marca un diente como ausente
 diente_marcado_ausente = Signal()
-
-# Señal cuando se actualiza el estado de un tratamiento
 estado_tratamiento_modificado = Signal()
 
 # =============================================================================
-# RECEIVERS PARA CATÁLOGO (Diagnosticos, Atributos, Áreas)
+# RECEIVERS PARA CATÁLOGO
 # =============================================================================
 
 @receiver(post_save, sender=Diagnostico)
@@ -80,7 +88,7 @@ def log_atributo_tipo_cambios(sender, instance, created, **kwargs):
         logger.info(f"Tipo de atributo creado: {instance.nombre}")
 
 # =============================================================================
-# RECEIVERS PARA INSTANCIAS (DiagnosticoDental, Diente, Superficie)
+# RECEIVERS PARA INSTANCIAS
 # =============================================================================
 
 @receiver(post_save, sender=DiagnosticoDental)
@@ -94,14 +102,12 @@ def log_diagnostico_dental_guardado(sender, instance, created, **kwargs):
             f"- Paciente: {instance.diente.paciente.nombre_completo}"
         )
 
-        # Emitir señal personalizada
         diagnostico_dental_registrado.send(
             sender=sender,
             diagnostico_dental=instance,
             paciente=instance.diente.paciente
         )
 
-        # Invalidar caché del paciente
         cache.delete(f'odontograma:paciente:{instance.diente.paciente.id}')
     else:
         logger.info(f"Diagnóstico dental modificado: {instance.id}")
@@ -117,8 +123,6 @@ def log_diente_cambios(sender, instance, created, **kwargs):
         logger.warning(
             f"Diente {instance.codigo_fdi} marcado como ausente para {instance.paciente.nombre_completo}"
         )
-
-        # Emitir señal
         diente_marcado_ausente.send(sender=sender, diente=instance)
 
 @receiver(post_save, sender=DiagnosticoDental)
@@ -133,7 +137,6 @@ def detectar_cambio_estado_tratamiento(sender, instance, created, **kwargs):
                     f"{old_instance.estado_tratamiento} → {instance.estado_tratamiento}"
                 )
 
-                # Emitir señal
                 estado_tratamiento_modificado.send(
                     sender=sender,
                     diagnostico_dental=instance,
@@ -173,7 +176,7 @@ def invalidar_cache_odontograma_paciente(sender, instance, **kwargs):
 @receiver(post_delete, sender=CategoriaDiagnostico)
 def invalidar_cache_categorias(sender, instance, **kwargs):
     """Invalida caché de categorías"""
-    cache.delete_pattern('odontograma:categorias:*')
+    safe_delete_pattern('odontograma:categorias:*')
     cache.delete('odontograma:config:full')
     logger.debug("Caché de categorías invalidado")
 
@@ -182,8 +185,8 @@ def invalidar_cache_categorias(sender, instance, **kwargs):
 @receiver(post_save, sender=OpcionAtributoClinico)
 @receiver(post_delete, sender=OpcionAtributoClinico)
 def invalidar_cache_atributos(sender, instance, **kwargs):
-    """Invalida caché de atributos"""
-    cache.delete_pattern('odontograma:atributos:*')
+    """Invalida caché de atributos - FIX: Ahora con firma correcta**kwargs"""
+    safe_delete_pattern('odontograma:atributos:*')
     cache.delete('odontograma:config:full')
     logger.debug("Caché de atributos invalidado")
 
@@ -226,7 +229,7 @@ def validar_diagnostico_dental(sender, instance, **kwargs):
 
 @receiver(post_save, sender=DiagnosticoDental)
 def registrar_cambio_diagnostico_dental(sender, instance, created, **kwargs):
-    """Registra en historial cuando se agrega/modifica un diagnóstico dental"""
+    """Registra en historial cuando se agrega un diagnóstico dental"""
     if created:
         HistorialOdontograma.objects.create(
             diente=instance.diente,
@@ -261,7 +264,6 @@ def registrar_ausencia_diente(sender, instance, **kwargs):
         try:
             old_instance = Diente.objects.get(pk=instance.pk)
             if not old_instance.ausente and instance.ausente:
-                # Se marcó como ausente - crear historial cuando se guarde
                 pass
         except Diente.DoesNotExist:
             pass
@@ -370,9 +372,9 @@ def actualizar_estadisticas_paciente(sender, instance, **kwargs):
             superficie__diente__paciente=paciente,
             activo=True
         ).filter(
-            models.Q(prioridad_asignada__gte=4) |
-            (models.Q(prioridad_asignada__isnull=True) & 
-             models.Q(diagnostico_catalogo__prioridad__gte=4))
+            Q(prioridad_asignada__gte=4) |
+            (Q(prioridad_asignada__isnull=True) & 
+             Q(diagnostico_catalogo__prioridad__gte=4))
         ).count(),
         'ultima_actualizacion': timezone.now().isoformat(),
     }

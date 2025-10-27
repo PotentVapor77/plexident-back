@@ -1,0 +1,53 @@
+tipo_atributo_key,key,nombre,prioridad,orden,activo
+estado_restauracion,excelente,Excelente,,1,True
+estado_restauracion,buena,Buena,,2,True
+estado_restauracion,defectuosa,Defectuosa,,3,True
+estado_restauracion,con_filtracion,Con Filtración,,4,True
+material_restauracion,amalgama,Amalgama,,1,True
+material_restauracion,resina,Resina,,2,True
+material_restauracion,ionomero,Ionómero,,3,True
+material_restauracion,porcelana,Porcelana,,4,True
+material_restauracion,oro,Oro,,5,True
+material_restauracion,cera,Cera,,6,True
+material_restauracion,otro,Otro,,7,True
+estado_procedimiento,planificado,Planificado,,1,True
+estado_procedimiento,en_proceso,En Proceso,,2,True
+estado_procedimiento,finalizado,Finalizado,,3,True
+erupcion,erupcionado,Erupcionado,,1,True
+erupcion,no_erupcionado,No Erupcionado,,2,True
+erupcion,semi_erupcionado,Semi-erupcionado,,3,True
+erupcion,deciduo,Deciduo,,4,True
+estado_periodontal,normal,Normal,,1,True
+estado_periodontal,gingivitis,Gingivitis,,2,True
+estado_periodontal,periodontitis,Periodontitis,,3,True
+estado_periodontal,recesion,Recesión,,4,True
+estado_periodontal,movilidad,Movilidad,,5,True
+estado_periodontal,furcacion,Furcación,,6,True
+estado_periodontal,perdida,Pérdida,,7,True
+estado_periodontal,otro,Otro,,8,True
+sensibilidad,ninguna,Ninguna,,1,True
+sensibilidad,frio,Frío,,2,True
+sensibilidad,calor,Calor,,3,True
+sensibilidad,dulce,Dulce,,4,True
+sensibilidad,salado,Salado,,5,True
+sensibilidad,tacto,Tacto,,6,True
+sensibilidad,otro,Otro,,7,True
+dolor,ninguno,Ninguno,,1,True
+dolor,leve,Leve,,2,True
+dolor,moderado,Moderado,,3,True
+dolor,severo,Severo,,4,True
+dolor,punzante,Punzante,,5,True
+dolor,sordo,Sordo,,6,True
+dolor,intermitente,Intermitente,,7,True
+dolor,constante,Constante,,8,True
+dolor,otro,Otro,,9,True
+movilidad,grado_0,Grado 0,,1,True
+movilidad,grado_1,Grado 1,,2,True
+movilidad,grado_2,Grado 2,,3,True
+movilidad,grado_3,Grado 3,,4,True
+movilidad,otro,Otro,,5,True
+inflamacion,ninguna,Ninguna,,1,True
+inflamacion,leve,Leve,,2,True
+inflamacion,moderada,Moderada,,3,True
+inflamacion,severa,Severa,,4,True
+inflamacion,otro,Otro,,5,True

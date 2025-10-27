@@ -1,0 +1,6 @@
+key,nombre,color_key,prioridad_key,activo
+ausencia,Ausencia,#95A5A6,INFORMATIVA,True
+patologia_activa,Patología Activa,#FF5733,ALTA,True
+restauracion,Restauración,#3498DB,BAJA,True
+tratamiento_conductos,Tratamiento de Conductos,#9B59B6,MEDIA,True
+anomalia,Anomalía,#F39C12,ESTRUCTURAL,True
