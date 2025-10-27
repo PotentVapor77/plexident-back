@@ -13,7 +13,7 @@ from django.core.cache import cache
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Prefetch
 
-from .models import (
+from api.odontogram.models import (
     # Catálogo
     CategoriaDiagnostico,
     Diagnostico,
@@ -27,7 +27,7 @@ from .models import (
     DiagnosticoDental,
     HistorialOdontograma,
 )
-from .serializers import (
+from api.odontogram.serializers import (
     # Catálogo
     CategoriaDiagnosticoSerializer,
     DiagnosticoListSerializer,
@@ -45,8 +45,8 @@ from .serializers import (
     DiagnosticoDentalCreateSerializer,
     HistorialOdontogramaSerializer,
 )
-from services.odontogram_service import OdontogramaService
-from .repositories import (
+from api.odontogram.services.odontogram_services import OdontogramaService
+from api.odontogram.repositories.odontogram_repositories import (
     CategoriaDiagnosticoRepository,
     DiagnosticoRepository,
     AreaAfectadaRepository,
@@ -191,7 +191,7 @@ class OdontogramaConfigViewSet(viewsets.ViewSet):
         if cached_config:
             return Response(cached_config)
 
-        from services.odontogram_service import OdontogramaService
+        from api.odontogram.services.odontogram_services import OdontogramaService
         service = OdontogramaService()
         config = service.get_full_config()
 

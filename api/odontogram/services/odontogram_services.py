@@ -10,7 +10,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
-from odontogram.models import (
+from api.odontogram.models import (
     Paciente,
     Diente,
     SuperficieDental,

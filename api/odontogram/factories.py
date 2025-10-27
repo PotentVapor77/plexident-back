@@ -4,7 +4,7 @@ Factory Pattern - Creación de objetos complejos de forma centralizada
 Facilita la creación de instancias con configuraciones predefinidas
 """
 from typing import Dict, List, Any, Optional
-from .models import (
+from api.odontogram.models import (
     CategoriaDiagnostico,
     Diagnostico,
     AreaAfectada,

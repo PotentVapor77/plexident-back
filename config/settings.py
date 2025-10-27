@@ -41,9 +41,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'api',
     'django_currentuser',
-    'api.users.apps.UsersConfig'
-   
- 
+    'api.users.apps.UsersConfig',
+    'api.odontogram.apps.OdontogramConfig',
+    'api.patients.apps.PatientsConfig',
+    
 ]
 
 
@@ -56,7 +57,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django_currentuser.middleware.ThreadLocalUserMiddleware'
+    'django_currentuser.middleware.ThreadLocalUserMiddleware',
 ]
 
 REST_FRAMEWORK = {

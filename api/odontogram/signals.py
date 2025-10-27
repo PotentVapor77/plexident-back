@@ -12,7 +12,7 @@ from django.core.cache import cache
 from django.utils import timezone
 import logging
 
-from .models import (
+from api.odontogram.models import (
     # Catálogo (sin cambios)
     CategoriaDiagnostico,
     Diagnostico,

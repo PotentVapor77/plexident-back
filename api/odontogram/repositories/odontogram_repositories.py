@@ -6,7 +6,7 @@ Proporciona una interfaz consistente para operaciones CRUD
 
 from typing import List, Optional, Dict, Any
 from django.db.models import QuerySet, Prefetch
-from odontogram.models import (
+from api.odontogram.models import (
     CategoriaDiagnostico,
     Diagnostico,
     AreaAfectada,

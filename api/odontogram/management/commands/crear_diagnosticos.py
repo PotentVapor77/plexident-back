@@ -4,7 +4,7 @@ python manage.py crear_diagnosticos
 """
 
 from django.core.management.base import BaseCommand
-from odontogram.factories import (
+from api.odontogram.factories import (
     DiagnosticoFactory,
     AtributoClinicoFactory,
     CategoriaDiagnosticoFactory,

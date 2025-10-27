@@ -6,7 +6,7 @@ Estructura: Catálogo + Instancias de Pacientes
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from odontogram.views import (
+from api.odontogram.views import (
     # Catálogo
     CategoriaDiagnosticoViewSet,
     DiagnosticoViewSet,
