@@ -1,3 +1,7 @@
 Django==5.1.6
 djangorestframework
 django-currentuser
+factory_boy
+Pillow==10.0.1
+python-decouple==3.8
+django-cors-headers==4.3.1
