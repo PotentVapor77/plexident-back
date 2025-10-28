@@ -1,7 +1,9 @@
 # api/odontogram/signals.py
+# api/odontogram/signals.py
 """
 Observer Pattern con Django Signals
 Adaptado para la nueva estructura: Catálogo + Instancias de Pacientes
+COMPATIBLE CON: patients/models.py (usa nombres y apellidos separados)
 """
 
 from django.db.models.signals import (
@@ -13,6 +15,7 @@ from django.utils import timezone
 from django.db.models import Q
 import logging
 
+
 from api.odontogram.models import (
     # Catálogo
     CategoriaDiagnostico,
@@ -23,14 +26,42 @@ from api.odontogram.models import (
     DiagnosticoAreaAfectada,
     DiagnosticoAtributoClinico,
     # Instancias
-    Paciente,
     Diente,
     SuperficieDental,
     DiagnosticoDental,
     HistorialOdontograma,
 )
 
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# FUNCIÓN AUXILIAR: Obtener nombre completo del paciente
+# =============================================================================
+
+def get_paciente_nombre_completo(paciente):
+    """
+    Obtiene el nombre completo del paciente de forma segura.
+    Compatible con el modelo Paciente que tiene campos separados:
+    - nombres
+    - apellidos
+    """
+    if not paciente:
+        return "Paciente desconocido"
+
+    nombres = (paciente.nombres or "").strip()
+    apellidos = (paciente.apellidos or "").strip()
+
+    if nombres and apellidos:
+        return f"{nombres} {apellidos}"
+    elif nombres:
+        return nombres
+    elif apellidos:
+        return apellidos
+    else:
+        return f"Paciente (ID: {paciente.id_paciente})"
+
 
 # =============================================================================
 # FUNCIÓN AUXILIAR PARA CACHÉ SEGURO
@@ -47,6 +78,7 @@ def safe_delete_pattern(pattern):
         # LocMemCache no soporta delete_pattern - ignorar en desarrollo
         logger.debug(f"delete_pattern no disponible para patrón: {pattern}")
 
+
 # =============================================================================
 # SEÑALES PERSONALIZADAS
 # =============================================================================
@@ -55,6 +87,7 @@ diagnostico_critico_creado = Signal()
 diagnostico_dental_registrado = Signal()
 diente_marcado_ausente = Signal()
 estado_tratamiento_modificado = Signal()
+
 
 # =============================================================================
 # RECEIVERS PARA CATÁLOGO
@@ -73,6 +106,7 @@ def log_diagnostico_catalogo_cambios(sender, instance, created, **kwargs):
     else:
         logger.info(f"Diagnóstico catálogo modificado: {instance.nombre}")
 
+
 @receiver(post_save, sender=CategoriaDiagnostico)
 def log_categoria_cambios(sender, instance, created, **kwargs):
     """Registra cambios en categorías"""
@@ -81,70 +115,91 @@ def log_categoria_cambios(sender, instance, created, **kwargs):
             f"Categoría creada: {instance.nombre} - Prioridad: {instance.prioridad_key}"
         )
 
+
 @receiver(post_save, sender=TipoAtributoClinico)
 def log_atributo_tipo_cambios(sender, instance, created, **kwargs):
     """Registra cambios en tipos de atributos"""
     if created:
         logger.info(f"Tipo de atributo creado: {instance.nombre}")
 
+
 # =============================================================================
-# RECEIVERS PARA INSTANCIAS
+# RECEIVERS PARA INSTANCIAS - CORRECCIÓN APLICADA
 # =============================================================================
 
 @receiver(post_save, sender=DiagnosticoDental)
 def log_diagnostico_dental_guardado(sender, instance, created, **kwargs):
     """Registra cuando se guarda un diagnóstico de paciente"""
     if created:
+        # CORRECCIÓN: usar helper function para obtener nombre completo
+        paciente = instance.superficie.diente.paciente
+        paciente_nombre = get_paciente_nombre_completo(paciente)
+
         logger.info(
             f"Diagnóstico dental registrado: {instance.diagnostico_catalogo.nombre} "
             f"en {instance.superficie.diente.codigo_fdi} "
             f"({instance.superficie.get_nombre_display()}) "
-            f"- Paciente: {instance.diente.paciente.nombre_completo}"
+            f"- Paciente: {paciente_nombre}"
         )
 
         diagnostico_dental_registrado.send(
             sender=sender,
             diagnostico_dental=instance,
-            paciente=instance.diente.paciente
+            paciente=paciente
         )
 
-        cache.delete(f'odontograma:paciente:{instance.diente.paciente.id}')
+        # Invalidar caché del paciente
+        cache.delete(f'odontograma:paciente:{paciente.id_paciente}')
     else:
         logger.info(f"Diagnóstico dental modificado: {instance.id}")
+
 
 @receiver(post_save, sender=Diente)
 def log_diente_cambios(sender, instance, created, **kwargs):
     """Registra cambios en dientes de pacientes"""
+    paciente = instance.paciente
+    paciente_nombre = get_paciente_nombre_completo(paciente)
+
     if created:
         logger.info(
-            f"Diente creado: {instance.codigo_fdi} para paciente {instance.paciente.nombre_completo}"
+            f"Diente creado: {instance.codigo_fdi} para paciente {paciente_nombre}"
         )
     elif instance.ausente:
         logger.warning(
-            f"Diente {instance.codigo_fdi} marcado como ausente para {instance.paciente.nombre_completo}"
+            f"Diente {instance.codigo_fdi} marcado como ausente para {paciente_nombre}"
         )
         diente_marcado_ausente.send(sender=sender, diente=instance)
+
 
 @receiver(post_save, sender=DiagnosticoDental)
 def detectar_cambio_estado_tratamiento(sender, instance, created, **kwargs):
     """Detecta cambios en el estado del tratamiento"""
     if not created:
         try:
-            old_instance = DiagnosticoDental.objects.get(pk=instance.pk)
-            if old_instance.estado_tratamiento != instance.estado_tratamiento:
-                logger.info(
-                    f"Estado de tratamiento modificado: "
-                    f"{old_instance.estado_tratamiento} → {instance.estado_tratamiento}"
-                )
+            # Obtener valores originales de la base de datos
+            old_instance = DiagnosticoDental.objects.filter(pk=instance.pk).values(
+                'estado_tratamiento'
+            ).first()
 
-                estado_tratamiento_modificado.send(
-                    sender=sender,
-                    diagnostico_dental=instance,
-                    estado_anterior=old_instance.estado_tratamiento,
-                    estado_nuevo=instance.estado_tratamiento
-                )
-        except DiagnosticoDental.DoesNotExist:
-            pass
+            if old_instance:
+                old_estado = old_instance['estado_tratamiento']
+                new_estado = instance.estado_tratamiento
+
+                if old_estado != new_estado:
+                    logger.info(
+                        f"Cambio de estado en DiagnosticoDental {instance.pk}: "
+                        f"{old_estado} -> {new_estado}"
+                    )
+
+                    estado_tratamiento_modificado.send(
+                        sender=sender,
+                        diagnostico_dental=instance,
+                        estado_anterior=old_estado,
+                        estado_nuevo=new_estado
+                    )
+        except Exception as e:
+            logger.error(f"Error detectando cambio de estado: {str(e)}")
+
 
 # =============================================================================
 # RECEIVERS PARA GESTIÓN DE CACHÉ
@@ -164,13 +219,18 @@ def invalidar_cache_diagnosticos_catalogo(sender, instance, **kwargs):
         cache.delete(key)
     logger.debug(f"Caché invalidado para diagnóstico catálogo: {instance.id}")
 
+
 @receiver(post_save, sender=DiagnosticoDental)
 @receiver(post_delete, sender=DiagnosticoDental)
 def invalidar_cache_odontograma_paciente(sender, instance, **kwargs):
     """Invalida caché del odontograma del paciente"""
-    cache.delete(f'odontograma:paciente:{instance.diente.paciente.id}')
-    cache.delete(f'odontograma:diente:{instance.diente.id}')
+    paciente_id = instance.superficie.diente.paciente.id_paciente
+    diente_id = instance.superficie.diente.id
+
+    cache.delete(f'odontograma:paciente:{paciente_id}')
+    cache.delete(f'odontograma:diente:{diente_id}')
     logger.debug(f"Caché invalidado para odontograma: {instance.id}")
+
 
 @receiver(post_save, sender=CategoriaDiagnostico)
 @receiver(post_delete, sender=CategoriaDiagnostico)
@@ -180,15 +240,17 @@ def invalidar_cache_categorias(sender, instance, **kwargs):
     cache.delete('odontograma:config:full')
     logger.debug("Caché de categorías invalidado")
 
+
 @receiver(post_save, sender=TipoAtributoClinico)
 @receiver(post_delete, sender=TipoAtributoClinico)
 @receiver(post_save, sender=OpcionAtributoClinico)
 @receiver(post_delete, sender=OpcionAtributoClinico)
 def invalidar_cache_atributos(sender, instance, **kwargs):
-    """Invalida caché de atributos - FIX: Ahora con firma correcta**kwargs"""
+    """Invalida caché de atributos"""
     safe_delete_pattern('odontograma:atributos:*')
     cache.delete('odontograma:config:full')
     logger.debug("Caché de atributos invalidado")
+
 
 # =============================================================================
 # RECEIVERS PARA VALIDACIONES
@@ -210,11 +272,13 @@ def validar_diagnostico_catalogo(sender, instance, **kwargs):
     if diagnosticos_existentes.exists():
         raise ValueError(f"Las siglas '{instance.siglas}' ya están en uso")
 
+
 @receiver(pre_save, sender=OpcionAtributoClinico)
 def validar_opcion_atributo(sender, instance, **kwargs):
     """Valida opción de atributo"""
     if instance.prioridad is not None and not 1 <= instance.prioridad <= 5:
         raise ValueError("La prioridad debe estar entre 1 y 5 o ser NULL")
+
 
 @receiver(pre_save, sender=DiagnosticoDental)
 def validar_diagnostico_dental(sender, instance, **kwargs):
@@ -222,6 +286,7 @@ def validar_diagnostico_dental(sender, instance, **kwargs):
     if instance.prioridad_asignada is not None:
         if not 1 <= instance.prioridad_asignada <= 5:
             raise ValueError("Prioridad asignada debe estar entre 1 y 5")
+
 
 # =============================================================================
 # RECEIVERS PARA HISTORIAL Y AUDITORÍA
@@ -232,7 +297,7 @@ def registrar_cambio_diagnostico_dental(sender, instance, created, **kwargs):
     """Registra en historial cuando se agrega un diagnóstico dental"""
     if created:
         HistorialOdontograma.objects.create(
-            diente=instance.diente,
+            diente=instance.superficie.diente,
             tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_AGREGADO,
             descripcion=f"{instance.diagnostico_catalogo.nombre} agregado en {instance.superficie.get_nombre_display()}",
             odontologo=instance.odontologo,
@@ -243,11 +308,12 @@ def registrar_cambio_diagnostico_dental(sender, instance, created, **kwargs):
             }
         )
 
+
 @receiver(post_delete, sender=DiagnosticoDental)
 def registrar_eliminacion_diagnostico_dental(sender, instance, **kwargs):
     """Registra en historial cuando se elimina un diagnóstico dental"""
     HistorialOdontograma.objects.create(
-        diente=instance.diente,
+        diente=instance.superficie.diente,
         tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_ELIMINADO,
         descripcion=f"{instance.diagnostico_catalogo.nombre} eliminado",
         odontologo=instance.odontologo,
@@ -256,6 +322,7 @@ def registrar_eliminacion_diagnostico_dental(sender, instance, **kwargs):
             'superficie': instance.superficie.nombre,
         }
     )
+
 
 @receiver(pre_save, sender=Diente)
 def registrar_ausencia_diente(sender, instance, **kwargs):
@@ -268,6 +335,7 @@ def registrar_ausencia_diente(sender, instance, **kwargs):
         except Diente.DoesNotExist:
             pass
 
+
 # =============================================================================
 # RECEIVERS PARA NOTIFICACIONES
 # =============================================================================
@@ -276,26 +344,31 @@ def registrar_ausencia_diente(sender, instance, **kwargs):
 def notificar_diagnostico_critico_catalogo(sender, diagnostico, **kwargs):
     """Notifica cuando se crea un diagnóstico crítico en el catálogo"""
     logger.warning(
-        f"⚠️  DIAGNÓSTICO CRÍTICO EN CATÁLOGO: {diagnostico.nombre} "
+        f"⚠️ DIAGNÓSTICO CRÍTICO EN CATÁLOGO: {diagnostico.nombre} "
         f"(Prioridad: {diagnostico.prioridad})"
     )
+
 
 @receiver(diagnostico_dental_registrado)
 def notificar_diagnostico_dental_registrado(sender, diagnostico_dental, paciente, **kwargs):
     """Notifica cuando se registra un diagnóstico en un paciente"""
     if diagnostico_dental.prioridad_efectiva >= 4:
+        paciente_nombre = get_paciente_nombre_completo(paciente)
         logger.warning(
-            f"⚠️  DIAGNÓSTICO CRÍTICO REGISTRADO: {diagnostico_dental.diagnostico_catalogo.nombre} "
-            f"en paciente {paciente.nombre_completo}"
+            f"⚠️ DIAGNÓSTICO CRÍTICO REGISTRADO: {diagnostico_dental.diagnostico_catalogo.nombre} "
+            f"en paciente {paciente_nombre}"
         )
+
 
 @receiver(diente_marcado_ausente)
 def notificar_diente_ausente(sender, diente, **kwargs):
     """Notifica cuando se marca un diente como ausente"""
+    paciente_nombre = get_paciente_nombre_completo(diente.paciente)
     logger.warning(
-        f"⚠️  DIENTE MARCADO COMO AUSENTE: {diente.codigo_fdi} "
-        f"- Paciente: {diente.paciente.nombre_completo}"
+        f"⚠️ DIENTE MARCADO COMO AUSENTE: {diente.codigo_fdi} "
+        f"- Paciente: {paciente_nombre}"
     )
+
 
 @receiver(estado_tratamiento_modificado)
 def notificar_cambio_estado_tratamiento(sender, diagnostico_dental, estado_anterior, estado_nuevo, **kwargs):
@@ -304,6 +377,7 @@ def notificar_cambio_estado_tratamiento(sender, diagnostico_dental, estado_anter
         f"Estado de tratamiento modificado: {diagnostico_dental.diagnostico_catalogo.nombre} "
         f"{estado_anterior} → {estado_nuevo}"
     )
+
 
 # =============================================================================
 # RECEIVERS PARA INTEGRIDAD DE DATOS
@@ -318,6 +392,7 @@ def prevenir_eliminacion_categoria_con_diagnosticos(sender, instance, **kwargs):
             f"Desactívela en su lugar."
         )
 
+
 @receiver(pre_delete, sender=TipoAtributoClinico)
 def prevenir_eliminacion_atributo_en_uso(sender, instance, **kwargs):
     """Previene eliminar atributo en uso"""
@@ -326,6 +401,7 @@ def prevenir_eliminacion_atributo_en_uso(sender, instance, **kwargs):
             f"No se puede eliminar '{instance.nombre}' - está siendo usado. "
             f"Desactívelo en su lugar."
         )
+
 
 @receiver(pre_delete, sender=Diente)
 def prevenir_eliminacion_diente_con_diagnosticos(sender, instance, **kwargs):
@@ -339,6 +415,7 @@ def prevenir_eliminacion_diente_con_diagnosticos(sender, instance, **kwargs):
             f"No se puede eliminar diente {instance.codigo_fdi} - tiene diagnósticos. "
             f"Desactívelo en su lugar."
         )
+
 
 # =============================================================================
 # ESTADÍSTICAS
@@ -358,11 +435,12 @@ def actualizar_estadisticas_catalogo(sender, instance, **kwargs):
     cache.set('odontograma:stats:catalogo', stats, timeout=3600)
     logger.debug("Estadísticas del catálogo actualizadas")
 
+
 @receiver(post_save, sender=DiagnosticoDental)
 @receiver(post_delete, sender=DiagnosticoDental)
 def actualizar_estadisticas_paciente(sender, instance, **kwargs):
     """Actualiza estadísticas del odontograma del paciente"""
-    paciente = instance.diente.paciente
+    paciente = instance.superficie.diente.paciente
     stats = {
         'total_diagnosticos': DiagnosticoDental.objects.filter(
             superficie__diente__paciente=paciente,
@@ -373,10 +451,10 @@ def actualizar_estadisticas_paciente(sender, instance, **kwargs):
             activo=True
         ).filter(
             Q(prioridad_asignada__gte=4) |
-            (Q(prioridad_asignada__isnull=True) & 
+            (Q(prioridad_asignada__isnull=True) &
              Q(diagnostico_catalogo__prioridad__gte=4))
         ).count(),
         'ultima_actualizacion': timezone.now().isoformat(),
     }
-    cache.set(f'odontograma:stats:paciente:{paciente.id}', stats, timeout=3600)
-    logger.debug(f"Estadísticas del paciente {paciente.id} actualizadas")
+    cache.set(f'odontograma:stats:paciente:{paciente.id_paciente}', stats, timeout=3600)
+    logger.debug(f"Estadísticas del paciente {paciente.id_paciente} actualizadas")

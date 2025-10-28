@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'api.users.apps.UsersConfig',
     'api.odontogram.apps.OdontogramConfig',
     'api.patients.apps.PatientsConfig',
+    'corsheaders'
     
 ]
 
@@ -58,6 +59,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
 ]
 
 REST_FRAMEWORK = {
@@ -155,3 +157,9 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 ################################################################
+
+# CORS Configuration
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  
+    "http://127.0.0.1:5173",
+]

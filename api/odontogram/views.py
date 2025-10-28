@@ -4,6 +4,8 @@ Views refactorizadas para estructura alineada
 Separa: Catálogo (ViewSets lectura) + Instancias (ViewSets CRUD)
 """
 
+import logging
+from django.contrib.auth import get_user_model
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -56,6 +58,9 @@ from api.odontogram.repositories.odontogram_repositories import (
 # =============================================================================
 # VIEWSETS PARA CATÁLOGO (Solo lectura)
 # =============================================================================
+
+
+logger = logging.getLogger(__name__)
 
 class CategoriaDiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para categorías de diagnóstico (catálogo)"""

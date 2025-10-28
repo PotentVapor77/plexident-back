@@ -185,7 +185,7 @@ class OdontogramaService:
 
         return {
             'paciente_id': str(paciente.id),
-            'paciente_nombre': paciente.nombre_completo,
+            'paciente_nombre': paciente.nombres + ' ' + paciente.apellidos,
             'odontograma_data': odontograma_data,
             'fecha_obtension': timezone.now().isoformat(),
         }
@@ -362,3 +362,68 @@ class OdontogramaService:
             diagnosticos = diagnosticos.filter(estado_tratamiento=estado_tratamiento)
 
         return list(diagnosticos)
+    @transaction.atomic
+    def actualizar_diagnostico(
+        self,
+        diagnostico_dental_id: str,
+        diagnostico_id: Optional[int] = None,
+        observaciones: Optional[str] = None,
+        estado_tratamiento: Optional[str] = None,
+        fecha_realizado: Optional[str] = None,
+        atributos_clinicos: Optional[Dict] = None,
+        odontologo_id: Optional[int] = None
+    ) -> DiagnosticoDental:
+        """
+        Actualiza un diagnóstico dental existente
+
+        Args:
+            diagnostico_dental_id: ID del diagnóstico a actualizar
+            diagnostico_id: Nuevo diagnóstico del catálogo (opcional)
+            observaciones: Nuevas observaciones (opcional)
+            estado_tratamiento: Nuevo estado (opcional)
+            fecha_realizado: Fecha de realización (opcional)
+            atributos_clinicos: Nuevos atributos (opcional)
+            odontologo_id: ID del odontólogo que actualiza (opcional)
+
+        Returns:
+            DiagnosticoDental actualizado
+
+        Raises:
+            ValidationError: Si el diagnóstico no existe o datos inválidos
+        """
+        try:
+            diagnostico_dental = DiagnosticoDental.objects.select_for_update().get(
+                id=diagnostico_dental_id,
+                activo=True
+            )
+
+            # Actualizar campos proporcionados
+            if diagnostico_id is not None:
+                diagnostico_dental.diagnostico_catalogo_id = diagnostico_id
+
+            if observaciones is not None:
+                diagnostico_dental.observaciones = observaciones
+
+            if estado_tratamiento is not None:
+                if estado_tratamiento not in ['PLANIFICADO', 'EN_CURSO', 'REALIZADO', 'CANCELADO']:
+                    raise ValidationError(f"Estado inválido: {estado_tratamiento}")
+                diagnostico_dental.estado_tratamiento = estado_tratamiento
+
+            if fecha_realizado is not None:
+                diagnostico_dental.fecha_realizado = fecha_realizado
+
+            if atributos_clinicos is not None:
+                # Merge con atributos existentes
+                current_attrs = diagnostico_dental.atributos_clinicos or {}
+                current_attrs.update(atributos_clinicos)
+                diagnostico_dental.atributos_clinicos = current_attrs
+
+            if odontologo_id is not None:
+                diagnostico_dental.odontologo_id = odontologo_id
+
+            diagnostico_dental.save()
+
+            return diagnostico_dental
+
+        except DiagnosticoDental.DoesNotExist:
+            raise ValidationError(f"Diagnóstico dental {diagnostico_dental_id} no encontrado")

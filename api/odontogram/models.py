@@ -40,6 +40,7 @@ class CategoriaDiagnostico(models.Model):
 
 class Diagnostico(models.Model):
     """Diagnósticos disponibles en el catálogo"""
+    key = models.CharField(max_length=50, unique=True) 
     categoria = models.ForeignKey(CategoriaDiagnostico, on_delete=models.PROTECT, related_name='diagnosticos')
     key = models.CharField(max_length=50, unique=True)
     nombre = models.CharField(max_length=100)
@@ -184,7 +185,8 @@ class Diente(models.Model):
 
     def __str__(self):
         estado = "(AUSENTE)" if self.ausente else ""
-        return f"Diente {self.codigo_fdi} - {self.paciente.nombre_completo} {estado}"
+        paciente_nombre = f"{self.paciente.nombres} {self.paciente.apellidos}".strip()
+        return f"Diente {self.codigo_fdi} - {paciente_nombre} {estado}".strip()
 
 
 class SuperficieDental(models.Model):
