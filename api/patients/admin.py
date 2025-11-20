@@ -4,7 +4,7 @@ from api.patients.models import Paciente
 @admin.register(Paciente)
 class PacienteAdmin(admin.ModelAdmin):
     list_display = (
-        'id_paciente', 'nombres', 'apellidos', 'cedula_pasaporte',
+        'id', 'nombres', 'apellidos', 'cedula_pasaporte',
         'fecha_nacimiento', 'sexo', 'telefono', 'correo',
         'contacto_emergencia_nombre', 'contacto_emergencia_telefono',
         'status', 'created_at'

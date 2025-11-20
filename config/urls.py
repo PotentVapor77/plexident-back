@@ -1,15 +1,27 @@
 
-# api/urls.py
+# config/urls.py
 from django.contrib import admin
 from django.urls import path, include
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    #path('api/', include('api.urls')),  # Rutas del API (va a tu app)
-    path('api/pacientes/', include('api.patients.urls')),
-    path('api/usuarios/', include('api.users.urls')),
-    path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),  # login/logout DRF
-    # API de usuarios - incluye todas las URLs de api.users
+
+
+     # Endpoints del sistema
+    path('api/users/', include('api.patients.urls')),
+    path('api/users/', include('api.users.urls')),
     path('api/odontogram/', include('api.odontogram.urls')),
+
+    # Autenticación DRF (opcional, útil para pruebas)
+    path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
+
+    # JWT endpoints
+    path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
 ]

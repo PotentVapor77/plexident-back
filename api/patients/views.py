@@ -6,8 +6,8 @@ from .services.patient_service import PatientService
 class PacienteViewSet(viewsets.ModelViewSet):
     serializer_class = PacienteSerializer
     queryset = Paciente.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
-
+    #permission_classes = [permissions.IsAuthenticated]
+    queryset = Paciente.objects.all() 
     def perform_create(self, serializer):
         data = serializer.validated_data
         PatientService.crear_paciente(data)

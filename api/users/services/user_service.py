@@ -14,6 +14,10 @@ class UserService:
         return UserRepository.get_by_id(id_usuario)
 
     @staticmethod
+    def obtener_usuario_por_username(username):
+        return UserRepository.get_by_username(username)
+
+    @staticmethod
     def actualizar_usuario(usuario, data):
         return UserRepository.update(usuario, **data)
 

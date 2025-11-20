@@ -3,7 +3,7 @@ from django.db import models
 from django.core.validators import MinLengthValidator, RegexValidator
 from django_currentuser.db.models import CurrentUserField
 from django.core.exceptions import ValidationError
-
+import uuid
 class Paciente(models.Model):
     SEXOS = [
         ('M', 'Masculino'),
@@ -11,7 +11,7 @@ class Paciente(models.Model):
         ('O', 'Otro'),
     ]
 
-    id_paciente = models.AutoField(primary_key=True)
+    id = models.UUIDField(primary_key=True,default=uuid.uuid4, editable=False, unique=True)
     nombres = models.CharField(max_length=100)
     apellidos = models.CharField(max_length=100)
     cedula_pasaporte = models.CharField(max_length=20, unique=True)

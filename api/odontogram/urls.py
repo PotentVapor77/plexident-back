@@ -37,6 +37,7 @@ router.register(r'superficies', SuperficieDentalViewSet, basename='superficie')
 router.register(r'diagnosticos-aplicados', DiagnosticoDentalViewSet, basename='diagnostico-aplicado')
 router.register(r'historial', HistorialOdontogramaViewSet, basename='historial')
 
+app_name = 'odontogram' 
 urlpatterns = [
-    path('', include(router.urls)),
+    path('odontogram', include(router.urls)),
 ]
