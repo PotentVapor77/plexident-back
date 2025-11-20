@@ -4,7 +4,7 @@ Uso: python manage.py cargar_odontograma_csv
 
 Archivos CSV esperados en: api/odontogram/data/
 """
-
+## api/odontogram/management/commands/cargar_odontograma_csv.py
 import csv
 import os
 from pathlib import Path
