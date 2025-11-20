@@ -7,4 +7,4 @@ def paciente_audit(sender, instance, created, **kwargs):
     if created:
         print(f"[AUDIT] Paciente creado: {instance.nombres} {instance.apellidos}")
     else:
-        print(f"[AUDIT] Paciente actualizado: {instance.id_paciente}")
+        print(f"[AUDIT] Paciente actualizado: {instance.id}")
