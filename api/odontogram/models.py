@@ -50,6 +50,52 @@ class Diagnostico(models.Model):
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
+    
+    
+    
+    
+    # Codigos Estandarizados 
+    codigo_icd10 = models.CharField(max_length=20, blank=True, help_text="Código ICD-10 asociado")
+    codigo_cdt = models.CharField(max_length=20, blank=True, help_text="Código CDT asociado")
+    codigo_fhir = models.CharField(max_length=20, blank=True, help_text="Código SNOMED CT FHIR asociado")
+
+    # Clasificación para serialización FHIR
+    class TipoRecursoFHIR(models.TextChoices):
+        CONDITION = 'Condition', 'Condición (Diagnóstico)'
+        PROCEDURE = 'Procedure', 'Procedimiento (Tratamiento)'
+        OBSERVATION = 'Observation', 'Observación (Otro hallazgo)'
+
+    tipo_recurso_fhir = models.CharField(
+        max_length=20,
+        choices=TipoRecursoFHIR.choices,
+        default=TipoRecursoFHIR.CONDITION,
+        help_text="Clasifica el registro para su correcta serialización a FHIR (Condition, Procedure, etc.)"
+    )
+
+    # Simbologia formulario 033 Ecuador
+    simbolo_formulario_033 = models.CharField(max_length=50, blank=True, choices=[('X_rojo', 'X rojo - Caries'), ('X_azul', 'X azul - Pérdida por caries'),
+            ('_rojo', '| rojo - Caries necesaria (otra causa)'),
+            ('U_rojo', 'Ü rojo - Sellante necesario'),
+            ('U_azul', 'Ü azul - Sellante realizado'),
+            ('r', 'r - Endodoncia por realizar'),
+            ('_azul', '| azul - Endodoncia realizada'),
+            ('o_azul', 'o azul - Obturado'),
+            ('A', 'A - Ausente'),
+            ('--', '¨---¨ - Prótesis fija indicada'),
+            ('--_azul', '¨---¨ azul - Prótesis fija realizada'),
+            ('-----', '(-----) - Prótesis removible indicada'),
+            ('----_azul', '(-----) azul - Prótesis removible realizada'),
+            ('ª', 'ª - Corona indicada'),
+            ('ª_azul', 'ª azul - Corona realizada'),
+            ('═', '═ - Prótesis total indicada'),
+            ('═_azul', '═ azul - Prótesis total realizada'),])
+    
+    # Categoria de superficie aplicable
+    superficie_aplicables = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Lista de categorías de superficie dental aplicables (ej: ['oclusal', 'vestibular'])"
+    )
 
     class Meta:
         db_table = 'odonto_diagnostico'
@@ -216,7 +262,29 @@ class SuperficieDental(models.Model):
     # Metadata
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
+    
+    # Mapeo de superficies a codigos del FHIR/ADA
+    FHIR_SURFACE_MAPPING = {
+        'vestibular': 'F', # Facial/Buccal
+        'lingual': 'L',    # Lingual
+        'oclusal': 'O',    # Oclusal
+        'incisal': 'I',   # Incisal
+        'mesial': 'M',    # Mesial
+        'distal': 'D',    # Distal
+        'raiz_mesial': 'RM', # Raíz Mesial
+        'raiz_distal': 'RD', # Raíz Distal
+        'raiz_palatal': 'RP', # Raíz Palatina
+        'raiz_vestibular': 'RV', # Raíz Vestibular
+        'raiz_principal': 'RP', # Raíz Principal
+    }
 
+    codigo_fhir_superficie = models.CharField(
+        max_length=2,
+        editable=False,
+        help_text="Código automático FHIR de la superficie dental")
+    
+    
+    
     class Meta:
         db_table = 'odonto_superficie_dental'
         verbose_name = 'Superficie Dental'
@@ -225,6 +293,11 @@ class SuperficieDental(models.Model):
 
     def __str__(self):
         return f"{self.diente.codigo_fdi} - {self.get_nombre_display()}"
+    
+    def save(self, *args, **kwargs):
+        # Auto-mapear al guardar
+        self.codigo_fhir_superficie = self.FHIR_SURFACE_MAPPING.get(self.nombre, self.nombre)
+        super().save(*args, **kwargs)
 
 
 class DiagnosticoDental(models.Model):
@@ -264,7 +337,31 @@ class DiagnosticoDental(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(5)],
         help_text="Prioridad específica de este diagnóstico (si difiere del catálogo)"
     )
-
+    movilidad = models.IntegerField(
+        null=True,
+        blank=True,
+        choices=[(0, 'Sin movilidad'), (1, 'Movilidad 1'), (2, 'Movilidad 2'), (3, 'Movilidad 3'), (4, 'Movilidad 4')],
+        help_text="Grado de movilidad dental (0-4) según Formulario 033"
+    )
+    recesion_gingival = models.IntegerField(
+        null=True,
+        blank=True,
+        choices=[(0, 'Sin recesión'), (1, 'Recesión 1mm'), (2, 'Recesión 2mm'), (3, 'Recesión 3mm'), (4, 'Recesión >3mm')],
+        help_text="Grado de recesión gingival según Formulario 033"
+    )
+    
+    # Tipo de tratamiento (Para coloracion en formulario 033)
+    tipo_registro = models.CharField(
+        max_length=10,
+        choices=[
+            ('rojo', 'ROJO - Patología/hallazgo actual'),
+            ('azul', 'AZUL - Tratamiento realizado previamente')
+        ],
+        default='rojo',
+        help_text="Define la coloración en el Formulario 033"
+    )
+    
+    
     # Estado del tratamiento
     class EstadoTratamiento(models.TextChoices):
         DIAGNOSTICADO = 'diagnosticado', 'Diagnosticado'

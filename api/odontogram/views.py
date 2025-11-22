@@ -251,6 +251,86 @@ class PacienteViewSet(viewsets.ModelViewSet):
         serializer = DiagnosticoDentalListSerializer(diagnosticos, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path='odontograma-fhir')
+    def odontograma_fhir(self, request, pk=None):
+        """
+        GET /api/pacientes/{id}/odontograma-fhir/
+        Retorna el odontograma completo del paciente como un Bundle FHIR.
+        """
+        # Importaciones necesarias para esta acción
+        import uuid
+        from django.utils import timezone
+        from api.odontogram.serializer.fhir_serializers import ClinicalFindingFHIRSerializer
+
+        paciente = self.get_object()
+        
+        # 1. Obtener todos los hallazgos clínicos del paciente
+        diagnosticos_qs = DiagnosticoDental.objects.filter(
+            superficie__diente__paciente=paciente,
+            activo=True
+        ).select_related(
+            'diagnostico_catalogo',
+            'superficie__diente__paciente',
+            'odontologo'
+        )
+
+        # 2. Serializar los hallazgos a recursos FHIR (Condition/Procedure)
+        fhir_findings = ClinicalFindingFHIRSerializer(diagnosticos_qs, many=True).data
+
+        # 3. Construir el Bundle FHIR
+        bundle_entries = []
+        
+        # 3.1. Añadir el recurso del Paciente (una versión más completa que la de referencia)
+        patient_resource = {
+            "fullUrl": f"urn:uuid:{paciente.id}",
+            "resource": {
+                "resourceType": "Patient",
+                "id": str(paciente.id),
+                "name": [{
+                    "use": "official",
+                    "family": paciente.apellidos,
+                    "given": [paciente.nombres]
+                }],
+                "identifier": [{
+                    "system": "urn:oid:1.3.6.1.4.1.21367.13.20.3000.1.1", # OID de ejemplo para Cédula Ecuador
+                    "value": paciente.cedula_pasaporte
+                }],
+                "gender": {"M": "male", "F": "female", "O": "other"}.get(paciente.sexo),
+                "birthDate": paciente.fecha_nacimiento.isoformat(),
+            }
+        }
+        bundle_entries.append(patient_resource)
+        
+        # 3.2. Añadir recursos de Practitioner (odontólogos) únicos
+        practitioners = {d.odontologo for d in diagnosticos_qs if d.odontologo}
+        for pract in practitioners:
+            bundle_entries.append({
+                "fullUrl": f"urn:uuid:{pract.id}",
+                "resource": {
+                    "resourceType": "Practitioner",
+                    "id": str(pract.id),
+                    "name": [{"family": pract.last_name, "given": [pract.first_name]}]
+                }
+            })
+
+        # 3.3. Añadir cada hallazgo clínico al bundle
+        for finding in fhir_findings:
+            bundle_entries.append({
+                "fullUrl": f"urn:uuid:{finding['id']}",
+                "resource": finding
+            })
+
+        # 4. Ensamblar el Bundle final
+        fhir_bundle = {
+            "resourceType": "Bundle",
+            "id": str(uuid.uuid4()),
+            "type": "document",
+            "timestamp": timezone.now().isoformat(),
+            "entry": bundle_entries
+        }
+
+        return Response(fhir_bundle, status=status.HTTP_200_OK)
+
 
 class DienteViewSet(viewsets.ModelViewSet):
     """ViewSet para gestionar dientes de pacientes"""
