@@ -19,6 +19,11 @@ from api.odontogram.views import (
     DiagnosticoDentalViewSet,
     HistorialOdontogramaViewSet,
     SuperficieDentalViewSet,
+    # Exportación FHIR
+    export_fhir_bundle,
+    export_cda_xml,
+    export_fhir_observation,
+    
 )
 
 router = DefaultRouter()
@@ -37,7 +42,20 @@ router.register(r'superficies', SuperficieDentalViewSet, basename='superficie')
 router.register(r'diagnosticos-aplicados', DiagnosticoDentalViewSet, basename='diagnostico-aplicado')
 router.register(r'historial', HistorialOdontogramaViewSet, basename='historial')
 
-app_name = 'odontogram' 
+app_name = 'odontogram'
 urlpatterns = [
-    path('odontogram', include(router.urls)),
+    # Rutas del router REST framework - ViewSets
+    path('', include(router.urls)),
+    # Exportación FHIR/CDA endpoints especiales
+    path('pacientes/<uuid:paciente_id>/export-fhir-bundle/',
+        export_fhir_bundle,
+        name='export-fhir-bundle'),
+    path('pacientes/<uuid:paciente_id>/export-cda/',
+        export_cda_xml,
+        name='export-cda'),
+    path('diagnosticos/<uuid:diagnostico_id>/export-fhir/',
+        export_fhir_observation,
+        name='export-fhir-observation'),
 ]
+    
+    

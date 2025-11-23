@@ -229,6 +229,48 @@ class OdontogramaService:
         return diente
 
     @transaction.atomic
+    def marcar_diagnostico_tratado(
+        self,
+        diagnostico_id: str,
+        odontologo_id: int
+    ) -> DiagnosticoDental:
+        """
+        Marca un diagnóstico como 'Tratado' y registra el cambio en el historial.
+        """
+        try:
+            diagnostico = DiagnosticoDental.objects.select_for_update().get(id=diagnostico_id, activo=True)
+            odontologo = User.objects.get(id=odontologo_id)
+        except (DiagnosticoDental.DoesNotExist, User.DoesNotExist):
+            raise ValidationError("Diagnóstico u odontólogo no encontrado")
+
+        datos_anteriores = {
+            'estado_tratamiento': diagnostico.estado_tratamiento,
+            'fecha_tratamiento': diagnostico.fecha_tratamiento.isoformat() if diagnostico.fecha_tratamiento else None
+        }
+
+        # Actualizar estado y fecha
+        diagnostico.estado_tratamiento = DiagnosticoDental.EstadoTratamiento.TRATADO
+        diagnostico.fecha_tratamiento = timezone.now()
+        diagnostico.save()
+
+        datos_nuevos = {
+            'estado_tratamiento': diagnostico.estado_tratamiento,
+            'fecha_tratamiento': diagnostico.fecha_tratamiento.isoformat()
+        }
+
+        # Crear registro en el historial
+        HistorialOdontograma.objects.create(
+            diente=diagnostico.diente,
+            tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_TRATADO,
+            descripcion=f"Diagnóstico '{diagnostico.diagnostico_catalogo.nombre}' marcado como Tratado en la superficie {diagnostico.superficie.get_nombre_display()}",
+            odontologo=odontologo,
+            datos_anteriores=datos_anteriores,
+            datos_nuevos=datos_nuevos
+        )
+
+        return diagnostico
+
+    @transaction.atomic
     def eliminar_diagnostico(
         self,
         diagnostico_id: str,
@@ -269,13 +311,15 @@ class OdontogramaService:
         atributos_clinicos: Optional[Dict] = None,
         estado_tratamiento: Optional[str] = None,
         prioridad_asignada: Optional[int] = None,
+        fecha_tratamiento: Optional[str] = None,
+        diagnostico_catalogo_id: Optional[int] = None,
         odontologo_id: Optional[int] = None
     ) -> Optional[DiagnosticoDental]:
         """
         Actualiza un diagnóstico y registra cambios en historial
         """
         try:
-            diagnostico = DiagnosticoDental.objects.get(id=diagnostico_id)
+            diagnostico = DiagnosticoDental.objects.select_for_update().get(id=diagnostico_id, activo=True)
             if odontologo_id:
                 odontologo = User.objects.get(id=odontologo_id)
             else:
@@ -289,19 +333,30 @@ class OdontogramaService:
             'atributos_clinicos': diagnostico.atributos_clinicos,
             'estado_tratamiento': diagnostico.estado_tratamiento,
             'prioridad_asignada': diagnostico.prioridad_asignada,
+            'fecha_tratamiento': diagnostico.fecha_tratamiento,
+            'diagnostico_catalogo_id': diagnostico.diagnostico_catalogo_id,
         }
 
         # Actualizar campos
         if descripcion is not None:
             diagnostico.descripcion = descripcion
         if atributos_clinicos is not None:
-            diagnostico.atributos_clinicos = atributos_clinicos
+            # Merge con atributos existentes
+            current_attrs = diagnostico.atributos_clinicos or {}
+            current_attrs.update(atributos_clinicos)
+            diagnostico.atributos_clinicos = current_attrs
         if estado_tratamiento is not None:
             diagnostico.estado_tratamiento = estado_tratamiento
         if prioridad_asignada is not None:
             if not 1 <= prioridad_asignada <= 5:
                 raise ValidationError("Prioridad debe estar entre 1 y 5")
             diagnostico.prioridad_asignada = prioridad_asignada
+        if fecha_tratamiento is not None:
+            diagnostico.fecha_tratamiento = fecha_tratamiento
+        if diagnostico_catalogo_id is not None:
+            diagnostico.diagnostico_catalogo_id = diagnostico_catalogo_id
+        if odontologo_id is not None:
+            diagnostico.odontologo_id = odontologo_id
 
         diagnostico.save()
 
@@ -311,6 +366,8 @@ class OdontogramaService:
             'atributos_clinicos': diagnostico.atributos_clinicos,
             'estado_tratamiento': diagnostico.estado_tratamiento,
             'prioridad_asignada': diagnostico.prioridad_asignada,
+            'fecha_tratamiento': diagnostico.fecha_tratamiento,
+            'diagnostico_catalogo_id': diagnostico.diagnostico_catalogo_id,
         }
 
         HistorialOdontograma.objects.create(
@@ -362,68 +419,3 @@ class OdontogramaService:
             diagnosticos = diagnosticos.filter(estado_tratamiento=estado_tratamiento)
 
         return list(diagnosticos)
-    @transaction.atomic
-    def actualizar_diagnostico(
-        self,
-        diagnostico_dental_id: str,
-        diagnostico_id: Optional[int] = None,
-        observaciones: Optional[str] = None,
-        estado_tratamiento: Optional[str] = None,
-        fecha_realizado: Optional[str] = None,
-        atributos_clinicos: Optional[Dict] = None,
-        odontologo_id: Optional[int] = None
-    ) -> DiagnosticoDental:
-        """
-        Actualiza un diagnóstico dental existente
-
-        Args:
-            diagnostico_dental_id: ID del diagnóstico a actualizar
-            diagnostico_id: Nuevo diagnóstico del catálogo (opcional)
-            observaciones: Nuevas observaciones (opcional)
-            estado_tratamiento: Nuevo estado (opcional)
-            fecha_realizado: Fecha de realización (opcional)
-            atributos_clinicos: Nuevos atributos (opcional)
-            odontologo_id: ID del odontólogo que actualiza (opcional)
-
-        Returns:
-            DiagnosticoDental actualizado
-
-        Raises:
-            ValidationError: Si el diagnóstico no existe o datos inválidos
-        """
-        try:
-            diagnostico_dental = DiagnosticoDental.objects.select_for_update().get(
-                id=diagnostico_dental_id,
-                activo=True
-            )
-
-            # Actualizar campos proporcionados
-            if diagnostico_id is not None:
-                diagnostico_dental.diagnostico_catalogo_id = diagnostico_id
-
-            if observaciones is not None:
-                diagnostico_dental.observaciones = observaciones
-
-            if estado_tratamiento is not None:
-                if estado_tratamiento not in ['PLANIFICADO', 'EN_CURSO', 'REALIZADO', 'CANCELADO']:
-                    raise ValidationError(f"Estado inválido: {estado_tratamiento}")
-                diagnostico_dental.estado_tratamiento = estado_tratamiento
-
-            if fecha_realizado is not None:
-                diagnostico_dental.fecha_realizado = fecha_realizado
-
-            if atributos_clinicos is not None:
-                # Merge con atributos existentes
-                current_attrs = diagnostico_dental.atributos_clinicos or {}
-                current_attrs.update(atributos_clinicos)
-                diagnostico_dental.atributos_clinicos = current_attrs
-
-            if odontologo_id is not None:
-                diagnostico_dental.odontologo_id = odontologo_id
-
-            diagnostico_dental.save()
-
-            return diagnostico_dental
-
-        except DiagnosticoDental.DoesNotExist:
-            raise ValidationError(f"Diagnóstico dental {diagnostico_dental_id} no encontrado")

@@ -60,7 +60,7 @@ def get_paciente_nombre_completo(paciente):
     elif apellidos:
         return apellidos
     else:
-        return f"Paciente (ID: {paciente.id_paciente})"
+        return f"Paciente (ID: {paciente.id})"
 
 
 # =============================================================================
@@ -149,7 +149,7 @@ def log_diagnostico_dental_guardado(sender, instance, created, **kwargs):
         )
 
         # Invalidar caché del paciente
-        cache.delete(f'odontograma:paciente:{paciente.id_paciente}')
+        cache.delete(f'odontograma:paciente:{paciente.id}')
     else:
         logger.info(f"Diagnóstico dental modificado: {instance.id}")
 
@@ -224,7 +224,7 @@ def invalidar_cache_diagnosticos_catalogo(sender, instance, **kwargs):
 @receiver(post_delete, sender=DiagnosticoDental)
 def invalidar_cache_odontograma_paciente(sender, instance, **kwargs):
     """Invalida caché del odontograma del paciente"""
-    paciente_id = instance.superficie.diente.paciente.id_paciente
+    paciente_id = instance.superficie.diente.paciente.id
     diente_id = instance.superficie.diente.id
 
     cache.delete(f'odontograma:paciente:{paciente_id}')
@@ -456,5 +456,5 @@ def actualizar_estadisticas_paciente(sender, instance, **kwargs):
         ).count(),
         'ultima_actualizacion': timezone.now().isoformat(),
     }
-    cache.set(f'odontograma:stats:paciente:{paciente.id_paciente}', stats, timeout=3600)
-    logger.debug(f"Estadísticas del paciente {paciente.id_paciente} actualizadas")
+    cache.set(f'odontograma:stats:paciente:{paciente.id}', stats, timeout=3600)
+    logger.debug(f"Estadísticas del paciente {paciente.id} actualizadas")

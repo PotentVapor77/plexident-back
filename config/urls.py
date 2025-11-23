@@ -12,7 +12,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
 
 
-     # Endpoints del sistema
+    # Endpoints del sistema
     path('api/patients/', include('api.patients.urls')),
     path('api/users/', include('api.users.urls')),
     path('api/odontogram/', include('api.odontogram.urls')),

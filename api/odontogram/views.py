@@ -6,8 +6,9 @@ Separa: Catálogo (ViewSets lectura) + Instancias (ViewSets CRUD)
 
 import logging
 from django.contrib.auth import get_user_model
+from django.http import HttpResponse
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
@@ -54,7 +55,10 @@ from api.odontogram.repositories.odontogram_repositories import (
     AreaAfectadaRepository,
     TipoAtributoClinicoRepository,
 )
-
+from api.odontogram.generators.cda_generador import CDAOdontogramGenerator
+from api.odontogram.serializers.fhir_serializers import ClinicalFindingFHIRSerializer
+from api.odontogram.serializers.bundle_serializers import FHIRBundleSerializer
+from api.odontogram.serializers.serializers import DienteSerializer
 # =============================================================================
 # VIEWSETS PARA CATÁLOGO (Solo lectura)
 # =============================================================================
@@ -86,6 +90,65 @@ class CategoriaDiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):
         categorias = self.repository.get_by_prioridad(prioridad_key)
         serializer = self.get_serializer(categorias, many=True)
         return Response(serializer.data)
+
+class OdontogramaViewSet(viewsets.ViewSet):
+    @action(detail=False, methods=['get'])
+    def por_paciente(self, request):
+        """
+        GET /api/odontograma/por_paciente/?paciente_id={id}
+        Retorna todos los dientes con diagnósticos del paciente
+        Estructura esperada por frontend 3D
+        """
+        paciente_id = request.query_params.get('paciente_id')
+        if not paciente_id:
+            return Response(
+                {'error': 'paciente_id requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        paciente = get_object_or_404(Paciente, id=paciente_id)
+        
+        dientes = Diente.objects.filter(paciente=paciente).prefetch_related(
+            'superficies__diagnosticos__diagnostico_catalogo'
+        )
+        
+        serializer = DienteSerializer(dientes, many=True)
+        
+        # Transformar a estructura {codigo_fdi: {...}}
+        odontograma = {}
+        for diente_data in serializer.data:
+            codigo_fdi = diente_data['codigo_fdi']
+            odontograma[codigo_fdi] = diente_data
+        
+        return Response({
+            'paciente_id': str(paciente.id),
+            'dientes': odontograma
+        })
+        
+    @action(detail=False, methods=['get'])
+    def por_codigo_fdi(self, request):
+        """
+        GET /api/odontograma/por_codigo_fdi/?paciente_id={id}&codigo_fdi={fdi}
+        Obtiene un diente específico por su código FDI
+        """
+        paciente_id = request.query_params.get('paciente_id')
+        codigo_fdi = request.query_params.get('codigo_fdi')
+        
+        if not paciente_id or not codigo_fdi:
+            return Response(
+                {'error': 'paciente_id y codigo_fdi requeridos'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        diente = get_object_or_404(
+            Diente,
+            paciente_id=paciente_id,
+            codigo_fdi=codigo_fdi
+        )
+        
+        serializer = DienteSerializer(diente)
+        return Response(serializer.data)
+
 
 
 class DiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):
@@ -224,7 +287,10 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 Q(cedula__icontains=search)
             )
 
-        return queryset.prefetch_related('dientes')
+        return queryset.prefetch_related(
+            'dientes__superficies__diagnosticos__diagnostico_catalogo',
+            'dientes__superficies__diagnosticos__odontologo'
+        )
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -257,79 +323,9 @@ class PacienteViewSet(viewsets.ModelViewSet):
         GET /api/pacientes/{id}/odontograma-fhir/
         Retorna el odontograma completo del paciente como un Bundle FHIR.
         """
-        # Importaciones necesarias para esta acción
-        import uuid
-        from django.utils import timezone
-        from api.odontogram.serializer.fhir_serializers import ClinicalFindingFHIRSerializer
-
         paciente = self.get_object()
-        
-        # 1. Obtener todos los hallazgos clínicos del paciente
-        diagnosticos_qs = DiagnosticoDental.objects.filter(
-            superficie__diente__paciente=paciente,
-            activo=True
-        ).select_related(
-            'diagnostico_catalogo',
-            'superficie__diente__paciente',
-            'odontologo'
-        )
-
-        # 2. Serializar los hallazgos a recursos FHIR (Condition/Procedure)
-        fhir_findings = ClinicalFindingFHIRSerializer(diagnosticos_qs, many=True).data
-
-        # 3. Construir el Bundle FHIR
-        bundle_entries = []
-        
-        # 3.1. Añadir el recurso del Paciente (una versión más completa que la de referencia)
-        patient_resource = {
-            "fullUrl": f"urn:uuid:{paciente.id}",
-            "resource": {
-                "resourceType": "Patient",
-                "id": str(paciente.id),
-                "name": [{
-                    "use": "official",
-                    "family": paciente.apellidos,
-                    "given": [paciente.nombres]
-                }],
-                "identifier": [{
-                    "system": "urn:oid:1.3.6.1.4.1.21367.13.20.3000.1.1", # OID de ejemplo para Cédula Ecuador
-                    "value": paciente.cedula_pasaporte
-                }],
-                "gender": {"M": "male", "F": "female", "O": "other"}.get(paciente.sexo),
-                "birthDate": paciente.fecha_nacimiento.isoformat(),
-            }
-        }
-        bundle_entries.append(patient_resource)
-        
-        # 3.2. Añadir recursos de Practitioner (odontólogos) únicos
-        practitioners = {d.odontologo for d in diagnosticos_qs if d.odontologo}
-        for pract in practitioners:
-            bundle_entries.append({
-                "fullUrl": f"urn:uuid:{pract.id}",
-                "resource": {
-                    "resourceType": "Practitioner",
-                    "id": str(pract.id),
-                    "name": [{"family": pract.last_name, "given": [pract.first_name]}]
-                }
-            })
-
-        # 3.3. Añadir cada hallazgo clínico al bundle
-        for finding in fhir_findings:
-            bundle_entries.append({
-                "fullUrl": f"urn:uuid:{finding['id']}",
-                "resource": finding
-            })
-
-        # 4. Ensamblar el Bundle final
-        fhir_bundle = {
-            "resourceType": "Bundle",
-            "id": str(uuid.uuid4()),
-            "type": "document",
-            "timestamp": timezone.now().isoformat(),
-            "entry": bundle_entries
-        }
-
-        return Response(fhir_bundle, status=status.HTTP_200_OK)
+        serializer = FHIRBundleSerializer(paciente)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class DienteViewSet(viewsets.ModelViewSet):
@@ -456,3 +452,93 @@ class HistorialOdontogramaViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(diente__paciente_id=paciente_id)
 
         return queryset.select_related('odontologo', 'diente')
+    
+    
+    
+# Exportadores FHIR
+# -----------------------------------------------
+@api_view(['GET'])
+def export_fhir_bundle(request, paciente_id):
+    """
+    Exporta el odontograma completo como Bundle FHIR R4.
+    
+    Endpoint: GET /api/odontogramas/{paciente_id}/export-fhir-bundle/
+    
+    Response: JSON con Bundle FHIR conteniendo:
+    - Patient resource
+    - BodyStructure resources (superficies)
+    - Observation/Condition/Procedure resources (diagnósticos)
+    """
+    
+    try:
+        paciente = Paciente.objects.get(id=paciente_id)
+    except Paciente.DoesNotExist:
+        return Response(
+            {'error': 'Paciente no encontrado'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    serializer = FHIRBundleSerializer(paciente)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def export_cda_xml(request, paciente_id):
+    """
+    Exporta el odontograma como documento CDA v3 XML.
+    
+    Endpoint: GET /api/odontogramas/{paciente_id}/export-cda/
+    
+    Response: XML documento CDA descargable
+    - Metadata del documento
+    - Patient information
+    - Odontograma section
+    - Diagnósticos section
+    - Plan de tratamiento section
+    """
+    
+    try:
+        paciente = Paciente.objects.get(id=paciente_id)
+    except Paciente.DoesNotExist:
+        return Response(
+            {'error': 'Paciente no encontrado'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Obtener odontólogo del request (usuario logueado)
+    odontologo = request.user if request.user.is_authenticated else None
+    
+    # Generar CDA
+    generator = CDAOdontogramGenerator(paciente, odontologo)
+    cda_xml = generator.generar_cda()
+    
+    # Retornar como archivo XML descargable
+    response = HttpResponse(cda_xml, content_type='application/xml')
+    filename = f"odontograma_{paciente.id}_{paciente.nombres.replace(' ', '_')}.xml"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response
+
+
+@api_view(['GET'])
+def export_fhir_observation(request, diagnostico_id):
+    """
+    Exporta un diagnóstico individual como Observation FHIR.
+    
+    Endpoint: GET /api/diagnosticos/{diagnostico_id}/export-fhir/
+    
+    Response: JSON con un único recurso Observation/Condition/Procedure
+    """
+    
+    from api.odontogram.models import DiagnosticoDental
+    
+    try:
+        diagnostico = DiagnosticoDental.objects.get(id=diagnostico_id)
+    except DiagnosticoDental.DoesNotExist:
+        return Response(
+            {'error': 'Diagnóstico no encontrado'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    serializer = ClinicalFindingFHIRSerializer(diagnostico)
+    return Response(serializer.data, status=status.HTTP_200_OK)
