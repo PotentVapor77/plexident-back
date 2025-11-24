@@ -1,29 +1,48 @@
 from rest_framework import viewsets,status,permissions
-from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from .models import Usuario
 from .serializers import UsuarioSerializer, LoginSerializer
-from .services.user_service import UserService
 from rest_framework_simplejwt.tokens import RefreshToken
+import traceback
+from api.permissions import TienePermisoPorRolConfigurable
 
 class UsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = UsuarioSerializer
-    queryset = Usuario.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [TienePermisoPorRolConfigurable]  
+    
+    def get_queryset(self):
+        """Queryset base para todos los usuarios activos"""
+        return Usuario.objects.filter(status=True)
 
-    def perform_create(self, serializer):
-        data = serializer.validated_data
-        UserService.crear_usuario(data)
-
-    def perform_update(self, serializer):
-        usuario = get_object_or_404(Usuario, pk=self.kwargs['pk'])
-        UserService.actualizar_usuario(usuario, serializer.validated_data)
-
-    def perform_destroy(self, instance):
-        UserService.eliminar_usuario(instance)
-
+    def list(self, request, *args, **kwargs):
+        """Listar usuarios - VERSIÓN CORREGIDA"""
+        try:
+            print("🔍 Solicitando lista de usuarios...")
+            
+            # Usar el queryset base
+            queryset = self.get_queryset()
+            print(f"📊 Usuarios encontrados: {queryset.count()}")
+            
+            # Serializar los datos
+            serializer = self.get_serializer(queryset, many=True)
+            
+            print("✅ Lista de usuarios generada exitosamente")
+            return Response(serializer.data)
+            
+        except Exception as e:
+            print(f"❌ ERROR en listar usuarios: {str(e)}")
+            print(f"🔴 Traceback completo: {traceback.format_exc()}")
+            
+            return Response(
+                {
+                    'error': 'Error interno del servidor',
+                    'detail': str(e),
+                    'traceback': traceback.format_exc() if settings.DEBUG else None
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
