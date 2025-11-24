@@ -160,7 +160,7 @@ class CDAGenerationService:
                         "resourceType": "Practitioner",
                         "id": str(pract.id),
                         "name": [
-                            {"family": pract.last_name, "given": [pract.first_name]}
+                            {"family": pract.apellidos, "given": [pract.nombres]}
                         ],
                     },
                 }

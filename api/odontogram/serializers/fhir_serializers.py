@@ -56,7 +56,7 @@ class FHIRPractitionerReferenceSerializer(serializers.Serializer):
                 "system": "urn:oid:plexident.co",
                 "value": str(instance.id)
             },
-            "display": f"{instance.first_name} {instance.last_name}".strip()
+            "display": f"{instance.nombres} {instance.apellidos}".strip()
         }
 
 
