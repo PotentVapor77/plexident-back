@@ -8,6 +8,7 @@ from unittest.mock import patch, MagicMock
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from api.users.repositories.user_repository import UserRepository
 from lxml import etree
 
 # Modelos
@@ -34,9 +35,10 @@ from api.odontogram.services.cda_service import CDAGenerationService
 from api.odontogram.services.odontogram_services import OdontogramaService
 
 # Validadores
-#import requests
+# import requests
 
 User = get_user_model()
+
 
 class FHIRStructureTestCase(TestCase):
     """
@@ -55,16 +57,18 @@ class FHIRStructureTestCase(TestCase):
             cedula_pasaporte="1234567890",
             sexo="M",
             fecha_nacimiento="1990-01-15",
-            telefono="0987654321",      # ✅ AGREGADO (requerido)
-            correo="juan@example.com",  # ✅ CORRECTO (no "email")
+            telefono="0987654321",  
+            correo="juan@example.com", 
         )
 
         # Crear odontólogo
-        cls.odontologo = User.objects.create_user(
+        cls.odontologo = UserRepository.create(
             username="dr_carlos",
-            first_name="Carlos",
-            last_name="Rodríguez",
-            email="carlos@clinic.com",
+            nombres="Carlos",  # ← CAMBIO: first_name → nombres
+            apellidos="Rodríguez",  # ← CAMBIO: last_name → apellidos
+            correo="carlos@clinic.com",  # ← CAMBIO: email → correo
+            telefono="0987654321",  # ← NUEVO REQUERIDO (min 10 dígitos)
+            rol="odontologo",  # ← NUEVO REQUERIDO (admin/odontologo/asistente)
             password="test123",
         )
 
@@ -261,15 +265,18 @@ class CDAGenerationTestCase(TransactionTestCase):
             cedula_pasaporte="9876543210",
             sexo="F",
             fecha_nacimiento="1985-03-22",
-            telefono="0987654321",       # ✅ AGREGADO (requerido)
-            correo="maria@example.com",  # ✅ CORRECTO (no "email")
+            telefono="0987654321",
+            correo="maria@example.com",  #
         )
 
         # Crear odontólogo
-        self.odontologo = User.objects.create_user(
+        self.odontologo = UserRepository.create(
             username="dra_marta",
-            first_name="Marta",
-            last_name="López",
+            nombres="Marta",
+            apellidos="López",
+            correo="marta@clinic.com",  # ← REQUIRED (antes no era necesario)
+            telefono="0987654321",  # ← NUEVO REQUERIDO
+            rol="odontologo",  # ← NUEVO REQUERIDO
             password="test123",
         )
 
@@ -295,9 +302,7 @@ class CDAGenerationTestCase(TransactionTestCase):
         )
 
         # Crear estructura de diente
-        self.diente = Diente.objects.create(
-            paciente=self.paciente, codigo_fdi="36"
-        )
+        self.diente = Diente.objects.create(paciente=self.paciente, codigo_fdi="36")
 
         self.superficie = SuperficieDental.objects.create(
             diente=self.diente, nombre="oclusal"
@@ -436,12 +441,18 @@ class InteroperabilityTestCase(TestCase):
             cedula_pasaporte="5555555555",
             sexo="M",
             fecha_nacimiento="1995-06-10",
-            telefono="0987654321",       # ✅ AGREGADO
+            telefono="0987654321",  # ✅ AGREGADO
             correo="interop@test.com",  # ✅ CORRECTO
         )
 
-        cls.odontologo = User.objects.create_user(
-            username="interop_doc", password="test123"
+        cls.odontologo = UserRepository.create(
+            username="interop_test",
+            nombres="Dr",
+            apellidos="Interop",
+            correo="interop@example.com",
+            telefono="0987654321",
+            rol="odontologo",
+            password="test123",
         )
 
         cls.categoria = CategoriaDiagnostico.objects.create(
@@ -460,7 +471,9 @@ class InteroperabilityTestCase(TestCase):
         )
 
         cls.diente = Diente.objects.create(paciente=cls.paciente, codigo_fdi="26")
-        cls.superficie = SuperficieDental.objects.create(diente=cls.diente, nombre="oclusal")
+        cls.superficie = SuperficieDental.objects.create(
+            diente=cls.diente, nombre="oclusal"
+        )
 
         cls.diagnostico_dental = DiagnosticoDental.objects.create(
             superficie=cls.superficie,
@@ -521,7 +534,7 @@ class InteroperabilityTestCase(TestCase):
 
 class ConformanceValidationTestCase(TestCase):
     """
-    ✅ Valida conformidad con estándares de seguridad (OWASP)
+    ✓ Valida conformidad con estándares de seguridad (OWASP)
     """
 
     @classmethod
@@ -533,12 +546,18 @@ class ConformanceValidationTestCase(TestCase):
             cedula_pasaporte="3333333333",
             sexo="M",
             fecha_nacimiento="1992-12-25",
-            telefono="0987654321",      # ✅ AGREGADO
-            correo="security@test.com", # ✅ CORRECTO
+            telefono="0987654321",
+            correo="security@test.com",
         )
 
-        cls.odontologo = User.objects.create_user(
-            username="security", password="test123"
+        cls.odontologo = UserRepository.create(
+            username="security_test",
+            nombres="Security",
+            apellidos="Test",
+            correo="security@example.com",
+            telefono="0987654321",
+            rol="odontologo",
+            password="test123",
         )
 
         cls.categoria = CategoriaDiagnostico.objects.create(

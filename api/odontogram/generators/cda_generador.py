@@ -38,7 +38,7 @@ class CDAOdontogramGenerator:
         # Autor (odontólogo)
         self._add_author(root)
         
-        # Custodio/Institución
+        # Institución o custodia
         self._add_custodian(root)
         
         # Información legal
@@ -164,9 +164,9 @@ class CDAOdontogramGenerator:
             assigned_person = ET.SubElement(assigned_author, 'assignedPerson')
             name = ET.SubElement(assigned_person, 'name')
             given = ET.SubElement(name, 'given')
-            given.text = self.odontologo.first_name
+            given.text = self.odontologo.nombres
             family = ET.SubElement(name, 'family')
-            family.text = self.odontologo.last_name
+            family.text = self.odontologo.apellidos
     
     def _add_custodian(self, root):
         """Agrega información de custodia (institución)"""

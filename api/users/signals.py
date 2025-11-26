@@ -9,6 +9,3 @@ def usuario_audit(sender, instance, created, **kwargs):
         print(f"[AUDIT] Usuario creado: {instance.nombres} {instance.apellidos} (ID: {instance.id})")
     else:
         print(f"[AUDIT] Usuario actualizado: {instance.id} - {instance.username}")
-
-
-
