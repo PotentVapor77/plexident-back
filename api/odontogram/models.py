@@ -311,7 +311,6 @@ class Diente(models.Model):
             return f"FDI {self.codigo_fdi} - {info['nombre']}{estado}"
         return f"FDI {self.codigo_fdi}{estado}"
     
-    # ✅ PROPIEDADES DERIVADAS (Solo lectura, calculadas desde FDI)
     
     @property
     def posicion_arcada(self):
@@ -525,7 +524,7 @@ class DiagnosticoDental(models.Model):
     def paciente(self):
         """Acceso rápido al paciente"""
         return self.superficie.diente.paciente
-    
+    # Colores para renderización en formulario 033
     @property
     def color_hex(self):
         """Retorna el color hexadecimal según el tipo de registro (rojo/azul)"""
