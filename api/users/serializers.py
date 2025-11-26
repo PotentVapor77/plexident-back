@@ -8,12 +8,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
         model = Usuario
         fields = [
             'id', 'nombres', 'apellidos', 'username', 
-            'telefono', 'correo', 'password', 'rol', 'status',
-            'created_by', 'updated_by', 'created_at', 'updated_at'
+            'telefono', 'correo', 'password', 'rol', 'activo',
+            'creado_por', 'actualizado_por', 'fecha_creacion', 'fecha_modificacion'
         ]
         read_only_fields = [
-            'id', 'created_by', 'updated_by', 
-            'created_at', 'updated_at', 'username'
+            'id', 'creado_por', 'actualizado_por', 
+            'fecha_creacion', 'fecha_modificacion', 'username'
         ]
 
     def create(self, validated_data):

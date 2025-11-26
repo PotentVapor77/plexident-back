@@ -5,9 +5,9 @@ from .models import Usuario
 @admin.register(Usuario)
 class UsuarioAdmin(UserAdmin):
     list_display = ('username', 'correo', 'nombres', 'apellidos', 'rol', 'is_staff', 'is_active')
-    list_filter = ('rol', 'is_staff', 'is_active', 'status')
+    list_filter = ('rol', 'is_staff', 'is_active', 'activo')
     search_fields = ('username', 'correo', 'nombres', 'apellidos')
-    readonly_fields = ('created_by', 'updated_by', 'created_at', 'updated_at')
+    readonly_fields = ('creado_por', 'actualizado_por', 'fecha_creacion', 'fecha_modificacion')
     
     fieldsets = (
         (None, {
@@ -20,7 +20,7 @@ class UsuarioAdmin(UserAdmin):
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')
         }),
         ('Auditoría', {
-            'fields': ('status', 'created_by', 'updated_by', 'created_at', 'updated_at')
+            'fields': ('activo', 'creado_por', 'actualizado_por', 'fecha_creacion', 'fecha_modificacion')
         }),
     )
     

@@ -25,7 +25,7 @@ class UsuarioManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('rol', 'admin')
-        extra_fields.setdefault('status', True)
+        extra_fields.setdefault('activo', True)
         
         return self.create_user(username, correo, password, **extra_fields)
 
@@ -55,15 +55,18 @@ class Usuario(AbstractBaseUser, PermissionsMixin):  # 🔥 AÑADE PermissionsMix
     correo = models.EmailField(unique=True)
     rol = models.CharField(max_length=20, choices=ROLES, default='asistente')
     
-    # 🔥 AÑADE ESTOS CAMPOS REQUERIDOS POR DJANGO ADMIN
+    # AÑADE ESTOS CAMPOS REQUERIDOS POR DJANGO ADMIN
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
-    created_by = CurrentUserField(related_name='%(class)s_created_by', null=True, blank=True, editable=False)
-    updated_by = CurrentUserField(on_update=True, related_name='%(class)s_updated_by', null=True, blank=True, editable=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    status = models.BooleanField(default=True)
+    creado_por = CurrentUserField(related_name='%(class)s_creado_por', null=True, blank=True, editable=False)
+    actualizado_por = CurrentUserField(on_update=True, related_name='%(class)s_actualizado_por', null=True, blank=True, editable=False)
+
+
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+    
+    activo = models.BooleanField(default=True)
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['nombres', 'apellidos', 'correo', 'telefono', 'rol']
@@ -103,7 +106,7 @@ class Usuario(AbstractBaseUser, PermissionsMixin):  # 🔥 AÑADE PermissionsMix
     def authenticate(cls, username, password):
         """Autentica un usuario por username y contraseña"""
         try:
-            usuario = cls.objects.get(username=username, status=True, is_active=True)
+            usuario = cls.objects.get(username=username, activo=True, is_active=True)
             if usuario.check_password(password):
                 return usuario
         except cls.DoesNotExist:

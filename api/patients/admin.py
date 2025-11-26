@@ -7,11 +7,11 @@ class PacienteAdmin(admin.ModelAdmin):
         'id', 'nombres', 'apellidos', 'cedula_pasaporte',
         'fecha_nacimiento', 'sexo', 'telefono', 'correo',
         'contacto_emergencia_nombre', 'contacto_emergencia_telefono',
-        'status', 'created_at'
+        'activo', 'fecha_creacion'
     )
-    list_filter = ('sexo', 'status', 'created_at')
+    list_filter = ('sexo', 'activo', 'fecha_creacion')
     search_fields = ('nombres', 'apellidos', 'cedula_pasaporte', 'telefono', 'correo')
-    readonly_fields = ('created_by', 'updated_by', 'created_at', 'updated_at')
+    readonly_fields = ('creado_por', 'actualizado_por', 'fecha_creacion', 'fecha_modificacion')
 
     fieldsets = (
         ('Datos Personales', {
@@ -32,7 +32,7 @@ class PacienteAdmin(admin.ModelAdmin):
         }),
         ('Auditoría', {
             'fields': (
-                'status', 'created_by', 'updated_by', 'created_at', 'updated_at'
+                'activo', 'creado_por', 'actualizado_por', 'fecha_creacion', 'fecha_modificacion'
             )
         }),
     )

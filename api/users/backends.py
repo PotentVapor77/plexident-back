@@ -7,6 +7,6 @@ class UsuarioAuthBackend(BaseBackend):
 
     def get_user(self, user_id):
         try:
-            return Usuario.objects.get(pk=user_id, status=True)
+            return Usuario.objects.get(pk=user_id, activo=True)
         except Usuario.DoesNotExist:
             return None

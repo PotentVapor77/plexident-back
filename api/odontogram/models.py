@@ -394,6 +394,8 @@ class SuperficieDental(models.Model):
 
     codigo_fhir_superficie = models.CharField(
         max_length=2,
+        null=True,  # ← Permitir nulo temporalmente
+        blank=True,  # ← Permitir vacío en formularios
         editable=False,
         help_text="Código automático FHIR de la superficie dental")
     

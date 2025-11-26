@@ -38,11 +38,16 @@ class Paciente(models.Model):
     alergias = models.TextField(blank=True)
     enfermedades_sistemicas = models.TextField(blank=True)
     habitos = models.TextField(blank=True)
-    created_by = CurrentUserField(related_name='%(class)s_created_by', null=True, blank=True, editable=False)
-    updated_by = CurrentUserField(on_update=True, related_name='%(class)s_updated_by', null=True, blank=True, editable=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    status = models.BooleanField(default=True)
+
+    creado_por = CurrentUserField(related_name='%(class)s_creado_por', null=True, blank=True, editable=False)
+    actualizado_por = CurrentUserField(on_update=True, related_name='%(class)s_actualizado_por', null=True, blank=True, editable=False)
+
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+    
+    activo = models.BooleanField(default=True)
+
+    
 
     def clean(self):
         if not self.nombres or not self.apellidos:
