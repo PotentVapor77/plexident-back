@@ -72,15 +72,17 @@ class DiagnosticoDetailSerializer(serializers.ModelSerializer):
 class UserMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'email']
+        fields = ['id', 'nombres', 'apellidos', 'correo']
 
 
 class PacienteBasicSerializer(serializers.ModelSerializer):
-    nombre_completo = serializers.ReadOnlyField()
-
     class Meta:
         model = Paciente
-        fields = ['id', 'nombres', 'apellidos', 'nombre_completo', 'cedula', 'email', 'telefono']
+        fields = [
+            'id', 'nombres', 'apellidos',
+    'cedula_pasaporte', 'sexo', 'fecha_nacimiento',
+    'telefono', 'correo', 'direccion'
+        ]
 
 
 # =============================================================================
@@ -119,7 +121,7 @@ class DiagnosticoDentalDetailSerializer(serializers.ModelSerializer):
             'atributos_clinicos', 'prioridad_asignada',
             'prioridad_efectiva', 'estado_tratamiento',
             'fecha', 'fecha_tratamiento', 'odontologo_info', 'activo'
-        ] 
+        ]
 
     read_only_fields = ['id', 'fecha']
 
@@ -324,11 +326,11 @@ class PacienteDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Paciente
         fields = [
-            'id', 'nombres', 'apellidos', 'nombre_completo',
-            'cedula', 'fecha_nacimiento', 'edad',
-            'telefono', 'email', 'direccion',
+            'id', 'nombres', 'apellidos',
+            'cedula_pasaporte','sexo', 'fecha_nacimiento', 'edad',
+            'telefono', 'correo', 'direccion',
             'dientes', 'total_dientes', 'total_diagnosticos',
-            'fecha_registro', 'activo'
+            'status'
         ]
 
     def get_total_dientes(self, obj):
@@ -349,8 +351,7 @@ class PacienteDetailSerializer(serializers.ModelSerializer):
         today = date.today()
         return today.year - obj.fecha_nacimiento.year - (
             (today.month, today.day) < (obj.fecha_nacimiento.month, obj.fecha_nacimiento.day)
-        )  # ✅ FIX #5: Agregado cierre de resta
-
+        )  
 
 # =============================================================================
 # SERIALIZERS PARA CONFIGURACIÓN
@@ -393,9 +394,9 @@ class GuardarOdontogramaCompletoSerializer(serializers.Serializer):
 # =============================================================================
 
 class HistorialOdontogramaSerializer(serializers.ModelSerializer):
-    odontologo_nombre = serializers.CharField(source='odontologo.get_full_name', read_only=True)
+    odontologo_nombre = serializers.SerializerMethodField()
     tipo_cambio_display = serializers.CharField(source='get_tipo_cambio_display', read_only=True)
-
+    
     class Meta:
         model = HistorialOdontograma
         fields = [
@@ -403,5 +404,9 @@ class HistorialOdontogramaSerializer(serializers.ModelSerializer):
             'descripcion', 'odontologo_nombre', 'fecha',
             'datos_anteriores', 'datos_nuevos'
         ]
-
-    read_only_fields = ['id', 'fecha']
+        read_only_fields = ['id', 'fecha']
+    
+    def get_odontologo_nombre(self, obj):
+        if obj.odontologo:
+            return f"{obj.odontologo.nombres} {obj.odontologo.apellidos}"
+        return "N/A"

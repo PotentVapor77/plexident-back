@@ -16,10 +16,10 @@ from .serializers import (
     SuperficieDentalListSerializer,
     DiagnosticoDentalListSerializer,
     DiagnosticoDentalDetailSerializer,
-    DiagnosticoDentalCreateSerializer, # Incluir el serializer de creación si se usa
+    DiagnosticoDentalCreateSerializer, 
     
     HistorialOdontogramaSerializer,
-    GuardarOdontogramaCompletoSerializer, # Serializer de la acción de guardar completo
+    GuardarOdontogramaCompletoSerializer, 
 )
 
 # Serializers FHIR
@@ -38,7 +38,7 @@ from .bundle_serializers import (
 
 # Exportar todos
 __all__ = [
-    # Serializers genéricos (Solo nombres existentes)
+    # Serializers genéricos 
     'CategoriaDiagnosticoSerializer',
     'DiagnosticoListSerializer',
     'DiagnosticoDetailSerializer',
@@ -48,11 +48,11 @@ __all__ = [
     'OpcionAtributoClinicoSerializer',
     'OdontogramaConfigSerializer',
     
-    'PacienteBasicSerializer',           # Corregido
+    'PacienteBasicSerializer',          
     'PacienteDetailSerializer',
-    'DienteDetailSerializer',            # Corregido
-    'SuperficieDentalListSerializer',    # Corregido
-    'DiagnosticoDentalListSerializer',   # Corregido
+    'DienteDetailSerializer',           
+    'SuperficieDentalListSerializer',    
+    'DiagnosticoDentalListSerializer',   
     'DiagnosticoDentalDetailSerializer',
     'DiagnosticoDentalCreateSerializer',
     
