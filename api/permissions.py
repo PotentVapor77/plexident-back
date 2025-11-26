@@ -15,6 +15,7 @@ class TienePermisoPorRolConfigurable(permissions.BasePermission):
             'odontologo': ['GET'],
             'asistente': ['GET']
         },
+
         
         # === APP: Permiso solo para PACIENTES ===
         'paciente': {
@@ -29,8 +30,8 @@ class TienePermisoPorRolConfigurable(permissions.BasePermission):
     # Permisos solo para usuarios principales, como admin,odon,asistente
     PERMISOS_BASE = {
         'admin': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-        'odontologo': ['GET', 'POST', 'PUT', 'PATCH','DELETE'],
-        'asistente': ['GET', 'POST']
+        'odontologo': ['GET'],
+        'asistente': ['GET']
     }
 
     def has_permission(self, request, view):
@@ -57,6 +58,7 @@ class TienePermisoPorRolConfigurable(permissions.BasePermission):
         metodo_permitido = request.method in permisos_modelo.get(user.rol, [])
         
         return metodo_permitido
+    
     
     def _get_model_name(self, view):
         """

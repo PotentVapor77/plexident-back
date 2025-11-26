@@ -1,7 +1,7 @@
 from rest_framework import viewsets,status,permissions
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from .models import Usuario
 from .serializers import UsuarioSerializer, LoginSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -11,6 +11,7 @@ from api.permissions import TienePermisoPorRolConfigurable
 class UsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = UsuarioSerializer
     permission_classes = [TienePermisoPorRolConfigurable]  
+    #permission_classes = [IsAuthenticated]  
     
     def get_queryset(self):
         """Queryset base para todos los usuarios activos"""

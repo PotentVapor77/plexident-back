@@ -10,6 +10,7 @@ router.register(r'', UsuarioViewSet, basename='users')  # ← AGREGAR basename
 app_name = 'users' 
 urlpatterns = [
     path('', include(router.urls)),
+
     path('auth/login/', login_view, name='login'),
 
 

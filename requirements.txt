@@ -8,6 +8,5 @@ django-cors-headers==4.3.1
 bcrypt
 djangorestframework-simplejwt
 lxml==5.2.2
-pytest
-
-
+pytest-django
+pytest-cov

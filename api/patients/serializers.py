@@ -5,7 +5,7 @@ class PacienteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Paciente
         fields = '__all__'
-        read_only_fields = ['created_by', 'updated_by', 'created_at', 'updated_at']
+        read_only_fields = ['creado_por', 'actualizado_por', 'fecha_creacion', 'fecha_modificacion']
 
     def validate_telefono(self, value):
         if len(value) < 10 or not value.isdigit():
