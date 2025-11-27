@@ -84,8 +84,8 @@ class FDIConstants:
         if not codigo_fdi or len(codigo_fdi) != 2:
             return None
         
-        cuadrante = int(codigo_fdi)
-        posicion = int(codigo_fdi)
+        cuadrante = int(codigo_fdi[0])
+        posicion = int(codigo_fdi[1])
         
         if cuadrante not in cls.CUADRANTES:
             return None

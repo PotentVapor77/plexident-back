@@ -293,10 +293,7 @@ class Diente(models.Model):
         # Auto-asignar numero_3d desde FDI (nunca cambiar)
         self.numero_3d = FDIConstants.FDI_A_NUMERO_3D.get(self.codigo_fdi)
     
-    # Auto-detectar tipo_denticion desde FDI (nunca cambiar)
-        info = FDIConstants.obtener_info_fdi(self.codigo_fdi)
-        if info:
-            self.tipo_denticion = info['denticion']
+
     
     # Validar que si ausente=False, razon_ausencia esté vacía
         if not self.ausente:
