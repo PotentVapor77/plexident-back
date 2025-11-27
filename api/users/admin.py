@@ -4,7 +4,7 @@ from .models import Usuario
 
 @admin.register(Usuario)
 class UsuarioAdmin(UserAdmin):
-    list_display = ('username', 'correo', 'nombres', 'apellidos', 'rol', 'is_staff', 'is_active')
+    list_display = ('username', 'password' , 'correo', 'nombres', 'apellidos', 'rol', 'is_staff', 'is_active')
     list_filter = ('rol', 'is_staff', 'is_active', 'activo')
     search_fields = ('username', 'correo', 'nombres', 'apellidos')
     readonly_fields = ('creado_por', 'actualizado_por', 'fecha_creacion', 'fecha_modificacion')

@@ -14,7 +14,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'creado_por', 'actualizado_por', 
-            'fecha_creacion', 'fecha_modificacion', 'username'
+            'fecha_creacion', 'fecha_modificacion'
         ]
 
     
