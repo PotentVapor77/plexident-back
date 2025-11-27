@@ -1,6 +1,5 @@
 
 # api/odontogram/tests/test_odontograma.py
-# api/odontogram/tests/test_odontograma.py
 
 import pytest
 from django.test import TestCase, Client

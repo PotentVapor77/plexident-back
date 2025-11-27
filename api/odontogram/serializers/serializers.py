@@ -330,7 +330,7 @@ class PacienteDetailSerializer(serializers.ModelSerializer):
             'cedula_pasaporte','sexo', 'fecha_nacimiento', 'edad',
             'telefono', 'correo', 'direccion',
             'dientes', 'total_dientes', 'total_diagnosticos',
-            'status'
+            'activo'
         ]
 
     def get_total_dientes(self, obj):

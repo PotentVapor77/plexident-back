@@ -231,7 +231,7 @@ class FHIRStructureTestCase(TestCase):
         serializer = ClinicalFindingFHIRSerializer(diag_dental_proc)
         data = serializer.data
         assert data["resourceType"] == "Procedure"
-        assert "status" in data  # Procedure tiene status, no clinicalStatus
+        assert "status" in data  
         assert data["status"] == "completed"
 
     def test_fhir_json_validity(self):

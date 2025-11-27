@@ -37,65 +37,44 @@ from api.odontogram.views import (
     export_fhir_bundle,
 )
 
+# Formulario 033
+from api.odontogram.views.form033_views import (
+    obtener_form033_json,
+    obtener_form033_html,
+    descargar_form033_pdf,
+    guardar_form033_pdf,
+    listar_exports_form033,
+    descargar_pdf_guardado,
+)
+
+
 # ==================== ROUTER SETUP ====================
 
 router = DefaultRouter()
 
 # CATÁLOGO (Lectura)
 router.register(
-    r"catalogo/categorias",
-    CategoriaDiagnosticoViewSet,
-    basename="categoria"
+    r"catalogo/categorias", CategoriaDiagnosticoViewSet, basename="categoria"
 )
 
-router.register(
-    r"catalogo/diagnosticos",
-    DiagnosticoViewSet,
-    basename="diagnostico"
-)
+router.register(r"catalogo/diagnosticos", DiagnosticoViewSet, basename="diagnostico")
 
-router.register(
-    r"catalogo/areas",
-    AreaAfectadaViewSet,
-    basename="area"
-)
+router.register(r"catalogo/areas", AreaAfectadaViewSet, basename="area")
 
-router.register(
-    r"catalogo/atributos",
-    TipoAtributoClinicoViewSet,
-    basename="atributo"
-)
+router.register(r"catalogo/atributos", TipoAtributoClinicoViewSet, basename="atributo")
 
 # INSTANCIAS (CRUD)
-router.register(
-    r"pacientes",
-    PacienteViewSet,
-    basename="paciente"
-)
+router.register(r"pacientes", PacienteViewSet, basename="paciente")
+
+router.register(r"dientes", DienteViewSet, basename="diente")
+
+router.register(r"superficies", SuperficieDentalViewSet, basename="superficie")
 
 router.register(
-    r"dientes",
-    DienteViewSet,
-    basename="diente"
+    r"diagnosticos-aplicados", DiagnosticoDentalViewSet, basename="diagnostico-aplicado"
 )
 
-router.register(
-    r"superficies",
-    SuperficieDentalViewSet,
-    basename="superficie"
-)
-
-router.register(
-    r"diagnosticos-aplicados",
-    DiagnosticoDentalViewSet,
-    basename="diagnostico-aplicado"
-)
-
-router.register(
-    r"historial",
-    HistorialOdontogramaViewSet,
-    basename="historial"
-)
+router.register(r"historial", HistorialOdontogramaViewSet, basename="historial")
 
 # ==================== APP NAME ====================
 
@@ -106,67 +85,85 @@ app_name = "odontogram"
 urlpatterns = [
     # Router URLs
     path("", include(router.urls)),
-    
     # ==================== FHIR ENDPOINTS ====================
-    
     # GET /api/odontogram/fhir/patient/{id}/
     path(
         "fhir/patient/<str:pk>/",
         FHIRViewSet.as_view({"get": "patient"}),
         name="fhir-patient",
     ),
-    
     # GET /api/odontogram/fhir/odontograma/{paciente_id}/
     path(
         "fhir/odontograma/<str:paciente_id>/",
         FHIRViewSet.as_view({"get": "odontograma"}),
         name="fhir-odontograma",
     ),
-    
     # GET /api/odontogram/fhir/cda/{paciente_id}/
     path(
         "fhir/cda/<str:paciente_id>/",
         FHIRViewSet.as_view({"get": "cda"}),
         name="fhir-cda",
     ),
-    
     # POST /api/odontogram/fhir/validate/
     path(
         "fhir/validate/",
         FHIRViewSet.as_view({"post": "validate"}),
         name="fhir-validate",
     ),
-    
     # GET /api/odontogram/fhir/search/
     path(
         "fhir/search/",
         FHIRViewSet.as_view({"get": "search"}),
         name="fhir-search",
     ),
-    
     # ==================== CDA/EXPORT ENDPOINTS ====================
-    
     # GET /api/odontogram/odontogramas/{paciente_id}/export-cda/
     path(
         "odontogramas/<str:paciente_id>/export-cda/",
         export_cda_xml,
         name="export-cda",
     ),
-    
     # GET /api/odontogram/odontogramas/{paciente_id}/export-fhir-bundle/
     path(
         "odontogramas/<str:paciente_id>/export-fhir-bundle/",
         export_fhir_bundle,
         name="export-fhir-bundle",
     ),
-    
     # GET /api/odontogram/diagnosticos/{diagnostico_id}/export-fhir/
     path(
         "diagnosticos/<str:diagnostico_id>/export-fhir/",
         export_fhir_observation,
         name="export-fhir-observation",
     ),
+    # Form 033 Endpoints
+    path(
+        "export/form033/<str:paciente_id>/json/",
+        obtener_form033_json,
+        name="form033-json",
+    ),
+    path(
+        "export/form033/<str:paciente_id>/html/",
+        obtener_form033_html,
+        name="form033-html",
+    ),
+    path(
+        "export/form033/<str:paciente_id>/pdf/",
+        descargar_form033_pdf,
+        name="form033-pdf",
+    ),
+    path(
+        "export/form033/<str:paciente_id>/guardar-pdf/",
+        guardar_form033_pdf,
+        name="form033-guardar-pdf",
+    ),
+    path("export/form033/exports/", listar_exports_form033, name="form033-listar"),
+    path(
+        "export/form033/descargar/<str:nombre_archivo>/",
+        descargar_pdf_guardado,
+        name="form033-descargar",
+    ),
 ]
+
 
 # ==================== ENDPOINT SUMMARY ====================
 
