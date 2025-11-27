@@ -3,11 +3,11 @@ from ..models import Paciente
 class PatientRepository:
     @staticmethod
     def get_all():
-        return Paciente.objects.filter(status=True)
+        return Paciente.objects.filter(activo=True)
 
     @staticmethod
     def get_by_id(id_paciente):
-        return Paciente.objects.filter(id_paciente=id_paciente, status=True).first()
+        return Paciente.objects.filter(id_paciente=id_paciente, activo=True).first()
 
     @staticmethod
     def create(**kwargs):
@@ -26,5 +26,5 @@ class PatientRepository:
 
     @staticmethod
     def soft_delete(paciente):
-        paciente.status = False
+        paciente.activo = False
         paciente.save()

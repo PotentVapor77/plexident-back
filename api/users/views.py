@@ -7,6 +7,7 @@ from .serializers import UsuarioSerializer, LoginSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 import traceback
 from api.permissions import TienePermisoPorRolConfigurable
+from django.conf import settings
 
 class UsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = UsuarioSerializer
@@ -15,7 +16,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Queryset base para todos los usuarios activos"""
-        return Usuario.objects.filter(status=True)
+        return Usuario.objects.filter(activo=True)
 
     def list(self, request, *args, **kwargs):
         """Listar usuarios - VERSIÓN CORREGIDA"""

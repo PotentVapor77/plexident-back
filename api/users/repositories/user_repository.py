@@ -3,15 +3,15 @@ from ..models import Usuario
 class UserRepository:
     @staticmethod
     def get_all():
-        return Usuario.objects.filter(status=True)
+        return Usuario.objects.filter(activo=True)
 
     @staticmethod
     def get_by_id(user_id):
-        return Usuario.objects.filter(id=user_id, status=True).first()
+        return Usuario.objects.filter(id=user_id, activo=True).first()
 
     @staticmethod
     def get_by_username(username):
-        return Usuario.objects.filter(username=username, status=True).first()
+        return Usuario.objects.filter(username=username, activo=True).first()
 
     @staticmethod
     def create(**kwargs):
@@ -43,5 +43,5 @@ class UserRepository:
 
     @staticmethod
     def soft_delete(usuario):
-        usuario.status = False
+        usuario.activo = False
         usuario.save()
