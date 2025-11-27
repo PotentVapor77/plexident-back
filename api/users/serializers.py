@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Usuario
+from django.contrib.auth import get_user_model
 
 class UsuarioSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, min_length=8)
@@ -16,7 +17,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'fecha_creacion', 'fecha_modificacion', 'username'
         ]
 
+    
+
     def create(self, validated_data):
+    
         """Simplificar el create"""
         password = validated_data.pop('password', None)
         usuario = Usuario.objects.create(**validated_data)

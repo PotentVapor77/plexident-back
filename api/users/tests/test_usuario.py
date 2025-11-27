@@ -21,7 +21,7 @@ class TestUsuarioAPI:
             'telefono': '1234567890',
             'rol': 'odontologo',
             'password': 'password123',
-            'status': True
+            'activo': True
         }
         self.admin_user = Usuario.objects.create_user(
             username='adminadmin',
@@ -31,7 +31,7 @@ class TestUsuarioAPI:
             telefono='1234567890',
             rol='admin',
             password='admin123',
-            status=True
+            activo=True
         )
 
     def test_crear_usuario_como_admin(self):
@@ -65,7 +65,7 @@ class TestUsuarioAPI:
             telefono='1234567890',
             rol='odontologo',
             password='pass123',
-            status=True
+            activo=True
         )
         self.client.force_authenticate(user=odontologo)
         response_create = self.client.post(
@@ -88,7 +88,7 @@ class TestUsuarioAPI:
             telefono='1234567890',
             rol='asistente',
             password='pass123',
-            status=True
+            activo=True
         )
         self.client.force_authenticate(user=asistente)
         response_create = self.client.post(
@@ -111,7 +111,7 @@ class TestUsuarioAPI:
             telefono='1234567890',
             rol='odontologo',
             password='password123',
-            status=True
+            activo=True
         )
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.get(
@@ -134,7 +134,7 @@ class TestUsuarioPermissions:
             telefono='1234567890',
             rol='asistente',
             password='pass123',
-            status=True
+            activo=True
         )
         usuario = Usuario.objects.create_user(
             username='pacientetest',
@@ -144,7 +144,7 @@ class TestUsuarioPermissions:
             telefono='1234567890',
             rol='asistente',
             password='pass123',
-            status=True
+            activo=True
         )
         self.client = APIClient()
         self.client.force_authenticate(user=asistente)
@@ -184,7 +184,7 @@ class TestUsuarioAutenticado:
             telefono='1234567890',
             rol='asistente',
             password='pass123',
-            status=True
+            activo=True
         )
         self.client.force_authenticate(user=self.usuario_autenticado)
 
@@ -224,7 +224,7 @@ class TestUsuarioAutenticado:
         
         # Verificar que el usuario sigue activo
         self.usuario_autenticado.refresh_from_db()
-        assert self.usuario_autenticado.status == True
+        assert self.usuario_autenticado.activo == True
 
     def test_usuario_autenticado_puede_ver_lista_de_usuarios(self):
         """Test: Usuario autenticado puede ver la lista de usuarios"""
@@ -237,7 +237,7 @@ class TestUsuarioAutenticado:
             telefono='1234567890',
             rol='odontologo',
             password='pass123',
-            status=True
+            activo=True
         )
         
         response = self.client.get(reverse('users:users-list'))
@@ -256,7 +256,7 @@ class TestUsuarioAutenticado:
             'telefono': '1234567890',
             'rol': 'asistente',
             'password': 'password123',
-            'status': True
+            'activo': True
         }
         
         response = self.client.post(
@@ -277,7 +277,7 @@ class TestUsuarioAutenticado:
             telefono='1234567890',
             rol='asistente',
             password='pass123',
-            status=False  # Eliminado
+            activo=False  # Eliminado
         )
         
         response = self.client.get(reverse('users:users-list'))

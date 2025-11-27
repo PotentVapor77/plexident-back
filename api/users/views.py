@@ -14,12 +14,13 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     permission_classes = [TienePermisoPorRolConfigurable]  
     #permission_classes = [IsAuthenticated]  
     
+    
     def get_queryset(self):
         """Queryset base para todos los usuarios activos"""
         return Usuario.objects.filter(activo=True)
 
     def list(self, request, *args, **kwargs):
-        """Listar usuarios - VERSIÓN CORREGIDA"""
+        """Listar usuarios"""
         try:
             print("🔍 Solicitando lista de usuarios...")
             
