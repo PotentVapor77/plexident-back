@@ -419,3 +419,35 @@ class OdontogramaService:
             diagnosticos = diagnosticos.filter(estado_tratamiento=estado_tratamiento)
 
         return list(diagnosticos)
+    
+    def aplicar_diagnostico_desde_frontend(diente, superficie_id_frontend, diagnostico_key, **kwargs):
+
+        # 1. Normalizar superficie
+        nombre_superficie = SuperficieDental.normalizar_superficie_frontend(
+            superficie_id_frontend
+        )
+        
+        # 2. Crear o obtener SuperficieDental
+        superficie, created = SuperficieDental.objects.get_or_create(
+            diente=diente,
+            nombre=nombre_superficie
+        )
+        
+        # 3. Obtener diagnóstico del catálogo
+        diagnostico = Diagnostico.objects.get(key=diagnostico_key, activo=True)
+        
+        # 4. Validar que el diagnóstico sea aplicable a esa área
+        area_superficie = superficie.area_anatomica
+        if not diagnostico.areas_relacionadas.filter(area__key=area_superficie).exists():
+            raise ValidationError(
+                f"El diagnóstico '{diagnostico.nombre}' no es aplicable a {area_superficie}"
+            )
+        
+        # 5. Crear DiagnosticoDental
+        diagnostico_dental = DiagnosticoDental.objects.create(
+            superficie=superficie,
+            diagnostico_catalogo=diagnostico,
+            **kwargs
+        )
+    
+        return diagnostico_dental

@@ -1,4 +1,4 @@
-key,nombre,activo
-corona,Corona,True
-raiz,Raíz,True
-general,General,True
+key,nombre,descripcion,activo
+corona,Corona,Parte visible del diente sobre la encía,True
+raiz,Raíz,Parte del diente bajo la encía,True
+general,General (Diente Completo),Afecta al diente en su totalidad,True

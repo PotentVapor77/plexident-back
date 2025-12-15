@@ -1,4 +1,4 @@
-# api/odontogram/services/form033_service_improved.py
+# api/odontogram/services/form033_service.py
 
 import logging
 from uuid import UUID
@@ -19,61 +19,224 @@ class Form033Service:
 
     # Mapeo de símbolos formulario 033
     SIMBOLO_MAPPING = {
-        'X_rojo': {'simbolo': 'X', 'color': '#FF0000', 'descripcion': 'Caries', 'categoria': 'rojo'},
-        'X_azul': {'simbolo': 'X', 'color': '#0000FF', 'descripcion': 'Pérdida por caries', 'categoria': 'azul'},
-        'o_azul': {'simbolo': 'o', 'color': '#0000FF', 'descripcion': 'Obturado', 'categoria': 'azul'},
-        'A': {'simbolo': 'A', 'color': '#000000', 'descripcion': 'Ausente', 'categoria': 'negro'},
-        'A_negro': {'simbolo': 'A', 'color': '#000000', 'descripcion': 'Ausente', 'categoria': 'negro'},
-        'check': {'simbolo': '✓', 'color': '#00AA00', 'descripcion': 'Sano', 'categoria': 'verde'},
+        # ============ SELLANTES ============
+        "U_rojo": {
+            "simbolo": "Ü",
+            "color": "#FF0000",
+            "descripcion": "Sellante necesario",
+            "categoria": "rojo",
+            "tipo": "preventivo_indicado",
+        },
+        "U_azul": {
+            "simbolo": "Ü",
+            "color": "#0000FF",
+            "descripcion": "Sellante realizado",
+            "categoria": "azul",
+            "tipo": "preventivo_realizado",
+        },
+        # ============ EXTRACCIONES / PÉRDIDAS ============
+        "X_rojo": {
+            "simbolo": "X",
+            "color": "#FF0000",
+            "descripcion": "Extracción indicada",
+            "categoria": "rojo",
+            "tipo": "extraccion_indicada",
+        },
+        "X_azul": {
+            "simbolo": "X",
+            "color": "#0000FF",
+            "descripcion": "Pérdida por caries",
+            "categoria": "azul",
+            "tipo": "perdido",
+        },
+        "_azul": {
+            "simbolo": "|",
+            "color": "#0000FF",
+            "descripcion": "Pérdida (otra causa)",
+            "categoria": "rojo",
+            "tipo": "perdido_otra_causa",
+        },
+        # ============ ENDODONCIA ============
+        "r": {
+            "simbolo": "r",
+            "color": "#FF0000",
+            "descripcion": "Endodoncia por realizar",
+            "categoria": "rojo",
+            "tipo": "endodoncia_indicada",
+        },
+        "_azul": {
+            "simbolo": "|",
+            "color": "#0000FF",
+            "descripcion": "Endodoncia realizada",
+            "categoria": "azul",
+            "tipo": "endodoncia_realizada",
+        },
+        # ============ CARIES / OBTURACIÓN ============
+        "O_rojo": {
+            "simbolo": "O",
+            "color": "#FF0000",
+            "descripcion": "Caries",
+            "categoria": "rojo",
+            "tipo": "patologia",
+        },
+        "o_azul": {
+            "simbolo": "o",
+            "color": "#0000FF",
+            "descripcion": "Obturado",
+            "categoria": "azul",
+            "tipo": "restaurado",
+        },
+        # ============ AUSENTE ============
+        "A": {
+            "simbolo": "A",
+            "color": "#000000",
+            "descripcion": "Ausente",
+            "categoria": "negro",
+            "tipo": "ausente",
+        },
+        # ============ PRÓTESIS FIJA ============
+        "--": {
+            "simbolo": "¨---¨",
+            "color": "#FF0000",
+            "descripcion": "Prótesis fija indicada",
+            "categoria": "rojo",
+            "tipo": "protesis_indicada",
+        },
+        "--_azul": {
+            "simbolo": "¨---¨",
+            "color": "#0000FF",
+            "descripcion": "Prótesis fija realizada",
+            "categoria": "azul",
+            "tipo": "protesis_realizada",
+        },
+        # ============ PRÓTESIS REMOVIBLE ============
+        "-----": {
+            "simbolo": "(-----)",
+            "color": "#FF0000",
+            "descripcion": "Prótesis removible indicada",
+            "categoria": "rojo",
+            "tipo": "protesis_indicada",
+        },
+        "----_azul": {
+            "simbolo": "(-----)",
+            "color": "#0000FF",
+            "descripcion": "Prótesis removible realizada",
+            "categoria": "azul",
+            "tipo": "protesis_realizada",
+        },
+        # ============ CORONA ============
+        "ª": {
+            "simbolo": "ª",
+            "color": "#FF0000",
+            "descripcion": "Corona indicada",
+            "categoria": "rojo",
+            "tipo": "corona_indicada",
+        },
+        "ª_azul": {
+            "simbolo": "ª",
+            "color": "#0000FF",
+            "descripcion": "Corona realizada",
+            "categoria": "azul",
+            "tipo": "corona_realizada",
+        },
+        # ============ PRÓTESIS TOTAL ============
+        "═": {
+            "simbolo": "═",
+            "color": "#FF0000",
+            "descripcion": "Prótesis total indicada",
+            "categoria": "rojo",
+            "tipo": "protesis_total_indicada",
+        },
+        "═_azul": {
+            "simbolo": "═",
+            "color": "#0000FF",
+            "descripcion": "Prótesis total realizada",
+            "categoria": "azul",
+            "tipo": "protesis_total_realizada",
+        },
+        # ============ SANO (Adicional) ============
+        "check": {
+            "simbolo": "✓",
+            "color": "#00AA00",
+            "descripcion": "Sano",
+            "categoria": "verde",
+            "tipo": "sano",
+        },
     }
 
     # Mapeo FDI a posiciones tabla 4x8
     FDI_MAPPING = {
+        # Dientes Permanentes
         # Superior Derecho (18-11)
-        '18': {'cuadrante': 'superior_derecho', 'posicion': 0},
-        '17': {'cuadrante': 'superior_derecho', 'posicion': 1},
-        '16': {'cuadrante': 'superior_derecho', 'posicion': 2},
-        '15': {'cuadrante': 'superior_derecho', 'posicion': 3},
-        '14': {'cuadrante': 'superior_derecho', 'posicion': 4},
-        '13': {'cuadrante': 'superior_derecho', 'posicion': 5},
-        '12': {'cuadrante': 'superior_derecho', 'posicion': 6},
-        '11': {'cuadrante': 'superior_derecho', 'posicion': 7},
+        "18": {"cuadrante": "superior_derecho", "posicion": 0},
+        "17": {"cuadrante": "superior_derecho", "posicion": 1},
+        "16": {"cuadrante": "superior_derecho", "posicion": 2},
+        "15": {"cuadrante": "superior_derecho", "posicion": 3},
+        "14": {"cuadrante": "superior_derecho", "posicion": 4},
+        "13": {"cuadrante": "superior_derecho", "posicion": 5},
+        "12": {"cuadrante": "superior_derecho", "posicion": 6},
+        "11": {"cuadrante": "superior_derecho", "posicion": 7},
         # Superior Izquierdo (21-28)
-        '21': {'cuadrante': 'superior_izquierdo', 'posicion': 0},
-        '22': {'cuadrante': 'superior_izquierdo', 'posicion': 1},
-        '23': {'cuadrante': 'superior_izquierdo', 'posicion': 2},
-        '24': {'cuadrante': 'superior_izquierdo', 'posicion': 3},
-        '25': {'cuadrante': 'superior_izquierdo', 'posicion': 4},
-        '26': {'cuadrante': 'superior_izquierdo', 'posicion': 5},
-        '27': {'cuadrante': 'superior_izquierdo', 'posicion': 6},
-        '28': {'cuadrante': 'superior_izquierdo', 'posicion': 7},
+        "21": {"cuadrante": "superior_izquierdo", "posicion": 0},
+        "22": {"cuadrante": "superior_izquierdo", "posicion": 1},
+        "23": {"cuadrante": "superior_izquierdo", "posicion": 2},
+        "24": {"cuadrante": "superior_izquierdo", "posicion": 3},
+        "25": {"cuadrante": "superior_izquierdo", "posicion": 4},
+        "26": {"cuadrante": "superior_izquierdo", "posicion": 5},
+        "27": {"cuadrante": "superior_izquierdo", "posicion": 6},
+        "28": {"cuadrante": "superior_izquierdo", "posicion": 7},
         # Inferior Izquierdo (31-38)
-        '31': {'cuadrante': 'inferior_izquierdo', 'posicion': 0},
-        '32': {'cuadrante': 'inferior_izquierdo', 'posicion': 1},
-        '33': {'cuadrante': 'inferior_izquierdo', 'posicion': 2},
-        '34': {'cuadrante': 'inferior_izquierdo', 'posicion': 3},
-        '35': {'cuadrante': 'inferior_izquierdo', 'posicion': 4},
-        '36': {'cuadrante': 'inferior_izquierdo', 'posicion': 5},
-        '37': {'cuadrante': 'inferior_izquierdo', 'posicion': 6},
-        '38': {'cuadrante': 'inferior_izquierdo', 'posicion': 7},
+        "31": {"cuadrante": "inferior_izquierdo", "posicion": 0},
+        "32": {"cuadrante": "inferior_izquierdo", "posicion": 1},
+        "33": {"cuadrante": "inferior_izquierdo", "posicion": 2},
+        "34": {"cuadrante": "inferior_izquierdo", "posicion": 3},
+        "35": {"cuadrante": "inferior_izquierdo", "posicion": 4},
+        "36": {"cuadrante": "inferior_izquierdo", "posicion": 5},
+        "37": {"cuadrante": "inferior_izquierdo", "posicion": 6},
+        "38": {"cuadrante": "inferior_izquierdo", "posicion": 7},
         # Inferior Derecho (41-48)
-        '41': {'cuadrante': 'inferior_derecho', 'posicion': 0},
-        '42': {'cuadrante': 'inferior_derecho', 'posicion': 1},
-        '43': {'cuadrante': 'inferior_derecho', 'posicion': 2},
-        '44': {'cuadrante': 'inferior_derecho', 'posicion': 3},
-        '45': {'cuadrante': 'inferior_derecho', 'posicion': 4},
-        '46': {'cuadrante': 'inferior_derecho', 'posicion': 5},
-        '47': {'cuadrante': 'inferior_derecho', 'posicion': 6},
-        '48': {'cuadrante': 'inferior_derecho', 'posicion': 7},
+        "41": {"cuadrante": "inferior_derecho", "posicion": 0},
+        "42": {"cuadrante": "inferior_derecho", "posicion": 1},
+        "43": {"cuadrante": "inferior_derecho", "posicion": 2},
+        "44": {"cuadrante": "inferior_derecho", "posicion": 3},
+        "45": {"cuadrante": "inferior_derecho", "posicion": 4},
+        "46": {"cuadrante": "inferior_derecho", "posicion": 5},
+        "47": {"cuadrante": "inferior_derecho", "posicion": 6},
+        "48": {"cuadrante": "inferior_derecho", "posicion": 7},
+        # Dientes temporales
+        # Superior Derecho (51-55)
+        "51": {"cuadrante": "superior_derecho", "posicion": 0},
+        "52": {"cuadrante": "superior_derecho", "posicion": 1},
+        "53": {"cuadrante": "superior_derecho", "posicion": 2},
+        "54": {"cuadrante": "superior_derecho", "posicion": 3},
+        "55": {"cuadrante": "superior_derecho", "posicion": 4},
+        # Superior Izquierdo (61-65)
+        "61": {"cuadrante": "superior_izquierdo", "posicion": 0},
+        "62": {"cuadrante": "superior_izquierdo", "posicion": 1},
+        "63": {"cuadrante": "superior_izquierdo", "posicion": 2},
+        "64": {"cuadrante": "superior_izquierdo", "posicion": 3},
+        "65": {"cuadrante": "superior_izquierdo", "posicion": 4},
+        # Inferior Izquierdo (71-75)
+        "71": {"cuadrante": "inferior_izquierdo", "posicion": 0},
+        "72": {"cuadrante": "inferior_izquierdo", "posicion": 1},
+        "73": {"cuadrante": "inferior_izquierdo", "posicion": 2},
+        "74": {"cuadrante": "inferior_izquierdo", "posicion": 3},
+        "75": {"cuadrante": "inferior_izquierdo", "posicion": 4},
+        # Inferior Derecho (81-85)
+        "81": {"cuadrante": "inferior_derecho", "posicion": 0},
+        "82": {"cuadrante": "inferior_derecho", "posicion": 1},
+        "83": {"cuadrante": "inferior_derecho", "posicion": 2},
+        "84": {"cuadrante": "inferior_derecho", "posicion": 3},
+        "85": {"cuadrante": "inferior_derecho", "posicion": 4},
     }
 
     def generar_datos_form033(self, paciente_id: str) -> Dict[str, Any]:
         """
         Genera estructura JSON completa para Form 033
-        
+
         Args:
             paciente_id: UUID del paciente
-            
+
         Returns:
             Dict con estructura Form 033
         """
@@ -84,109 +247,78 @@ class Form033Service:
             raise ValueError(f"Paciente no encontrado: {paciente_id}") from e
 
         # Obtener dientes con diagnósticos
-        dientes = Diente.objects.filter(paciente=paciente).select_related().prefetch_related(
-            Prefetch('superficies__diagnosticos__diagnostico_catalogo')
+        dientes = (
+            Diente.objects.filter(paciente=paciente)
+            .select_related()
+            .prefetch_related(
+                Prefetch("superficies__diagnosticos__diagnostico_catalogo")
+            )
         )
 
         # Construir tabla 4x8
-        tabla = self._construir_tabla_4x8(dientes)
+        tabla = self._construir_tabla(dientes)
 
         # Calcular estadísticas
         stats = self._calcular_estadisticas(dientes)
 
         # Datos del paciente
         from datetime import date
+
         today = date.today()
-        edad = today.year - paciente.fecha_nacimiento.year if paciente.fecha_nacimiento else None
+        edad = (
+            today.year - paciente.fecha_nacimiento.year
+            if paciente.fecha_nacimiento
+            else None
+        )
 
         return {
-            'seccion_i_paciente': {
-                'cedula': paciente.cedula_pasaporte,
-                'nombres': paciente.nombres,
-                'apellidos': paciente.apellidos,
-                'sexo': paciente.sexo,
-                'edad': edad,
-                'fecha_examen': today.isoformat(),
-                'establecimiento': 'Clínica Dental',
-                'provincia': 'Guayas',
-                'canton': 'Guayaquil',
+            "seccion_i_paciente": {
+                "cedula": paciente.cedula_pasaporte,
+                "nombres": paciente.nombres,
+                "apellidos": paciente.apellidos,
+                "sexo": paciente.sexo,
+                "edad": edad,
+                "fecha_examen": today.isoformat(),
+                "establecimiento": "Centro Medico FamySALUD",
+                "provincia": "Guayas",
+                "canton": "Guayaquil",
             },
-            'seccion_ii_odontograma': tabla,
-            'estadisticas': stats,
-            'timestamp': datetime.now().isoformat(),
+            "seccion_ii_odontograma": tabla,
+            "estadisticas": stats,
+            "timestamp": datetime.now().isoformat(),
         }
 
     def obtener_simbolo_diente(self, diente: Diente) -> Dict[str, Any]:
-        """
-        Obtiene símbolo para un diente específico
-        
-        Busca en orden:
-        1. Diagnóstico de la primera superficie
-        2. Si ausente, retorna 'A'
-        3. Si sano, retorna check
-        
-        Args:
-            diente: Instancia de Diente
-            
-        Returns:
-            Dict con símbolo, color, descripción
-        """
-        # Si está ausente
         if diente.ausente:
-            return self.SIMBOLO_MAPPING.get('A_negro', {
-                'simbolo': 'A',
-                'color': '#000000',
-                'descripcion': 'Ausente',
-                'categoria': 'negro'
-            })
-
-        # Buscar diagnóstico en superficies
-        diagnostico_dental = DiagnosticoDental.objects.filter(
-            superficie__diente=diente
-        ).select_related('diagnostico_catalogo').first()
-
-        if diagnostico_dental and diagnostico_dental.diagnostico_catalogo:
-            cat_diag = diagnostico_dental.diagnostico_catalogo
-            
-            # Obtener simbolo_formulario_033
-            simbolo_key = getattr(cat_diag, 'simbolo_formulario_033', None)
-            
-            if simbolo_key and simbolo_key in self.SIMBOLO_MAPPING:
-                return self.SIMBOLO_MAPPING[simbolo_key]
-            
-            # Fallback: si existe pero no está en mapeo
-            if simbolo_key:
-                logger.warning(f"Símbolo no mapeado: {simbolo_key}")
-                return {
-                    'simbolo': simbolo_key[0] if simbolo_key else '?',
-                    'color': '#808080',
-                    'descripcion': cat_diag.nombre,
-                    'categoria': 'gris'
-                }
-
-        # Si no hay diagnóstico, es sano
-        return self.SIMBOLO_MAPPING.get('check', {
-            'simbolo': '✓',
-            'color': '#00AA00',
-            'descripcion': 'Sano',
-            'categoria': 'verde'
-        })
-
-    def _construir_tabla_4x8(self, dientes) -> Dict[str, List]:
-        """
-        Construye tabla 4x8 (4 cuadrantes x 8 dientes)
+            return self.SIMBOLO_MAPPING['A']
         
-        Args:
-            dientes: QuerySet de dientes
-            
-        Returns:
-            Dict con estructura 4x8
-        """
+        # Obtener TODOS los diagnósticos ordenados por prioridad
+        diagnosticos = DiagnosticoDental.objects.filter(
+            superficie__diente=diente,
+            activo=True
+        ).select_related('diagnostico_catalogo').order_by(
+            '-diagnostico_catalogo__prioridad',  # Mayor prioridad primero
+            '-fecha'  # Más reciente primero
+        )
+        
+        if diagnosticos.exists():
+            diag_prioritario = diagnosticos.first()
+            simbolo_key = diag_prioritario.diagnostico_catalogo.simbolo_formulario_033
+            if simbolo_key in self.SIMBOLO_MAPPING:
+                return self.SIMBOLO_MAPPING[simbolo_key]
+    
+        return self.SIMBOLO_MAPPING['check']  # Sano
+
+    def _construir_tabla(self, dientes) -> Dict[str, List]:
         tabla = {
-            'superior_derecho': [None] * 8,
-            'superior_izquierdo': [None] * 8,
-            'inferior_izquierdo': [None] * 8,
-            'inferior_derecho': [None] * 8,
+            "superior_derecho": [None] * 8,
+            "superior_izquierdo": [None] * 8,
+            "movilidad_superior_derecho": [None] * 8,
+            "movilidad_superior_izquierdo": [None] * 8,
+            "inferior_izquierdo": [None] * 8,
+            "inferior_derecho": [None] * 8,
+            "movilidad_inferior_derecho": [None] * 8,
+            "movilidad_inferior_izquierdo": [None] * 8,
         }
 
         dientes_dict = {d.codigo_fdi: d for d in dientes}
@@ -194,8 +326,8 @@ class Form033Service:
         for fdi, diente in dientes_dict.items():
             mapping = self.FDI_MAPPING.get(fdi)
             if mapping:
-                cuadrante = mapping['cuadrante']
-                posicion = mapping['posicion']
+                cuadrante = mapping["cuadrante"]
+                posicion = mapping["posicion"]
                 simbolo_info = self.obtener_simbolo_diente(diente)
                 tabla[cuadrante][posicion] = simbolo_info
 
@@ -204,51 +336,51 @@ class Form033Service:
     def _calcular_estadisticas(self, dientes) -> Dict[str, int]:
         """
         Calcula estadísticas: sanos, cariados, perdidos, obturados, CPO-D
-        
+
         Args:
             dientes: QuerySet de dientes
-            
+
         Returns:
             Dict con estadísticas
         """
         stats = {
-            'sanos': 0,
-            'cariados': 0,
-            'perdidos': 0,
-            'obturados': 0,
-            'cpod': 0,
+            "sanos": 0,
+            "cariados": 0,
+            "perdidos": 0,
+            "obturados": 0,
+            "cpod": 0,
         }
 
         for diente in dientes:
             if diente.ausente:
-                stats['perdidos'] += 1
+                stats["perdidos"] += 1
             else:
                 simbolo_info = self.obtener_simbolo_diente(diente)
-                
-                if simbolo_info['simbolo'] == 'X':
-                    stats['cariados'] += 1
-                elif simbolo_info['simbolo'] == 'o':
-                    stats['obturados'] += 1
-                elif simbolo_info['simbolo'] == '✓':
-                    stats['sanos'] += 1
 
-        stats['cpod'] = stats['cariados'] + stats['perdidos'] + stats['obturados']
+                if simbolo_info["simbolo"] == "X":
+                    stats["cariados"] += 1
+                elif simbolo_info["simbolo"] == "o":
+                    stats["obturados"] += 1
+                elif simbolo_info["simbolo"] == "✓":
+                    stats["sanos"] += 1
+
+        stats["cpod"] = stats["cariados"] + stats["perdidos"] + stats["obturados"]
         return stats
 
     def generar_html_form033(self, paciente_id: str) -> str:
         """
         Genera HTML visual para Form 033
-        
+
         Args:
             paciente_id: UUID del paciente
-            
+
         Returns:
             String HTML
         """
         datos = self.generar_datos_form033(paciente_id)
-        paciente_data = datos['seccion_i_paciente']
-        tabla = datos['seccion_ii_odontograma']
-        stats = datos['estadisticas']
+        paciente_data = datos["seccion_i_paciente"]
+        tabla = datos["seccion_ii_odontograma"]
+        stats = datos["estadisticas"]
 
         html = f"""
 <!DOCTYPE html>
@@ -501,10 +633,10 @@ class Form033Service:
     def _generar_fila_html(self, fila_dientes: List) -> str:
         """
         Genera HTML para una fila de dientes
-        
+
         Args:
             fila_dientes: Lista de símbolos de dientes
-            
+
         Returns:
             String HTML
         """
@@ -513,20 +645,20 @@ class Form033Service:
             if not simbolo_info:
                 html_fila += '<div class="tooth">-</div>'
             else:
-                simbolo = simbolo_info['simbolo']
-                cat = simbolo_info['categoria']
-                
-                if cat == 'verde':
-                    clase = 'tooth-healthy'
-                elif cat == 'rojo':
-                    clase = 'tooth-caries'
-                elif cat == 'negro':
-                    clase = 'tooth-absent'
-                elif cat == 'azul':
-                    clase = 'tooth-filled'
+                simbolo = simbolo_info["simbolo"]
+                cat = simbolo_info["categoria"]
+
+                if cat == "verde":
+                    clase = "tooth-healthy"
+                elif cat == "rojo":
+                    clase = "tooth-caries"
+                elif cat == "negro":
+                    clase = "tooth-absent"
+                elif cat == "azul":
+                    clase = "tooth-filled"
                 else:
-                    clase = 'tooth'
-                
+                    clase = "tooth"
+
                 html_fila += f'<div class="tooth {clase}">{simbolo}</div>'
-        
+
         return html_fila

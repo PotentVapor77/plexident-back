@@ -53,9 +53,6 @@ class Diagnostico(models.Model):
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
     
-    
-    
-    
     # Codigos Estandarizados 
     codigo_icd10 = models.CharField(max_length=20, blank=True, help_text="Código ICD-10 asociado")
     codigo_cdt = models.CharField(max_length=20, blank=True, help_text="Código CDT asociado")
@@ -366,6 +363,37 @@ class SuperficieDental(models.Model):
         RAIZ_PALATAL = 'raiz_palatal', 'Raíz Palatina'
         RAIZ_VESTIBULAR = 'raiz_vestibular', 'Raíz Vestibular'
         RAIZ_PRINCIPAL = 'raiz_principal', 'Raíz Principal'
+        
+    # Mapeo de superficie a tipo
+    SUPERFICIE_A_AREA = {
+        # Superficies de Corona
+        'vestibular': 'corona',
+        'lingual': 'corona',
+        'oclusal': 'corona',
+        'mesial': 'corona',
+        'distal': 'corona',
+        
+        # Raíces
+        'raiz_mesial': 'raiz',
+        'raiz_distal': 'raiz',
+        'raiz_palatal': 'raiz',
+        'raiz_vestibular': 'raiz',
+        'raiz_principal': 'raiz',
+    }
+    # Mapeo de superficie a backend
+    FRONTEND_ID_TO_BACKEND = {
+        'cara_oclusal': 'oclusal',
+        'cara_vestibular': 'vestibular',
+        'cara_lingual': 'lingual',
+        'cara_mesial': 'mesial',
+        'cara_distal': 'distal',
+        'raiz:raiz-mesial': 'raiz_mesial',
+        'raiz:raiz-distal': 'raiz_distal',
+        'raiz:raiz-palatal': 'raiz_palatal',
+        'raiz:raiz-vestibular': 'raiz_vestibular',
+        'raiz:raiz-principal': 'raiz_principal',
+        'general': 'general',
+    }
 
     nombre = models.CharField(max_length=50, choices=TipoSuperficie.choices)
 
@@ -550,6 +578,32 @@ class DiagnosticoDental(models.Model):
         Menor valor = Mayor prioridad de visualización
         """
         return self.diagnostico_catalogo.prioridad
+    
+    @property
+    def area_anatomica(self):
+        """
+        Retorna el área anatómica de esta superficie
+        Returns: 'corona', 'raiz', o 'general'
+        """
+        return self.SUPERFICIE_A_AREA.get(self.nombre, 'general')
+    
+    @classmethod
+    def normalizar_superficie_frontend(cls, superficie_id_frontend):
+        """
+        Convierte ID del frontend a nombre backend
+        """
+        return cls.FRONTEND_ID_TO_BACKEND.get(
+            superficie_id_frontend, 
+            superficie_id_frontend
+        )
+    
+    @classmethod
+    def obtener_area_desde_frontend(cls, superficie_id_frontend):
+        """
+        Obtiene área anatómica directamente desde ID del frontend
+        """
+        nombre_backend = cls.normalizar_superficie_frontend(superficie_id_frontend)
+        return cls.SUPERFICIE_A_AREA.get(nombre_backend, 'general')
 
 
 class HistorialOdontograma(models.Model):
