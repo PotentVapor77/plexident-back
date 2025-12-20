@@ -254,6 +254,7 @@ if DEBUG:
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        
     ]
     
     # ✅ CSRF: Orígenes confiables
@@ -439,7 +440,7 @@ LOGGING = {
 # ============================================================================
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
+    SECURE_SSL_REDIRECT = False
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
