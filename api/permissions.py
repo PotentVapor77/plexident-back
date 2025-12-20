@@ -1,123 +1,129 @@
 # api/permissions.py
 from rest_framework import permissions
 
+
 class TienePermisoPorRolConfigurable(permissions.BasePermission):
     """
-    Permiso configurable por modelo con configuración para múltiples apps
-    Sistema de permisos basado en roles para el sistema odontológico
+    Sistema de permisos basado en roles para el sistema odontológico.
+    
+    Uso:
+        permission_classes = [TienePermisoPorRolConfigurable]
+    
+    Los permisos se configuran por modelo y rol.
+    Si un modelo no tiene configuración específica, usa PERMISOS_BASE.
     """
     
-    # Definir todos los permisos como atributo de clase
+    # ============================================================================
+    # CONFIGURACIÓN DE PERMISOS POR MODELO
+    # ============================================================================
     PERMISOS = {
-        # === APP: AUTENTICACIÓN Y AUTORIZACIÓN ===
-        'group': {
-            'admin': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-            'odontologo': ['GET'],
-            'asistente': ['GET']
+        # === MÓDULO: USUARIOS ===
+        'usuario': {
+            'Administrador': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+            'Odontologo': ['GET'],
+            'Asistente': ['GET']
         },
-
         
-        # === APP: Permiso solo para PACIENTES ===
+        # === MÓDULO: PACIENTES ===
         'paciente': {
-            'admin': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-            'odontologo': ['GET', 'POST', 'PUT', 'PATCH'],
-            'asistente': ['GET', 'POST', 'PUT']
+            'Administrador': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+            'Odontologo': ['GET', 'POST', 'PUT', 'PATCH'],
+            'Asistente': ['GET', 'POST', 'PUT']
         },
         
-        
+    
     }
     
-    # Permisos solo para usuarios principales, como admin,odon,asistente
+    # ============================================================================
+    # PERMISOS POR DEFECTO (para modelos sin configuración específica)
+    # ============================================================================
     PERMISOS_BASE = {
-        'admin': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-        'odontologo': ['GET'],
-        'asistente': ['GET']
+        'Administrador': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+        'Odontologo': ['GET'],
+        'Asistente': ['GET']
     }
 
     def has_permission(self, request, view):
         """
-        Verifica si el usuario tiene permiso para realizar la acción
+        Verifica si el usuario tiene permiso para realizar la acción.
+        
+        Returns:
+            bool: True si tiene permiso, False en caso contrario
         """
         user = request.user
         
-        # Usuario no autenticado no tiene acceso
+        # 1. Usuario no autenticado = sin acceso
         if not user.is_authenticated:
             return False
-            
-        # Admin tiene acceso total a todo
-        if user.rol == 'admin':
+        
+        # 2. Administrador = acceso total
+        if user.rol == 'Administrador':
             return True
         
-        # Obtener nombre del modelo desde la vista
+        # 3. Obtener nombre del modelo
         model_name = self._get_model_name(view)
         
-        # Buscar permisos específicos para este modelo, usar base si no existe
+        # 4. Buscar permisos específicos o usar base
         permisos_modelo = self.PERMISOS.get(model_name, self.PERMISOS_BASE)
         
-        # Verificar si el método HTTP está permitido para el rol del usuario
-        metodo_permitido = request.method in permisos_modelo.get(user.rol, [])
+        # 5. Verificar si el método HTTP está permitido
+        metodos_permitidos = permisos_modelo.get(user.rol, [])
         
-        return metodo_permitido
-    
+        return request.method in metodos_permitidos
     
     def _get_model_name(self, view):
         """
-        Obtiene el nombre del modelo desde la vista
+        Extrae el nombre del modelo desde la vista.
+        
+        Intenta en orden:
+        1. view.queryset.model._meta.model_name
+        2. view.model._meta.model_name
+        3. view.get_queryset().model._meta.model_name
+        4. Nombre de la clase de vista (fallback)
+        
+        Returns:
+            str: Nombre del modelo en minúsculas
         """
         try:
-            # Intentar obtener desde el queryset
+            # Opción 1: Desde queryset
             if hasattr(view, 'queryset') and view.queryset is not None:
                 return view.queryset.model._meta.model_name
             
-            # Intentar desde el modelo directo
+            # Opción 2: Desde modelo directo
             if hasattr(view, 'model') and view.model is not None:
                 return view.model._meta.model_name
             
-            # Intentar desde get_queryset
+            # Opción 3: Desde get_queryset()
             if hasattr(view, 'get_queryset'):
                 queryset = view.get_queryset()
                 if queryset is not None:
                     return queryset.model._meta.model_name
             
-            # Si no se puede determinar, usar nombre de la clase de vista
-            view_name = view.__class__.__name__.lower()
-            # Limpiar el nombre
-            for suffix in ['viewset', 'view', 'api']:
-                if view_name.endswith(suffix):
-                    view_name = view_name[:-len(suffix)]
-            return view_name.strip('_')
+            # Fallback: limpiar nombre de la clase
+            return self._clean_view_name(view.__class__.__name__)
             
         except Exception:
-            # Fallback: usar nombre de la vista
-            view_name = view.__class__.__name__.lower()
-            for suffix in ['viewset', 'view', 'api']:
-                if view_name.endswith(suffix):
-                    view_name = view_name[:-len(suffix)]
-            return view_name.strip('_')
-
-
-# Permisos adicionales específicos
-class EsAdmin(permissions.BasePermission):
-    """Permiso que solo permite acceso a administradores"""
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.rol == 'admin'
-
-
-class EsOdontologoOAdmin(permissions.BasePermission):
-    """Permiso que permite acceso a odontólogos y administradores"""
-    def has_permission(self, request, view):
-        user = request.user
-        return user.is_authenticated and user.rol in ['admin', 'odontologo']
-
-
-class EsAsistenteOAdmin(permissions.BasePermission):
-    """Permiso que permite acceso a asistentes y administradores"""
-    def has_permission(self, request, view):
-        user = request.user
-        return user.is_authenticated and user.rol in ['admin', 'asistente']
-
-
-class SoloLectura(permissions.BasePermission):
-    """Permiso que solo permite métodos de lectura (GET, HEAD, OPTIONS)"""
-    def has_permission(self, request, view):
-        return request.method in permissions.SAFE_METHODS
+            return self._clean_view_name(view.__class__.__name__)
+    
+    def _clean_view_name(self, view_name):
+        """
+        Limpia el nombre de la vista para obtener el modelo.
+        
+        Ejemplo:
+            'UsuarioViewSet' -> 'usuario'
+            'PacienteAPIView' -> 'paciente'
+        
+        Args:
+            view_name (str): Nombre de la clase de vista
+            
+        Returns:
+            str: Nombre limpio en minúsculas
+        """
+        view_name = view_name.lower()
+        
+        # Remover sufijos comunes
+        for suffix in ['viewset', 'view', 'api']:
+            if view_name.endswith(suffix):
+                view_name = view_name[:-len(suffix)]
+        
+        return view_name.strip('_')

@@ -10,3 +10,7 @@ djangorestframework-simplejwt
 lxml==5.2.2
 pytest-django
 pytest-cov
+django-filter
+drf-nested-routers
+django-extensions
+python-dotenv
