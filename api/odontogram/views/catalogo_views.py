@@ -22,6 +22,7 @@ from api.odontogram.models import (
     CategoriaDiagnostico,
     Diagnostico,
     AreaAfectada,
+    SuperficieDental,
     TipoAtributoClinico,
 )
 
@@ -76,6 +77,35 @@ class CategoriaDiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):
         categorias = self.repository.get_by_prioridad(prioridad_key)
         serializer = self.get_serializer(categorias, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def filtrar_por_superficie(self, request):
+        """
+        Filtra diagnósticos aplicables según superficie del frontend
+        """
+        superficie_id = request.query_params.get('superficie_id')
+        
+        if not superficie_id:
+            return Response(
+                {'error': 'Parámetro superficie_id requerido'}, 
+                status=400
+            )
+        
+        # Obtener área anatómica desde el ID del frontend
+        area = SuperficieDental.obtener_area_desde_frontend(superficie_id)
+        
+        # Filtrar diagnósticos aplicables a esa área
+        diagnosticos = Diagnostico.objects.filter(
+            activo=True,
+            areas_relacionadas__area__key=area
+        ).distinct()
+        
+        serializer = self.get_serializer(diagnosticos, many=True)
+        return Response({
+            'superficie_id_frontend': superficie_id,
+            'area_anatomica': area,
+            'diagnosticos': serializer.data
+        })
 
 
 class DiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):

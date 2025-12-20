@@ -452,7 +452,7 @@ def actualizar_estadisticas_paciente(sender, instance, **kwargs):
         ).filter(
             Q(prioridad_asignada__gte=4) |
             (Q(prioridad_asignada__isnull=True) &
-             Q(diagnostico_catalogo__prioridad__gte=4))
+            Q(diagnostico_catalogo__prioridad__gte=4))
         ).count(),
         'ultima_actualizacion': timezone.now().isoformat(),
     }
