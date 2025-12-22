@@ -1,4 +1,5 @@
-# odontogram/repositories/repositories_odontogram.py
+# odontogram/repositories/odontogram_repositories.py
+
 """
 Repository Pattern: Abstrae la lógica de acceso a datos
 Proporciona una interfaz consistente para operaciones CRUD
@@ -19,7 +20,6 @@ from api.odontogram.models import (
 
 class BaseRepository:
     """Repositorio base con operaciones comunes"""
-
     model = None
 
     def get_by_id(self, id: int) -> Optional[Any]:
@@ -58,7 +58,6 @@ class BaseRepository:
 
 class CategoriaDiagnosticoRepository(BaseRepository):
     """Repositorio para Categorías de Diagnóstico"""
-
     model = CategoriaDiagnostico
 
     def get_with_diagnosticos(self) -> QuerySet:
@@ -66,9 +65,9 @@ class CategoriaDiagnosticoRepository(BaseRepository):
         return self.get_all().prefetch_related(
             Prefetch(
                 'diagnosticos',
-                queryset=Diagnostico.objects.filter(activo=True)
+                queryset=Diagnostico.objects.filter(activo=True).order_by('prioridad', 'nombre')
             )
-        )
+        ).order_by('nombre')
 
     def get_by_key(self, key: str) -> Optional[CategoriaDiagnostico]:
         """Obtiene una categoría por su key"""
@@ -84,7 +83,6 @@ class CategoriaDiagnosticoRepository(BaseRepository):
 
 class DiagnosticoRepository(BaseRepository):
     """Repositorio para Diagnósticos"""
-
     model = Diagnostico
 
     def get_with_relations(self, id: int) -> Optional[Diagnostico]:
@@ -127,7 +125,6 @@ class DiagnosticoRepository(BaseRepository):
 
 class AreaAfectadaRepository(BaseRepository):
     """Repositorio para Áreas Afectadas"""
-
     model = AreaAfectada
 
     def get_by_diagnostico(self, diagnostico_id: int) -> QuerySet:
@@ -140,7 +137,6 @@ class AreaAfectadaRepository(BaseRepository):
 
 class TipoAtributoClinicoRepository(BaseRepository):
     """Repositorio para Tipos de Atributos Clínicos"""
-
     model = TipoAtributoClinico
 
     def get_with_opciones(self) -> QuerySet:
@@ -148,9 +144,9 @@ class TipoAtributoClinicoRepository(BaseRepository):
         return self.get_all().prefetch_related(
             Prefetch(
                 'opciones',
-                queryset=OpcionAtributoClinico.objects.filter(activo=True).order_by('orden')
+                queryset=OpcionAtributoClinico.objects.filter(activo=True).order_by('orden', 'nombre')
             )
-        )
+        ).order_by('nombre')  # ✅ CORREGIDO: TipoAtributoClinico solo tiene 'nombre', no 'orden'
 
     def get_by_diagnostico(self, diagnostico_id: int) -> QuerySet:
         """Obtiene atributos aplicables a un diagnóstico"""
@@ -162,12 +158,11 @@ class TipoAtributoClinicoRepository(BaseRepository):
 
 class OpcionAtributoClinicoRepository(BaseRepository):
     """Repositorio para Opciones de Atributos Clínicos"""
-
     model = OpcionAtributoClinico
 
     def get_by_tipo(self, tipo_atributo_id: int) -> QuerySet:
         """Obtiene opciones de un tipo específico"""
-        return self.get_all().filter(tipo_atributo_id=tipo_atributo_id).order_by('orden')
+        return self.get_all().filter(tipo_atributo_id=tipo_atributo_id).order_by('orden') 
 
     def get_con_prioridad(self, tipo_atributo_id: int) -> QuerySet:
         """Obtiene opciones que tienen prioridad definida"""

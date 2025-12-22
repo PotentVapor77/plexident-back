@@ -49,7 +49,6 @@ logger = logging.getLogger(__name__)
 
 class CategoriaDiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para categorías de diagnóstico (catálogo)"""
-
     serializer_class = CategoriaDiagnosticoSerializer
     permission_classes = [IsAuthenticated]
 
@@ -60,14 +59,51 @@ class CategoriaDiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return self.repository.get_with_diagnosticos()
 
+    # AGREGAR ESTE MÉTODO
+    @action(detail=False, methods=['get'], url_path='con-diagnosticos')
+    def con_diagnosticos(self, request):
+        """
+        GET /api/odontogram/catalogo/categorias/con-diagnosticos/
+        Retorna todas las categorías activas con sus diagnósticos anidados
+        """
+        # Usar caché para mejorar rendimiento
+        cache_key = "odontograma:categorias:con_diagnosticos"
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            logger.info("Retornando categorías desde caché")
+            return Response(cached_data, status=status.HTTP_200_OK)
+        
+        # Obtener categorías con diagnósticos desde el repository
+        categorias = self.repository.get_with_diagnosticos()
+        
+        # Serializar con diagnósticos anidados
+        data = []
+        for categoria in categorias:
+            categoria_data = CategoriaDiagnosticoSerializer(categoria).data
+            
+            # Agregar diagnósticos activos de esta categoría
+            diagnosticos_activos = categoria.diagnosticos.filter(activo=True)
+            categoria_data['diagnosticos'] = DiagnosticoListSerializer(
+                diagnosticos_activos,
+                many=True
+            ).data
+            
+            data.append(categoria_data)
+        
+        # Cachear por 1 hora
+        cache.set(cache_key, data, timeout=3600)
+        
+        logger.info(f"Retornando {len(data)} categorías con diagnósticos")
+        return Response(data, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=["get"])
     def por_prioridad(self, request):
         """GET /api/odontogram/catalogo/categorias/por_prioridad/?prioridad=ALTA"""
         prioridad_key = request.query_params.get("prioridad")
         if not prioridad_key:
-            # Dejar que el handler/renderer lo envuelvan
             raise ValidationError({"prioridad": ["Se requiere el parámetro prioridad"]})
-
+        
         categorias = self.repository.get_by_prioridad(prioridad_key)
         serializer = self.get_serializer(categorias, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -76,7 +112,6 @@ class CategoriaDiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):
     def filtrar_por_superficie(self, request):
         """
         Filtra diagnósticos aplicables según superficie del frontend
-
         GET /api/odontogram/catalogo/categorias/filtrar_por_superficie/?superficie_id={id_frontend}
         """
         superficie_id = request.query_params.get("superficie_id")
@@ -84,10 +119,10 @@ class CategoriaDiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):
             raise ValidationError(
                 {"superficie_id": ["Parámetro superficie_id requerido"]}
             )
-
+        
         # Obtener área anatómica desde el ID del frontend
         area = SuperficieDental.obtener_area_desde_frontend(superficie_id)
-
+        
         # Filtrar diagnósticos aplicables a esa área
         diagnosticos = (
             Diagnostico.objects.filter(
@@ -97,11 +132,8 @@ class CategoriaDiagnosticoViewSet(viewsets.ReadOnlyModelViewSet):
             .distinct()
             .select_related("categoria")
         )
-
-        # Aquí interesa devolver diagnósticos, no categorías,
-        # así que se puede reutilizar el serializer de lista de diagnósticos
+        
         diagnosticos_serializer = DiagnosticoListSerializer(diagnosticos, many=True)
-
         return Response(
             {
                 "superficie_id_frontend": superficie_id,

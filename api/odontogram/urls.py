@@ -48,6 +48,7 @@ from api.odontogram.views.form033_views import (
 )
 
 
+from api.odontogram.views.odontograma_views import obtener_definiciones_superficies
 # ==================== ROUTER SETUP ====================
 
 router = DefaultRouter()
@@ -61,7 +62,7 @@ router.register(r"catalogo/diagnosticos", DiagnosticoViewSet, basename="diagnost
 
 router.register(r"catalogo/areas", AreaAfectadaViewSet, basename="area")
 
-router.register(r"catalogo/atributos", TipoAtributoClinicoViewSet, basename="atributo")
+router.register(r"catalogo/atributos-clinicos", TipoAtributoClinicoViewSet, basename="atributo-clinico")
 
 # INSTANCIAS (CRUD)
 router.register(r"pacientes", PacienteViewSet, basename="paciente")
@@ -161,6 +162,11 @@ urlpatterns = [
         "export/form033/descargar/<str:nombre_archivo>/",
         descargar_pdf_guardado,
         name="form033-descargar",
+    ),
+    path(
+        'definiciones-superficies/', 
+        obtener_definiciones_superficies, 
+        name='definiciones-superficies'
     ),
 ]
 
