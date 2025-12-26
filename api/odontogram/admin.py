@@ -101,50 +101,54 @@ class SuperficieDentalAdmin(admin.ModelAdmin):
 
 
 # ADMIN 2: Diente (con inlines de superficies y diagnósticos en cascada)
+
 class DienteAdmin(admin.ModelAdmin):
     """Admin para dientes con superficies anidadas"""
     list_display = (
-        'codigo_fdi',
-        'paciente_info',
-        'ausente',
-        'superficies_count',
-        'diagnosticos_count',
-        'fecha_creacion'
+        "codigo_fdi",
+        "paciente_info",
+        "ausente",
+        "superficies_count",
+        "diagnosticos_count",
+        "fecha_creacion",
     )
     search_fields = (
-        'codigo_fdi',
-        'paciente__nombres',
-        'paciente__apellidos',
-        'nombre'
+        "codigo_fdi",
+        "paciente__nombres",
+        "paciente__apellidos",
+        "nombre",
     )
-    list_filter = ('ausente', 'paciente', 'fecha_creacion')
-    readonly_fields = ('fecha_creacion', 'fecha_modificacion')
+    list_filter = ("ausente", "paciente", "fecha_creacion")
+    readonly_fields = ("fecha_creacion", "fecha_modificacion")
 
     # Agregar inline de superficies (y estos a su vez tendrán diagnósticos)
     inlines = [SuperficieDentalInline]
 
+    # Acción personalizada
+    actions = ["guardar_odontograma_completo"]
+
     fieldsets = (
-        ('Información del Diente', {
-            'fields': ('paciente', 'codigo_fdi', 'nombre')
+        ("Información del Diente", {
+            "fields": ("paciente", "codigo_fdi", "nombre"),
         }),
-        ('Estado', {
-            'fields': ('ausente',)
+        ("Estado", {
+            "fields": ("ausente",),
         }),
-        ('Auditoría', {
-            'fields': ('fecha_creacion', 'fecha_modificacion'),
-            'classes': ('collapse',)
+        ("Auditoría", {
+            "fields": ("fecha_creacion", "fecha_modificacion"),
+            "classes": ("collapse",),
         }),
     )
 
     def paciente_info(self, obj):
         """Muestra nombre del paciente"""
         return f"{obj.paciente.nombres} {obj.paciente.apellidos}"
-    paciente_info.short_description = 'Paciente'
+    paciente_info.short_description = "Paciente"
 
     def superficies_count(self, obj):
         """Cuenta de superficies"""
         return obj.superficies.count()
-    superficies_count.short_description = 'Superficies'
+    superficies_count.short_description = "Superficies"
 
     def diagnosticos_count(self, obj):
         """Cuenta total de diagnósticos"""
@@ -152,7 +156,86 @@ class DienteAdmin(admin.ModelAdmin):
         for superficie in obj.superficies.all():
             total += superficie.diagnosticos.filter(activo=True).count()
         return total
-    diagnosticos_count.short_description = 'Total Diagnósticos'
+    diagnosticos_count.short_description = "Total Diagnósticos"
+
+    def guardar_odontograma_completo(self, request, queryset):
+        """
+        Acción para guardar el estado completo del odontograma
+        de los pacientes asociados a los dientes seleccionados.
+        """
+        from django.utils import timezone
+        from .models import HistorialOdontograma
+
+        pacientes_procesados = set()
+
+        # Por cada diente seleccionado, procesar al paciente (una sola vez)
+        for diente in queryset.select_related("paciente"):
+            paciente = diente.paciente
+            if paciente.id in pacientes_procesados:
+                continue
+
+            # Capturar todos los dientes del paciente
+            dientes = paciente.dientes.all().select_related("paciente")
+            datos_odontograma = []
+
+            for d in dientes:
+                superficies = d.superficies.all()
+                diagnosticos_por_superficie = {}
+
+                for superficie in superficies:
+                    diagnosticos = superficie.diagnosticos.filter(
+                        activo=True
+                    ).select_related("diagnostico_catalogo", "odontologo")
+
+                    diagnosticos_por_superficie[superficie.nombre] = [
+                        {
+                            "id": str(diag.id),
+                            "diagnostico": diag.diagnostico_catalogo.siglas,
+                            "descripcion": diag.descripcion,
+                            "prioridad": diag.prioridad_efectiva,
+                            "estado": diag.get_estado_tratamiento_display(),
+                            # Eliminado tiporegistro: no existe en el modelo
+                            "fecha": diag.fecha.isoformat() if diag.fecha else None,
+                        }
+                        for diag in diagnosticos
+                    ]
+
+                datos_odontograma.append(
+                    {
+                        "codigofdi": d.codigo_fdi,
+                        "ausente": d.ausente,
+                        "razonausencia": d.razon_ausencia,
+                        "movilidad": d.movilidad,
+                        "recesiongingival": d.recesion_gingival,
+                        "superficies": diagnosticos_por_superficie,
+                    }
+                )
+
+            # Crear una sola entrada en HistorialOdontograma (referencia: primer diente)
+            primer_diente = dientes.first()
+            if primer_diente:
+                HistorialOdontograma.objects.create(
+    diente=primer_diente,
+    tipo_cambio=HistorialOdontograma.TipoCambio.DIENTE_RESTAURADO,
+    descripcion=(
+        f"Odontograma completo guardado para "
+        f"{paciente.nombres} {paciente.apellidos} - "
+        f"{timezone.now().strftime('%d/%m/%Y %H:%M')}"
+    ),
+    datos_anteriores={},
+    datos_nuevos={"odontograma": datos_odontograma},
+    odontologo=request.user,
+)
+
+            pacientes_procesados.add(paciente.id)
+
+        self.message_user(
+            request,
+            f"Se guardó el odontograma completo de {len(pacientes_procesados)} paciente(s) en el historial.",
+        )
+
+    guardar_odontograma_completo.short_description = "Guardar Odontograma completo"
+
 
 
 # ADMIN 3: DiagnosticoDental (lectura con contexto)
@@ -251,26 +334,45 @@ class HistorialOdontogramaAdmin(admin.ModelAdmin):
         'diente_info',
         'odontologo',
         'fecha',
-        'descripcion_truncada'
+        'descripcion_truncada',
     )
+
     search_fields = (
         'descripcion',
         'diente__codigo_fdi',
         'diente__paciente__nombres',
-        'diente__paciente__apellidos'
+        'diente__paciente__apellidos',
     )
-    list_filter = ('tipo_cambio', 'odontologo', 'fecha')
-    readonly_fields = ('diente', 'tipo_cambio', 'descripcion', 'odontologo', 'fecha', 'datos_anteriores', 'datos_nuevos')
+
+    # Opcional: puedes quitar 'tipo_cambio' del filtro ya que solo habrá uno
+    list_filter = ('odontologo', 'fecha')
+
+    readonly_fields = (
+        'diente',
+        'descripcion',
+        'odontologo',
+        'fecha',
+        'datos_anteriores',
+        'datos_nuevos',
+    )
 
     fieldsets = (
         ('Información del Cambio', {
-            'fields': ('fecha', 'tipo_cambio', 'diente', 'odontologo', 'descripcion')
+            'fields': ('fecha', 'tipo_cambio', 'diente', 'odontologo', 'descripcion'),
         }),
         ('Datos Auditados', {
             'fields': ('datos_anteriores', 'datos_nuevos'),
-            'classes': ('collapse',)
+            'classes': ('collapse',),
         }),
     )
+
+    # NUEVO: solo mostrar los que son snapshot completo
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        from .models import HistorialOdontograma
+        return qs.filter(
+            tipo_cambio=HistorialOdontograma.TipoCambio.DIENTE_RESTAURADO,
+        )
 
     def tipo_cambio_display(self, obj):
         """Muestra el tipo de cambio"""

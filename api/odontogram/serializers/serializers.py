@@ -250,7 +250,7 @@ class SuperficieDentalSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = SuperficieDental
-        fields = ['nombre', 'codigo_fhir_superficie', 'diagnosticos']
+        fields = ['id', 'nombre', 'codigo_fhir_superficie', 'diagnosticos']
 
 
 class DienteSerializer(serializers.ModelSerializer):

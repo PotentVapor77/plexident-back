@@ -48,7 +48,7 @@ from api.odontogram.views.form033_views import (
 )
 
 
-from api.odontogram.views.odontograma_views import obtener_definiciones_superficies
+from api.odontogram.views.odontograma_views import OdontogramaCompletoView, guardar_odontograma_completo, obtener_definiciones_superficies
 # ==================== ROUTER SETUP ====================
 
 router = DefaultRouter()
@@ -168,7 +168,21 @@ urlpatterns = [
         obtener_definiciones_superficies, 
         name='definiciones-superficies'
     ),
-]
+    
+    # POST /api/odontogram/pacientes/{paciente_id}/guardar-odontograma/
+    path(
+        "pacientes/<uuid:paciente_id>/guardar-odontograma/",
+        guardar_odontograma_completo,
+        name='guardar-odontograma-completo'
+    ),
+    
+    #  /api/odontogram/odontogramas/{paciente_id}/completo/
+    path(
+        "odontogramas/<uuid:paciente_id>/completo/",
+        OdontogramaCompletoView.as_view(),
+        name="odontograma-completo",
+    ),
+]   
 
 
 # ==================== ENDPOINT SUMMARY ====================
