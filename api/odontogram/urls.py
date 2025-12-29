@@ -57,11 +57,11 @@ router = DefaultRouter()
 router.register(
     r"catalogo/categorias", CategoriaDiagnosticoViewSet, basename="categoria"
 )
-
+# GET /api/odontogram/catalogo/diagnosticos/
 router.register(r"catalogo/diagnosticos", DiagnosticoViewSet, basename="diagnostico")
 
 router.register(r"catalogo/areas", AreaAfectadaViewSet, basename="area")
-
+#GET /api/odontogram/catalogo/atributos-clinicos/
 router.register(r"catalogo/atributos-clinicos", TipoAtributoClinicoViewSet, basename="atributo-clinico")
 
 # INSTANCIAS (CRUD)
@@ -70,7 +70,7 @@ router.register(r"pacientes", PacienteViewSet, basename="paciente")
 router.register(r"dientes", DienteViewSet, basename="diente")
 
 router.register(r"superficies", SuperficieDentalViewSet, basename="superficie")
-
+# 
 router.register(
     r"diagnosticos-aplicados", DiagnosticoDentalViewSet, basename="diagnostico-aplicado"
 )

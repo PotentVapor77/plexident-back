@@ -39,18 +39,20 @@ class AreaAfectadaSerializer(serializers.ModelSerializer):
     class Meta:
         model = AreaAfectada
         fields = '__all__'
-
-
-class TipoAtributoClinicoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TipoAtributoClinico
-        fields = '__all__'
-
-
 class OpcionAtributoClinicoSerializer(serializers.ModelSerializer):
     class Meta:
         model = OpcionAtributoClinico
-        fields = '__all__'
+        fields = ['id', 'key', 'nombre', 'prioridad', 'orden', 'activo']
+
+class TipoAtributoClinicoSerializer(serializers.ModelSerializer):
+    opciones = OpcionAtributoClinicoSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = TipoAtributoClinico
+        fields = ['id', 'key', 'nombre', 'descripcion', 'activo', 'opciones']
+
+
+
 
 
 class DiagnosticoListSerializer(serializers.ModelSerializer):
@@ -390,7 +392,6 @@ class GuardarOdontogramaCompletoSerializer(serializers.Serializer):
 
 
 class OpcionAtributoSerializer(serializers.Serializer):
-    """Serializer para opciones de atributos clínicos"""
     key = serializers.CharField()
     nombre = serializers.CharField()
     prioridad = serializers.IntegerField(allow_null=True)
@@ -398,13 +399,12 @@ class OpcionAtributoSerializer(serializers.Serializer):
 
 
 class TipoAtributoConOpcionesSerializer(serializers.Serializer):
-    """Serializer para tipo de atributo con sus opciones"""
     key = serializers.CharField()
     nombre = serializers.CharField()
     descripcion = serializers.CharField()
-    tipo_input = serializers.CharField(default='select')  # select, radio, checkbox, text
+    tipo_input = serializers.CharField(default='select')
     requerido = serializers.BooleanField(default=False)
-    opciones = OpcionAtributoSerializer(many=True)
+    opciones = OpcionAtributoSerializer(many=True, read_only=True)
 
 
 class DiagnosticoListSerializer(serializers.ModelSerializer):

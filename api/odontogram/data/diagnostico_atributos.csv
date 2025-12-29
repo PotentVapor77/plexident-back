@@ -6,5 +6,6 @@ endodoncia_realizada,material_restauracion
 corona_realizada,material_restauracion
 corona_realizada,estado_restauracion
 extraccion_indicada,motivo_extraccion
-perdida_caries,motivo_extraccion
+extraccion_otra_causa,motivo_extraccion
 perdida_otra_causa,motivo_extraccion
+movilidad_dental,movilidad_dental

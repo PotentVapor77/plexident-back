@@ -279,6 +279,19 @@ class AtributoClinicoFactory:
         return tipo
 
     @classmethod
+    def crear_movilidad_dental(cls) -> TipoAtributoClinico:
+        """
+        Factory específico para crear el atributo de movilidad dental
+        Con grados 0-3 según la escala de Miller y prioridades crecientes
+        """
+        return cls.crear_desde_plantilla(
+            plantilla='grados_movilidad',
+            key='movilidad_dental',
+            nombre='Movilidad Dental',
+            descripcion='Grado de movilidad del diente según escala de Miller'
+        )
+
+    @classmethod
     def crear_estado_procedimiento(
         cls,
         key: str,

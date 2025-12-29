@@ -248,7 +248,7 @@ class OdontogramaService:
 
         # Obtener todos los dientes del paciente
         dientes = Diente.objects.filter(paciente=paciente).prefetch_related(
-            'superficies__diagnosticos'
+            'superficies__diagnosticos__diagnostico_catalogo'
         )
 
         for diente in dientes:
@@ -264,6 +264,8 @@ class OdontogramaService:
                     odontograma_data[codigo_fdi][superficie.nombre].append({
                         'id': str(diag_dental.id),
                         'procedimientoId': diag_dental.diagnostico_catalogo.key,
+                        'nombre': diag_dental.diagnostico_catalogo.nombre,
+                        'siglas': diag_dental.diagnostico_catalogo.siglas,
                         'colorHex': diag_dental.diagnostico_catalogo.simbolo_color,
                         'secondaryOptions': diag_dental.atributos_clinicos,
                         'descripcion': diag_dental.descripcion,
