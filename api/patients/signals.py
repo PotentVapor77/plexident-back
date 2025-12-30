@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 def paciente_audit(sender, instance, created, **kwargs):
     """Signal para auditar pacientes - VERSIÓN CORREGIDA"""
     try:
-        # ✅ SIMPLIFICADO: usar directamente la propiedad
+        #  SIMPLIFICADO: usar directamente la propiedad
         nombre = instance.nombre_completo
         
         if created:

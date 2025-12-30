@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Usuario
+from .models import  PermisoUsuario, Usuario
 import re
 
 class UsuarioSerializer(serializers.ModelSerializer):
@@ -8,7 +8,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         model = Usuario
         fields = [
             'id', 'nombres', 'apellidos', 'username',
-            'telefono', 'correo', 'rol', 'activo',
+            'telefono', 'correo', 'rol','is_active',
             'creado_por', 'actualizado_por',
             'fecha_creacion', 'fecha_modificacion'
         ]
@@ -24,7 +24,7 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=True,
         style={'input_type': 'password'},
-        min_length=8,  # ✅ Frontend exige 8
+        min_length=8,  #  Frontend exige 8
         error_messages={
             'min_length': 'La contraseña debe tener al menos 8 caracteres.',
             'required': 'La contraseña es requerida.'
@@ -41,7 +41,7 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
         model = Usuario
         fields = [
             'nombres', 'apellidos', 'username', 'telefono',
-            'correo', 'rol', 'password', 'activo'  # ✅ Añadir activo
+            'correo', 'rol', 'password', 'is_active',
         ]
     
     def validate_nombres(self, value):
@@ -89,34 +89,41 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("El rol es requerido.")
         
-        # ✅ ROLES ACTUALIZADOS
-        roles_validos = ['Administrador', 'Odontólogo', 'Asistente']
+        #  ROLES ACTUALIZADOS
+        roles_validos = ['Administrador', 'Odontologo', 'Asistente']
         if value not in roles_validos:
             raise serializers.ValidationError(
                 f"Rol inválido. Los roles válidos son: {', '.join(roles_validos)}"
             )
         return value
     
+     
     def create(self, validated_data):
         password = validated_data.pop('password')
         
-        # ✅ Generar username automáticamente si no se proporciona
+        # Respaldo: generar username solo si NO viene del frontend
         if not validated_data.get('username'):
-            from django.utils.text import slugify
-            import random
+            import unicodedata
+            import re
             
-            base_username = slugify(
-                f"{validated_data['nombres']}{validated_data['apellidos']}"
-            )[:20]
+            nombres = validated_data['nombres'].strip()
+            apellidos = validated_data['apellidos'].strip()
+            
+            primera_letra = nombres.split()[0][0].lower() if nombres else ''
+            primer_apellido = apellidos.split()[0] if apellidos else ''
+            
+            # Normalizar (remover acentos)
+            primer_apellido_normalizado = unicodedata.normalize('NFD', primer_apellido.lower())
+            primer_apellido_normalizado = re.sub(r'[\u0300-\u036f]', '', primer_apellido_normalizado)
+            primer_apellido_normalizado = re.sub(r'[^a-z0-9]', '', primer_apellido_normalizado)
+            
+            base_username = f"{primera_letra}{primer_apellido_normalizado}"
             username = base_username
             counter = 1
             
             while Usuario.objects.filter(username=username).exists():
-                username = f"{base_username}{random.randint(1, 999)}"
+                username = f"{base_username}{counter}"
                 counter += 1
-                if counter > 100:  # Evitar bucle infinito
-                    username = f"{base_username}{random.randint(1000, 9999)}"
-                    break
             
             validated_data['username'] = username
         
@@ -126,11 +133,12 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
         return usuario
 
 
+
 class UsuarioUpdateSerializer(serializers.ModelSerializer):
     """Serializer para actualización de usuarios"""
     password = serializers.CharField(
         write_only=True,
-        required=False,  # ✅ NO obligatorio en update
+        required=False,  #  NO obligatorio en update
         style={'input_type': 'password'},
         min_length=8,
         allow_blank=True,
@@ -141,9 +149,9 @@ class UsuarioUpdateSerializer(serializers.ModelSerializer):
         model = Usuario
         fields = [
             'nombres', 'apellidos', 'telefono', 'correo',
-            'rol', 'password', 'activo'
+            'rol','is_active','password'
         ]
-        read_only_fields = ['username']  # ✅ Username no se puede cambiar
+        read_only_fields = ['username']  #  Username no se puede cambiar
     
     def validate_telefono(self, value):
         if not value:
@@ -169,7 +177,7 @@ class UsuarioUpdateSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("El rol es requerido.")
         
-        roles_validos = ['Administrador', 'Odontólogo', 'Asistente']
+        roles_validos = ['Administrador', 'Odontologo', 'Asistente']
         if value not in roles_validos:
             raise serializers.ValidationError(
                 f"Rol inválido. Los roles válidos son: {', '.join(roles_validos)}"
@@ -189,3 +197,55 @@ class UsuarioUpdateSerializer(serializers.ModelSerializer):
         
         instance.save()
         return instance
+
+
+#permiso por usuario
+class PermisoUsuarioSerializer(serializers.ModelSerializer):
+    usuario_id = serializers.UUIDField(source='usuario.id', read_only=True)
+    usuario_nombre = serializers.CharField(source='usuario.get_full_name', read_only=True)
+    usuario_rol = serializers.CharField(source='usuario.rol', read_only=True)
+    
+    class Meta:
+        model = PermisoUsuario
+        fields = ['id', 'usuario_id', 'usuario_nombre', 'usuario_rol', 'modelo', 'metodos_permitidos']
+
+
+
+class PermisoUsuarioCreateUpdateSerializer(serializers.ModelSerializer):
+    usuario_id = serializers.UUIDField(write_only=True, required=True)
+
+    class Meta:
+        model = PermisoUsuario
+        fields = ['usuario_id', 'modelo', 'metodos_permitidos']
+
+    def validate_usuario_id(self, value):
+        try:
+            usuario = Usuario.objects.get(id=value)
+            
+            #  VALIDAR: No permitir asignar permisos a Administradores
+            if usuario.rol == 'Administrador':
+                raise serializers.ValidationError(
+                    "No se pueden asignar permisos a usuarios Administradores"
+                )
+            
+            return value
+        except Usuario.DoesNotExist:
+            raise serializers.ValidationError("Usuario no encontrado")
+
+    def create(self, validated_data):
+        usuario_id = validated_data.pop('usuario_id')
+        usuario = Usuario.objects.get(id=usuario_id)
+        
+        #  OPTIMIZACIÓN: No crear si metodos_permitidos está vacío
+        metodos = validated_data.get('metodos_permitidos', [])
+        if not metodos:
+            return None  # O lanzar excepción si prefieres
+        
+        return PermisoUsuario.objects.create(usuario=usuario, **validated_data)
+
+    def update(self, instance, validated_data):
+        usuario_id = validated_data.pop('usuario_id', None)
+        if usuario_id:
+            usuario = Usuario.objects.get(id=usuario_id)
+            instance.usuario = usuario
+        return super().update(instance, validated_data)

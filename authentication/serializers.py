@@ -29,7 +29,23 @@ class AuthUserSerializer(serializers.ModelSerializer):
             'correo',
             'telefono',
             'rol',
-            'activo',  # ✅ Cambiar a 'activo' (campo principal del modelo)
+            'is_active',  # 
             'fecha_creacion'
         ]
         read_only_fields = fields
+
+class PasswordResetSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    
+    def validate_email(self, value):
+        try:
+            user = Usuario.objects.get(correo__iexact=value, is_active=True)
+        except Usuario.DoesNotExist:
+            # No revelar si el email existe (seguridad)
+            raise serializers.ValidationError("Si el email existe, recibirás instrucciones.")
+        return value
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    uid = serializers.CharField()
+    new_password = serializers.CharField(min_length=8)

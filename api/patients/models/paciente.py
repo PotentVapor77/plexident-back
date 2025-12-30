@@ -50,16 +50,15 @@ class Paciente(BaseModel):
     class Meta:
         verbose_name = "Paciente"
         verbose_name_plural = "Pacientes"
-        ordering = ['apellidos', 'nombres']  # ✅ CORREGIDO
+        ordering = ['apellidos', 'nombres']  
         indexes = [
-            models.Index(fields=['apellidos', 'nombres']),  # ✅ CORREGIDO
-            models.Index(fields=['cedula_pasaporte']),
+            models.Index(fields=['apellidos', 'nombres']),  
             models.Index(fields=['activo']),
         ]
     
     def clean(self):
         """Validaciones del formulario"""
-        if not self.nombres or not self.apellidos:  # ✅ CORREGIDO
+        if not self.nombres or not self.apellidos:  
             raise ValidationError("Los nombres y apellidos son obligatorios.")
         if not self.cedula_pasaporte:
             raise ValidationError("La cédula o pasaporte es obligatorio.")
@@ -88,7 +87,7 @@ class Paciente(BaseModel):
     @property
     def nombre_completo(self):
         """Retorna el nombre completo del paciente"""
-        return f"{self.apellidos}, {self.nombres}".strip()  # ✅ CORREGIDO
+        return f"{self.apellidos}, {self.nombres}".strip()  
     
     @property
     def edad_completa(self):

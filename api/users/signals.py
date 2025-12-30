@@ -13,7 +13,7 @@ def set_auth_permissions(sender, instance, **kwargs):
     """
     Configura permisos ANTES de guardar - EVITA BUCLE INFINITO
     """
-    # ✅ Configurar is_staff e is_superuser según rol ACTUALIZADO
+    #  Configurar is_staff e is_superuser según rol ACTUALIZADO
     if instance.rol == 'Administrador':
         instance.is_staff = True
         instance.is_superuser = True
@@ -27,7 +27,6 @@ def set_auth_permissions(sender, instance, **kwargs):
     # Si es nuevo usuario y es admin, activarlo
     if not instance.pk and instance.rol == 'Administrador':
         instance.is_active = True
-        instance.activo = True
 
 
 @receiver(post_save, sender=Usuario)

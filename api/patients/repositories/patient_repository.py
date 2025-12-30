@@ -5,7 +5,7 @@ from django.core.exceptions import ObjectDoesNotExist
 class PatientRepository:
     @staticmethod
     def get_all():
-        return Paciente.objects.filter(activo=True).order_by('apellidos', 'nombres')  # ✅ CORREGIDO
+        return Paciente.objects.filter(activo=True).order_by('apellidos', 'nombres')  
     
     @staticmethod
     def get_by_id(id_paciente):

@@ -7,7 +7,7 @@ class AuthService:
     def authenticate_user(username: str, password: str):
         """Autentica un usuario y lo retorna si es válido"""
         try:
-            usuario = Usuario.objects.get(username=username, activo=True)
+            usuario = Usuario.objects.get(username=username, is_active=True)
             if usuario.check_password(password) and usuario.is_active:
                 return usuario
         except Usuario.DoesNotExist:

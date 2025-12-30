@@ -3,10 +3,13 @@ from django.db import models
 from .base import BaseModel
 from .paciente import Paciente
 from .constants import (
-    CARDIOPATIA_FAMILIAR_CHOICES, HIPERTENSION_FAMILIAR_CHOICES,
-    ENFERMEDAD_VASCULAR_CHOICES, CANCER_FAMILIAR_CHOICES,
+    CARDIOPATIA_FAMILIAR_CHOICES, 
+    HIPERTENSION_FAMILIAR_CHOICES,
+    ENFERMEDAD_VASCULAR_CHOICES, 
+    CANCER_FAMILIAR_CHOICES,
     ENFERMEDAD_MENTAL_CHOICES
 )
+
 
 class AntecedentesFamiliares(BaseModel):
     """Antecedentes patológicos familiares del paciente (Sección E)"""
@@ -20,7 +23,7 @@ class AntecedentesFamiliares(BaseModel):
     
     # 1. CARDIOPATÍA
     cardiopatia_familiar = models.CharField(
-        max_length=10,
+        max_length=15,  # ✅ Aumentado
         choices=CARDIOPATIA_FAMILIAR_CHOICES,
         default='NO',
         verbose_name="Cardiopatía familiar"
@@ -28,7 +31,7 @@ class AntecedentesFamiliares(BaseModel):
     
     # 2. HIPERTENSIÓN ARTERIAL
     hipertension_arterial_familiar = models.CharField(
-        max_length=10,
+        max_length=15,  # ✅ Aumentado
         choices=HIPERTENSION_FAMILIAR_CHOICES,
         default='NO',
         verbose_name="Hipertensión arterial familiar"
@@ -36,42 +39,57 @@ class AntecedentesFamiliares(BaseModel):
     
     # 3. ENFERMEDAD C. VASCULAR
     enfermedad_vascular_familiar = models.CharField(
-        max_length=10,
+        max_length=15,  # ✅ Aumentado
         choices=ENFERMEDAD_VASCULAR_CHOICES,
         default='NO',
         verbose_name="Enfermedad vascular familiar"
     )
     
     # 4. ENDÓCRINO METABÓLICO
-    endocrino_metabolico_familiar = models.BooleanField(default=False, verbose_name="Endócrino metabólico familiar")
+    endocrino_metabolico_familiar = models.BooleanField(
+        default=False, 
+        verbose_name="Endócrino metabólico familiar"
+    )
     
     # 5. CÁNCER
     cancer_familiar = models.CharField(
-        max_length=10,
+        max_length=15,  # ✅ Aumentado
         choices=CANCER_FAMILIAR_CHOICES,
         default='NO',
         verbose_name="Cáncer familiar"
     )
     
     # 6. TUBERCULOSIS
-    tuberculosis_familiar = models.BooleanField(default=False, verbose_name="Tuberculosis familiar")
+    tuberculosis_familiar = models.BooleanField(
+        default=False, 
+        verbose_name="Tuberculosis familiar"
+    )
     
     # 7. ENFERMEDAD MENTAL
     enfermedad_mental_familiar = models.CharField(
-        max_length=10,
+        max_length=15,  # ✅ Aumentado
         choices=ENFERMEDAD_MENTAL_CHOICES,
         default='NO',
         verbose_name="Enfermedad mental familiar"
     )
     
     # 8. ENFERMEDAD INFECCIOSA
-    enfermedad_infecciosa_familiar = models.BooleanField(default=False, verbose_name="Enfermedad infecciosa familiar")
+    enfermedad_infecciosa_familiar = models.BooleanField(
+        default=False, 
+        verbose_name="Enfermedad infecciosa familiar"
+    )
     
     # 9. MALFORMACIÓN
-    malformacion_familiar = models.BooleanField(default=False, verbose_name="Malformación familiar")
+    malformacion_familiar = models.BooleanField(
+        default=False, 
+        verbose_name="Malformación familiar"
+    )
     
     # 10. OTRO
-    otros_antecedentes_familiares = models.TextField(blank=True, verbose_name="Otros antecedentes familiares")
+    otros_antecedentes_familiares = models.TextField(
+        blank=True, 
+        verbose_name="Otros antecedentes familiares"
+    )
     
     class Meta:
         verbose_name = "Antecedentes Familiares"
@@ -79,7 +97,8 @@ class AntecedentesFamiliares(BaseModel):
         ordering = ['paciente__apellidos', 'paciente__nombres']
     
     def __str__(self):
-        return f"Antecedentes familiares de {self.paciente.nombre_completo}"
+        # ✅ CORREGIDO: Usa apellidos y nombres reales
+        return f"Antecedentes familiares de {self.paciente.apellidos}, {self.paciente.nombres}"
     
     @property
     def lista_antecedentes(self):
@@ -112,5 +131,9 @@ class AntecedentesFamiliares(BaseModel):
         
         if self.malformacion_familiar:
             antecedentes.append("Malformación")
+        
+        # ✅ AGREGADO: Otros antecedentes
+        if self.otros_antecedentes_familiares.strip():
+            antecedentes.append(f"Otros: {self.otros_antecedentes_familiares.strip()}")
         
         return antecedentes

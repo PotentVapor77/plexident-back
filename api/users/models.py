@@ -26,8 +26,8 @@ class UsuarioManager(BaseUserManager):
     def create_superuser(self, username, correo, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('rol', 'Administrador')  # ✅ Actualizado
-        extra_fields.setdefault('activo', True)
+        extra_fields.setdefault('rol', 'Administrador')  
+        extra_fields.setdefault('is_active', True)
         
         return self.create_user(username, correo, password, **extra_fields)
     
@@ -36,7 +36,7 @@ class UsuarioManager(BaseUserManager):
 
 
 class Usuario(AbstractBaseUser, PermissionsMixin):
-    # ✅ ROLES ACTUALIZADOS
+    #  ROLES ACTUALIZADOS
     ROLES = [
         ('Administrador', 'Administrador'),
         ('Odontologo', 'Odontologo'),
@@ -79,9 +79,10 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     )
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
+
+    reset_password_token = models.CharField(max_length=128,null=True, blank=True,)
+    reset_password_expires = models.DateTimeField(null=True, blank=True)
     
-    #  Campo activo (o usar is_active directamente)
-    activo = models.BooleanField(default=True)
     
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['nombres', 'apellidos', 'correo', 'telefono', 'rol']
@@ -110,15 +111,7 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         except Exception:
             return False
     
-    def save(self, *args, **kwargs):
-        # Sincronizar activo con is_active
-        self.is_active = self.activo
-        
-        # Si la contraseña parece estar en texto plano, hashearla
-        if self.password and len(self.password) < 60:
-            self.set_password(self.password)
-        
-        super().save(*args, **kwargs)
+
     
     @classmethod
     def authenticate(cls, username, password):
@@ -152,3 +145,23 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         verbose_name = 'Usuario'
         verbose_name_plural = 'Usuarios'
         ordering = ['-fecha_creacion']
+
+
+# api/users/models.py - AÑADIR después de PermisoRol
+
+class PermisoUsuario(models.Model):
+    """Permisos específicos por usuario (no por rol)"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, unique=True)
+    usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='permisos_usuario')
+    modelo = models.CharField(max_length=50)  # 'usuario', 'paciente', 'agenda'
+    metodos_permitidos = models.JSONField(default=list)  # ['GET', 'POST']
+    #fecha_creacion = models.DateTimeField(auto_now_add=True)
+    #fecha_modificacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['usuario', 'modelo']
+        verbose_name = 'Permiso de Usuario'
+        verbose_name_plural = 'Permisos de Usuarios'
+    
+    def __str__(self):
+        return f"{self.usuario.username} - {self.modelo}: {self.metodos_permitidos}"

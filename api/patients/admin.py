@@ -45,7 +45,7 @@ class PacienteAdmin(admin.ModelAdmin):
     list_per_page = 20
     list_max_show_all = 100
     list_display_links = ('cedula_pasaporte', 'get_nombre_completo')
-    ordering = ('apellidos', 'nombres')  # ✅ CORREGIDO
+    ordering = ('apellidos', 'nombres')  
     readonly_fields = ('fecha_creacion', 'fecha_modificacion', 'creado_por', 'actualizado_por')
     
     # ================== FIELDSETS ORGANIZADOS ==================
@@ -101,9 +101,9 @@ class PacienteAdmin(admin.ModelAdmin):
     
     def get_nombre_completo(self, obj):
         """Muestra el nombre completo en el listado"""
-        return obj.nombre_completo  # ✅ CORREGIDO - Simplificado
+        return obj.nombre_completo  
     get_nombre_completo.short_description = 'Nombre Completo'
-    get_nombre_completo.admin_order_field = 'apellidos'  # ✅ CORREGIDO
+    get_nombre_completo.admin_order_field = 'apellidos' 
     
     def get_sexo_display(self, obj):
         """Muestra el sexo"""

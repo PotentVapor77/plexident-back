@@ -24,7 +24,7 @@ class CSRFExemptMiddleware:
     """
     def __init__(self, get_response):
         self.get_response = get_response
-        # ✅ Patrones de URLs que NO requieren CSRF
+        # Patrones de URLs que NO requieren CSRF
         self.exempt_patterns = [
             r'^api/auth/login/?$',
             r'^api/auth/logout/?$',

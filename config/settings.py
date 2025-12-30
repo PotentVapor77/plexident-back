@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
+    'django_filters', 
     'django_currentuser',
     'django_extensions',
     
@@ -76,7 +77,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -167,11 +168,17 @@ AUTHENTICATION_BACKENDS = [
 # ============================================================================
 
 REST_FRAMEWORK = {
+
+     # Renderer personalizado - Formatea TODAS las respuestas automáticamente
+
     'DEFAULT_RENDERER_CLASSES': [
         'api.utils.renderers.StandardizedJSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
-    
+
+    #  Exception handler personalizado - Maneja TODOS los errores
+    'EXCEPTION_HANDLER': 'api.utils.exception_handlers.custom_exception_handler',
+     # Autenticación
     'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
         'rest_framework.parsers.FormParser',
@@ -181,7 +188,7 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'authentication.jwt_cookie_authentication.JWTCookieAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
+        #'rest_framework.authentication.SessionAuthentication',
     ],
     
     'DEFAULT_PERMISSION_CLASSES': [
@@ -452,5 +459,17 @@ if not DEBUG:
 # EMAIL SETTINGS
 # ============================================================================
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# URL del frontend para enlaces en emails
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = os.getenv(
+    "DEFAULT_FROM_EMAIL",
+    f"FamySALUD <{EMAIL_HOST_USER}>"
+)
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 

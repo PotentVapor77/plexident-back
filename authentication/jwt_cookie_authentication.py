@@ -15,7 +15,7 @@ class JWTCookieAuthentication(JWTAuthentication):
     """
     
     def authenticate(self, request):
-        # ✅ Primero intentar leer de cookie
+        #  Primero intentar leer de cookie
         cookie_name = getattr(settings, 'SIMPLE_JWT', {}).get('AUTH_COOKIE', 'access_token')
         raw_token = request.COOKIES.get(cookie_name)
         

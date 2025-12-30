@@ -26,7 +26,6 @@ def set_auth_permissions(sender, instance, **kwargs):
     # Si es nuevo usuario y es admin, activarlo
     if not instance.pk and instance.rol == 'Administrador':  
         instance.is_active = True
-        instance.activo = True  #  Sincronizar ambos campos
 
 
 @receiver(post_save, sender=Usuario)
