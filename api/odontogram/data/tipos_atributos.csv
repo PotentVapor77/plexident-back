@@ -3,3 +3,4 @@ material_restauracion,Material de Restauración,Material utilizado en obturacion
 estado_restauracion,Estado de Restauración,Condición actual de la restauración,True
 localizacion_caries,Localización de Caries,Profundidad o extensión de la caries,True
 motivo_extraccion,Motivo de Extracción,Razón de la extracción dental,True
+movilidad_dental,Movilidad Dental,Grado de movilidad del diente segun escala de Miller,True

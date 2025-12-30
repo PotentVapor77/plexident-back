@@ -39,18 +39,20 @@ class AreaAfectadaSerializer(serializers.ModelSerializer):
     class Meta:
         model = AreaAfectada
         fields = '__all__'
-
-
-class TipoAtributoClinicoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TipoAtributoClinico
-        fields = '__all__'
-
-
 class OpcionAtributoClinicoSerializer(serializers.ModelSerializer):
     class Meta:
         model = OpcionAtributoClinico
-        fields = '__all__'
+        fields = ['id', 'key', 'nombre', 'prioridad', 'orden', 'activo']
+
+class TipoAtributoClinicoSerializer(serializers.ModelSerializer):
+    opciones = OpcionAtributoClinicoSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = TipoAtributoClinico
+        fields = ['id', 'key', 'nombre', 'descripcion', 'activo', 'opciones']
+
+
+
 
 
 class DiagnosticoListSerializer(serializers.ModelSerializer):
@@ -250,7 +252,7 @@ class SuperficieDentalSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = SuperficieDental
-        fields = ['nombre', 'codigo_fhir_superficie', 'diagnosticos']
+        fields = ['id', 'nombre', 'codigo_fhir_superficie', 'diagnosticos']
 
 
 class DienteSerializer(serializers.ModelSerializer):
@@ -388,6 +390,68 @@ class GuardarOdontogramaCompletoSerializer(serializers.Serializer):
             odontograma_data=validated_data['odontograma_data']
         )
 
+
+class OpcionAtributoSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    nombre = serializers.CharField()
+    prioridad = serializers.IntegerField(allow_null=True)
+    orden = serializers.IntegerField()
+
+
+class TipoAtributoConOpcionesSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    nombre = serializers.CharField()
+    descripcion = serializers.CharField()
+    tipo_input = serializers.CharField(default='select')
+    requerido = serializers.BooleanField(default=False)
+    opciones = OpcionAtributoSerializer(many=True, read_only=True)
+
+
+class DiagnosticoListSerializer(serializers.ModelSerializer):
+    categoria = CategoriaDiagnosticoSerializer(read_only=True)
+    atributos_relacionados = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Diagnostico
+        fields = '__all__'
+    
+    def get_atributos_relacionados(self, obj):
+        """
+        Obtiene los atributos clínicos relacionados al diagnóstico
+        desde la tabla intermedia DiagnosticoAtributoClinico
+        """
+        from api.odontogram.models import DiagnosticoAtributoClinico
+        
+        # Obtener relaciones de este diagnóstico
+        relaciones = DiagnosticoAtributoClinico.objects.filter(
+            diagnostico=obj
+        ).select_related('tipo_atributo').prefetch_related('tipo_atributo__opciones')
+        
+        atributos = []
+        for rel in relaciones:
+            tipo_attr = rel.tipo_atributo
+            
+            # Obtener opciones activas ordenadas
+            opciones = tipo_attr.opciones.filter(activo=True).order_by('orden')
+            
+            atributos.append({
+                'key': tipo_attr.key,
+                'nombre': tipo_attr.nombre,
+                'descripcion': tipo_attr.descripcion,
+                'tipo_input': 'select',  # Puedes hacerlo dinámico si tienes un campo en TipoAtributoClinico
+                'requerido': rel.requerido if hasattr(rel, 'requerido') else False,
+                'opciones': [
+                    {
+                        'key': opc.key,
+                        'nombre': opc.nombre,
+                        'prioridad': opc.prioridad,
+                        'orden': opc.orden,
+                    }
+                    for opc in opciones
+                ]
+            })
+        
+        return atributos
 
 # =============================================================================
 # SERIALIZERS PARA HISTORIAL

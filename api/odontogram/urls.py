@@ -48,6 +48,7 @@ from api.odontogram.views.form033_views import (
 )
 
 
+from api.odontogram.views.odontograma_views import OdontogramaCompletoView, guardar_odontograma_completo, obtener_definiciones_superficies
 # ==================== ROUTER SETUP ====================
 
 router = DefaultRouter()
@@ -56,12 +57,12 @@ router = DefaultRouter()
 router.register(
     r"catalogo/categorias", CategoriaDiagnosticoViewSet, basename="categoria"
 )
-
+# GET /api/odontogram/catalogo/diagnosticos/
 router.register(r"catalogo/diagnosticos", DiagnosticoViewSet, basename="diagnostico")
 
 router.register(r"catalogo/areas", AreaAfectadaViewSet, basename="area")
-
-router.register(r"catalogo/atributos", TipoAtributoClinicoViewSet, basename="atributo")
+#GET /api/odontogram/catalogo/atributos-clinicos/
+router.register(r"catalogo/atributos-clinicos", TipoAtributoClinicoViewSet, basename="atributo-clinico")
 
 # INSTANCIAS (CRUD)
 router.register(r"pacientes", PacienteViewSet, basename="paciente")
@@ -69,7 +70,7 @@ router.register(r"pacientes", PacienteViewSet, basename="paciente")
 router.register(r"dientes", DienteViewSet, basename="diente")
 
 router.register(r"superficies", SuperficieDentalViewSet, basename="superficie")
-
+# 
 router.register(
     r"diagnosticos-aplicados", DiagnosticoDentalViewSet, basename="diagnostico-aplicado"
 )
@@ -162,7 +163,26 @@ urlpatterns = [
         descargar_pdf_guardado,
         name="form033-descargar",
     ),
-]
+    path(
+        'definiciones-superficies/', 
+        obtener_definiciones_superficies, 
+        name='definiciones-superficies'
+    ),
+    
+    # POST /api/odontogram/pacientes/{paciente_id}/guardar-odontograma/
+    path(
+        "pacientes/<uuid:paciente_id>/guardar-odontograma/",
+        guardar_odontograma_completo,
+        name='guardar-odontograma-completo'
+    ),
+    
+    #  /api/odontogram/odontogramas/{paciente_id}/completo/
+    path(
+        "odontogramas/<uuid:paciente_id>/completo/",
+        OdontogramaCompletoView.as_view(),
+        name="odontograma-completo",
+    ),
+]   
 
 
 # ==================== ENDPOINT SUMMARY ====================
