@@ -1,4 +1,5 @@
 # api/odontogram/management/commands/cargar_odontograma_csv.py
+# python manage.py cargar_odontograma_csv --clear
 import csv
 import json
 import os

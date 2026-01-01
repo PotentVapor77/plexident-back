@@ -14,7 +14,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from django.db.models import Q
 import logging
-
+from django.contrib.auth import get_user_model
 
 from api.odontogram.models import (
     # Catálogo
@@ -35,7 +35,7 @@ from api.odontogram.models import (
 
 logger = logging.getLogger(__name__)
 
-
+Usuario = get_user_model()
 # =============================================================================
 # FUNCIÓN AUXILIAR: Obtener nombre completo del paciente
 # =============================================================================
@@ -291,10 +291,10 @@ def validar_diagnostico_dental(sender, instance, **kwargs):
 # =============================================================================
 # RECEIVERS PARA HISTORIAL Y AUDITORÍA
 # =============================================================================
-
+"""
 @receiver(post_save, sender=DiagnosticoDental)
 def registrar_cambio_diagnostico_dental(sender, instance, created, **kwargs):
-    """Registra en historial cuando se agrega un diagnóstico dental"""
+    Registra en historial cuando se agrega un diagnóstico dental
     if created:
         HistorialOdontograma.objects.create(
             diente=instance.superficie.diente,
@@ -307,7 +307,7 @@ def registrar_cambio_diagnostico_dental(sender, instance, created, **kwargs):
                 'atributos': instance.atributos_clinicos,
             }
         )
-
+ """
 
 @receiver(post_delete, sender=DiagnosticoDental)
 def registrar_eliminacion_diagnostico_dental(sender, instance, **kwargs):
@@ -458,3 +458,19 @@ def actualizar_estadisticas_paciente(sender, instance, **kwargs):
     }
     cache.set(f'odontograma:stats:paciente:{paciente.id}', stats, timeout=3600)
     logger.debug(f"Estadísticas del paciente {paciente.id} actualizadas")
+
+
+
+@receiver(post_save, sender=HistorialOdontograma)
+def invalidar_cache_historial(sender, instance, **kwargs):
+    """Invalida cachés relacionados cuando se crea historial"""
+    paciente_id = instance.diente.paciente.id
+    version_id = instance.version_id
+    
+    # Invalidar cachés
+    cache.delete(f'historial:versiones:{paciente_id}')
+    cache.delete(f'historial:stats:{paciente_id}')
+    cache.delete(f'odontograma:completo:{paciente_id}')
+    cache.delete(f'odontograma:paciente:{paciente_id}')
+    
+    logger.debug(f"Caché invalidado para historial paciente {paciente_id}")
