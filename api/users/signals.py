@@ -36,3 +36,72 @@ def log_usuario_creado(sender, instance, created, **kwargs):
     """
     if created:
         logger.info(f"Usuario creado: {instance.username} - Rol: {instance.rol}")
+        
+        
+        
+
+@receiver(post_save, sender=Usuario)
+def crear_permisos_default_odontologo(sender, instance, created, **kwargs):
+    """
+    Crea permisos por defecto cuando se crea un usuario con rol Odontólogo.
+    Se ejecuta DESPUÉS de guardar para evitar problemas de integridad.
+    """
+    # Solo para usuarios nuevos con rol Odontólogo
+    if not created:
+        return
+    
+    if instance.rol != 'Odontologo':
+        return
+    
+    from api.users.models import PermisoUsuario
+    
+    # Definir permisos por defecto para odontólogos
+    permisos_default = [
+        {
+            'modelo': 'paciente',
+            'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH']
+        },
+        {
+            'modelo': 'historialodontograma',
+            'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']  # ← ACTUALIZADO
+        },
+        {
+            'modelo': 'diente',
+            'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH']
+        },
+        {
+            'modelo': 'diagnosticodental',
+            'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+        },
+        # Agregar más modelos según sea necesario
+        {
+            'modelo': 'superficie',
+            'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH']
+        },
+    ]
+    
+    # Crear cada permiso
+    permisos_creados = []
+    for permiso_config in permisos_default:
+        permiso, created_permiso = PermisoUsuario.objects.get_or_create(
+            usuario=instance,
+            modelo=permiso_config['modelo'],
+            defaults={
+                'metodos_permitidos': permiso_config['metodos_permitidos']
+            }
+        )
+        
+        if created_permiso:
+            permisos_creados.append(permiso_config['modelo'])
+            logger.info(
+                f"✓ Permiso creado para {instance.username}: "
+                f"modelo='{permiso_config['modelo']}', "
+                f"métodos={permiso_config['metodos_permitidos']}"
+            )
+    
+    if permisos_creados:
+        logger.info(
+            f"🔐 Permisos creados automáticamente para odontólogo '{instance.username}': "
+            f"{', '.join(permisos_creados)}"
+        )
+        

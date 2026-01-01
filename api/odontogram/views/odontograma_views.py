@@ -17,7 +17,6 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-
 from api.odontogram.models import (
     Paciente,
     Diente,
@@ -25,7 +24,9 @@ from api.odontogram.models import (
     DiagnosticoDental,
     HistorialOdontograma,
 )
-
+from django.core.cache import cache
+from rest_framework.pagination import CursorPagination
+from rest_framework.pagination import PageNumberPagination
 from api.odontogram.serializers import (
     PacienteBasicSerializer,
     PacienteDetailSerializer,
@@ -40,13 +41,16 @@ from api.odontogram.serializers import (
 from api.odontogram.services.odontogram_services import OdontogramaService
 from api.odontogram.serializers.bundle_serializers import FHIRBundleSerializer
 from api.odontogram.serializers.serializers import DienteSerializer
+from api.users.permissions import UserBasedPermission
+from django.db import models
 
 logger = logging.getLogger(__name__)
 
 
 class PacienteViewSet(viewsets.ModelViewSet):
     """ViewSet para gestionar pacientes"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, UserBasedPermission]
+    permission_model_name = 'paciente'
 
     def get_queryset(self):
         queryset = Paciente.objects.all()
@@ -108,6 +112,123 @@ class PacienteViewSet(viewsets.ModelViewSet):
         logger.info(f"Odontograma cargado para paciente {paciente.id}: {len(dientes_data)} dientes")
         
         return Response(response_data)
+    
+    @action(detail=False, methods=['get'])
+    def por_version(self, request):
+        """
+        GET /api/odontogram/historial/por_version/?version_id=...
+        
+        Retorna TODOS los cambios de una versión específica SIN paginación
+        Ideal para reconstruir estado del odontograma en ese momento
+        """
+        version_id = request.query_params.get('version_id')
+        
+        if not version_id:
+            return Response(
+                {'error': 'version_id es requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        cache_key = f'historial:version:{version_id}'
+        data = cache.get(cache_key)
+        
+        if not data:
+            cambios = HistorialOdontograma.objects.filter(
+                version_id=version_id
+            ).select_related(
+                'odontologo',
+                'diente',
+                'diente__paciente'
+            ).order_by('fecha', 'id')
+            
+            serializer = self.get_serializer(cambios, many=True)
+            data = serializer.data
+            
+            # Caché de 1 hora (versiones no cambian)
+            cache.set(cache_key, data, timeout=3600)
+        
+        return Response({
+            'version_id': version_id,
+            'count': len(data),
+            'cambios': data
+        })
+    
+    @action(detail=False, methods=['get'])
+    def estadisticas(self, request):
+        """
+        GET /api/odontogram/historial/estadisticas/?paciente_id=...
+        
+        """
+        paciente_id = request.query_params.get('paciente_id')
+        
+        if not paciente_id:
+            return Response(
+                {'error': 'paciente_id es requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        cache_key = f'historial:stats:{paciente_id}'
+        stats = cache.get(cache_key)
+        
+        if not stats:
+            from django.db.models import Count, Min, Max
+            
+            stats = HistorialOdontograma.objects.filter(
+                diente__paciente_id=paciente_id
+            ).aggregate(
+                total_cambios=Count('id'),
+                total_versiones=Count('version_id', distinct=True),
+                primer_cambio=Min('fecha'),
+                ultimo_cambio=Max('fecha'),
+                cambios_por_tipo=Count('tipo_cambio')
+            )
+            
+            # Caché de 10 minutos
+            cache.set(cache_key, stats, timeout=600)
+        
+        return Response(stats)
+    
+    @action(detail=False, methods=['get'])
+    def versiones(self, request):
+        """
+        GET /api/odontogram/historial/versiones/?paciente_id=...
+        
+        Retorna lista de versiones únicas (guardados completos)
+        con caché de 5 minutos
+        """
+        paciente_id = request.query_params.get('paciente_id')
+        
+        if not paciente_id:
+            return Response(
+                {'error': 'paciente_id es requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        cache_key = f'historial:versiones:{paciente_id}'
+        versiones = cache.get(cache_key)
+        
+        if not versiones:
+            # Consulta optimizada con anotaciones
+            versiones = HistorialOdontograma.objects.filter(
+                diente__paciente_id=paciente_id
+            ).values(
+                'version_id',
+                'fecha'
+            ).annotate(
+                odontologo_nombre=models.F('odontologo__nombres'),
+                odontologo_apellido=models.F('odontologo__apellidos'),
+                total_cambios=models.Count('id')
+            ).order_by('-fecha').distinct()[:50]
+            
+            versiones = list(versiones)
+            
+            # Guardar en caché por 5 minutos
+            cache.set(cache_key, versiones, timeout=300)
+        
+        return Response({
+            'count': len(versiones),
+            'results': versiones
+        })
 
     @action(detail=True, methods=['get'])
     def diagnosticos(self, request, pk=None):
@@ -243,31 +364,69 @@ class DiagnosticoDentalViewSet(viewsets.ModelViewSet):
         if resultado:
             return Response({'success': True})
         return Response({'error': 'No se pudo eliminar'}, status=status.HTTP_400_BAD_REQUEST)
+    
+# ===== CLASES DE PAGINACIÓN =====
 
+class HistorialPagination(PageNumberPagination):
+    """Paginación estándar para historial general"""
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 200
+    
+class HistorialCursorPagination(CursorPagination):
+    """Paginación cursor para timeline/infinite scroll"""
+    page_size = 20
+    ordering = '-fecha'
+    cursor_query_param = 'cursor'
+    
 
 class HistorialOdontogramaViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet para consultar historial del odontograma"""
+    """
+    ViewSet para consultar historial del odontograma
+    Optimizado con caché y prefetch
+    """
     serializer_class = HistorialOdontogramaSerializer
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = [IsAuthenticated, UserBasedPermission]
+    permission_model_name = "historialodontograma"
+    pagination_class = HistorialPagination
+    
     def get_queryset(self):
+        """Queryset optimizado con select_related y prefetch_related"""
         diente_id = self.request.query_params.get('diente_id')
         paciente_id = self.request.query_params.get('paciente_id')
+        odontologo_id = self.request.query_params.get('odontologo_id')
+        version_id = self.request.query_params.get('version_id')
         
-        queryset = HistorialOdontograma.objects.all()
+        if version_id:
+            self.pagination_class = None
         
-        if diente_id:
+        queryset = HistorialOdontograma.objects.select_related(
+            'odontologo',
+            'diente',
+            'diente__paciente'  
+        ).order_by('-fecha', '-version_id', '-id')
+        
+        if version_id:
+            queryset = queryset.filter(version_id=version_id)
+        elif diente_id:
             queryset = queryset.filter(diente_id=diente_id)
         elif paciente_id:
             queryset = queryset.filter(diente__paciente_id=paciente_id)
+        elif odontologo_id:
+            queryset = queryset.filter(odontologo_id=odontologo_id)
         
-        return queryset.select_related('odontologo', 'diente')
+        return queryset
     
+class HistorialCursorPagination(CursorPagination):
+    page_size = 20
+    ordering = '-fecha'  # Más reciente primero
+    cursor_query_param = 'cursor'
+
 class OdontogramaCompletoView(APIView):
     """
     Devuelve el odontograma completo del paciente (ultimo guardado)
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, paciente_id):
         try:

@@ -623,6 +623,7 @@ class HistorialOdontograma(models.Model):
         DIENTE_MARCADO_AUSENTE = 'diente_marcado_ausente', 'Diente Marcado como Ausente'
         DIENTE_RESTAURADO = 'diente_restaurado', 'Diente Restaurado'
         NOTA_AGREGADA = 'nota_agregada', 'Nota Agregada'
+        SNAPSHOT_COMPLETO = 'snapshot_completo', 'Snapshot Completo'
 
     tipo_cambio = models.CharField(max_length=50, choices=TipoCambio.choices)
     descripcion = models.TextField(help_text="Descripción del cambio")
@@ -636,16 +637,24 @@ class HistorialOdontograma(models.Model):
     # Datos adicionales
     datos_anteriores = models.JSONField(default=dict, blank=True, help_text="Estado anterior (para auditoría)")
     datos_nuevos = models.JSONField(default=dict, blank=True, help_text="Estado nuevo (para auditoría)")
+    version_id = models.UUIDField(default=uuid.uuid4, editable=False, help_text="ID de la versión del odontograma", db_index=True)
 
     class Meta:
         db_table = 'odonto_historial_odontograma'
         verbose_name = 'Historial Odontograma'
         verbose_name_plural = 'Historial Odontogramas'
         ordering = ['-fecha']
+        
         indexes = [
-            models.Index(fields=['diente']),
-            models.Index(fields=['fecha']),
-            models.Index(fields=['odontologo']),
+            models.Index(fields=['version_id', '-fecha'], name='idx_version_fecha'),
+            models.Index(fields=['diente', '-fecha'], name='idx_diente_fecha'),
+            models.Index(fields=['odontologo', '-fecha'], name='idx_odontologo_fecha'),
+            models.Index(fields=['diente'], name='idx_diente'),
+            models.Index(fields=['fecha'], name='idx_fecha'),
+            models.Index(fields=['odontologo'], name='idx_odontologo'),
+            models.Index(fields=['version_id'], name='idx_version'),
+            
+            models.Index(fields=['tipo_cambio', '-fecha'], name='idx_tipo_fecha'),
         ]
 
     def __str__(self):

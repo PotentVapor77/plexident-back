@@ -466,7 +466,7 @@ class HistorialOdontogramaSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'tipo_cambio', 'tipo_cambio_display',
             'descripcion', 'odontologo_nombre', 'fecha',
-            'datos_anteriores', 'datos_nuevos'
+            'datos_anteriores', 'datos_nuevos', 'version_id'
         ]
         read_only_fields = ['id', 'fecha']
     

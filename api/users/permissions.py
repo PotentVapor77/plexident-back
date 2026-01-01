@@ -34,6 +34,8 @@ class UserBasedPermission(BasePermission):
 
         metodo = request.method  # GET, POST, PUT, PATCH, DELETE
 
+
+        
         try:
             # Buscar permiso específico del usuario
             permiso = PermisoUsuario.objects.get(usuario=user, modelo=model_name)
