@@ -14,3 +14,5 @@ django-filter
 drf-nested-routers
 django-extensions
 python-dotenv
+jsonschema
+psycopg2-binary

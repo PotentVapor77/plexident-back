@@ -55,7 +55,15 @@ class Paciente(BaseModel):
             models.Index(fields=['apellidos', 'nombres']),  
             models.Index(fields=['activo']),
         ]
+        
+    def get_full_name(self):
+         """Retorna el nombre completo del paciente"""
+         return f"{self.apellidos}, {self.nombres}".strip()
     
+    def __str__(self):
+        return self.get_full_name()
+
+
     def clean(self):
         """Validaciones del formulario"""
         if not self.nombres or not self.apellidos:  

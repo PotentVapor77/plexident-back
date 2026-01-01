@@ -45,12 +45,7 @@ class AntecedentesFamiliares(BaseModel):
         verbose_name="Enfermedad vascular familiar"
     )
     
-    # 4. ENDÓCRINO METABÓLICO
-    endocrino_metabolico_familiar = models.BooleanField(
-        default=False, 
-        verbose_name="Endócrino metabólico familiar"
-    )
-    
+   
     # 5. CÁNCER
     cancer_familiar = models.CharField(
         max_length=15,  # ✅ Aumentado
@@ -59,12 +54,7 @@ class AntecedentesFamiliares(BaseModel):
         verbose_name="Cáncer familiar"
     )
     
-    # 6. TUBERCULOSIS
-    tuberculosis_familiar = models.BooleanField(
-        default=False, 
-        verbose_name="Tuberculosis familiar"
-    )
-    
+
     # 7. ENFERMEDAD MENTAL
     enfermedad_mental_familiar = models.CharField(
         max_length=15,  # ✅ Aumentado
@@ -73,18 +63,9 @@ class AntecedentesFamiliares(BaseModel):
         verbose_name="Enfermedad mental familiar"
     )
     
-    # 8. ENFERMEDAD INFECCIOSA
-    enfermedad_infecciosa_familiar = models.BooleanField(
-        default=False, 
-        verbose_name="Enfermedad infecciosa familiar"
-    )
+
     
-    # 9. MALFORMACIÓN
-    malformacion_familiar = models.BooleanField(
-        default=False, 
-        verbose_name="Malformación familiar"
-    )
-    
+   
     # 10. OTRO
     otros_antecedentes_familiares = models.TextField(
         blank=True, 
