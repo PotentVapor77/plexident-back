@@ -364,6 +364,8 @@ class SuperficieDental(models.Model):
         RAIZ_VESTIBULAR = 'raiz_vestibular', 'Raíz Vestibular'
         RAIZ_PRINCIPAL = 'raiz_principal', 'Raíz Principal'
         
+        GENERAL = 'general', 'General'
+        
     # Mapeo de superficie a tipo
     SUPERFICIE_A_AREA = {
         # Superficies de Corona
@@ -414,6 +416,7 @@ class SuperficieDental(models.Model):
         'raiz_palatal': 'RP', # Raíz Palatina
         'raiz_vestibular': 'RV', # Raíz Vestibular
         'raiz_principal': 'RP', # Raíz Principal
+        'general': 'G',
     }
 
     codigo_fhir_superficie = models.CharField(
