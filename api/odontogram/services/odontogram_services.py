@@ -858,10 +858,11 @@ class OdontogramaService:
         diagnostico = Diagnostico.objects.get(key=diagnostico_key, activo=True)
         
         # 4. Validar que el diagnóstico sea aplicable a esa área
-        area_superficie = superficie.area_anatomica
-        if not diagnostico.areas_relacionadas.filter(area__key=area_superficie).exists():
+        area_superficie = superficie.areaanatomica
+        if not diagnostico.areasrelacionadas.filter(area__key=area_superficie).exists():
             raise ValidationError(
-                f"El diagnóstico '{diagnostico.nombre}' no es aplicable a {area_superficie}"
+                f"El diagnóstico '{diagnostico.nombre}' no es aplicable al área '{area_superficie}'. "
+                f"Áreas válidas: {[a.key for a in diagnostico.areasrelacionadas.all()]}"
             )
         
         # 5. Crear DiagnosticoDental
