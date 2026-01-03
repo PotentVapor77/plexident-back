@@ -287,7 +287,9 @@ class DienteViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(diente)
         return Response(serializer.data)
-
+    
+    
+    
 
 class SuperficieDentalViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para consultar superficies dentales"""
@@ -351,19 +353,87 @@ class DiagnosticoDentalViewSet(viewsets.ModelViewSet):
         )
         serializer = self.get_serializer(diagnostico)
         return Response(serializer.data)
+    
+    
     @action(detail=True, methods=['delete'])
     def eliminar(self, request, pk=None):
         """
         DELETE /api/diagnosticos-aplicados/{id}/eliminar/
+        
+        Soporta dos modos:
+        1. Individual: DELETE /api/diagnosticos-aplicados/{id}/eliminar/
+        2. Batch: DELETE /api/diagnosticos-aplicados/{cualquier-id}/eliminar/
+        con body: {"diagnostico_ids": ["uuid1", "uuid2", ...]}
         """
-        diagnostico = self.get_object()
         service = OdontogramaService()
         odontologo_id = request.user.id
         
-        resultado = service.eliminar_diagnostico(str(diagnostico.id), odontologo_id)
-        if resultado:
-            return Response({'success': True})
-        return Response({'error': 'No se pudo eliminar'}, status=status.HTTP_400_BAD_REQUEST)
+        # Verificar si hay múltiples IDs en el body (modo BATCH)
+        diagnostico_ids = request.data.get('diagnostico_ids', [])
+        
+        if diagnostico_ids and len(diagnostico_ids) > 0:
+            # ========== MODO BATCH ==========
+            logger.info(f"[eliminar] Modo BATCH: {len(diagnostico_ids)} diagnósticos")
+            
+            try:
+                resultado = service.eliminardiagnosticosbatch( 
+                    diagnosticoids=diagnostico_ids,   
+                    odontologoid=odontologo_id   
+                )
+                
+                if not resultado.get('success'):
+                    return Response({
+                        'success': False,
+                        'error': resultado.get('error', 'Error al eliminar diagnósticos')
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                return Response({
+                    'success': True,
+                    'eliminados': resultado['eliminados'],
+                    'version_id': resultado['versionid'],
+                    'descripcion': resultado['descripcion']
+                }, status=status.HTTP_200_OK)
+                
+            except Exception as e:
+                import traceback
+                logger.error(f"[eliminar] Error batch: {str(e)}")
+                logger.error(traceback.format_exc())
+                
+                return Response({
+                    'success': False,
+                    'error': f'Error interno: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        else:
+            # ========== MODO INDIVIDUAL ==========
+            logger.info(f"[eliminar] Modo INDIVIDUAL: {pk}")
+            
+            try:
+                diagnostico = self.get_object()
+                resultado = service.eliminar_diagnostico(
+                    str(diagnostico.id), 
+                    odontologo_id
+                )
+                
+                if resultado:
+                    return Response({
+                        'success': True
+                    }, status=status.HTTP_200_OK)
+                
+                return Response({
+                    'success': False,
+                    'error': 'No se pudo eliminar'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            except Exception as e:
+                import traceback
+                logger.error(f"[eliminar] Error individual: {str(e)}")
+                logger.error(traceback.format_exc())
+                
+                return Response({
+                    'success': False,
+                    'error': f'Error interno: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 # ===== CLASES DE PAGINACIÓN =====
 

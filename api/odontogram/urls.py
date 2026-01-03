@@ -182,6 +182,8 @@ urlpatterns = [
         OdontogramaCompletoView.as_view(),
         name="odontograma-completo",
     ),
+    # /
+    
 ]   
 
 
