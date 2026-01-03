@@ -5,7 +5,7 @@ from .paciente import Paciente
 from .antecedentes_personales import AntecedentesPersonales
 from .antecedentes_familiares import AntecedentesFamiliares
 from .constantes_vitales import ConstantesVitales
-from .examen_estomatognatico import ExamenEstomatognatico
+#from .examen_estomatognatico import ExamenEstomatognatico
 
 __all__ = [
     'BaseModel',
@@ -13,5 +13,5 @@ __all__ = [
     'AntecedentesPersonales',
     'AntecedentesFamiliares',
     'ConstantesVitales',
-    'ExamenEstomatognatico',
+    #'ExamenEstomatognatico',
 ]

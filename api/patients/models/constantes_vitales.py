@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from .base import BaseModel
 from .paciente import Paciente
 
+
 class ConstantesVitales(BaseModel):
     """Constantes vitales del paciente (Sección F)"""
     
@@ -19,31 +20,30 @@ class ConstantesVitales(BaseModel):
         decimal_places=1, 
         null=True, 
         blank=True, 
-        verbose_name="Temperatura (°C)"
+        verbose_name="Temperatura (°C)",
+        help_text="Rango normal: 35-42°C"
     )
     
     pulso = models.PositiveIntegerField(
         null=True, 
         blank=True, 
-        verbose_name="Pulso (/min)"
+        verbose_name="Pulso (/min)",
+        help_text="Frecuencia cardíaca en latidos por minuto"
     )
     
     frecuencia_respiratoria = models.PositiveIntegerField(
         null=True, 
         blank=True, 
-        verbose_name="Frecuencia respiratoria (/min)"
+        verbose_name="Frecuencia respiratoria (/min)",
+        help_text="Respiraciones por minuto"
     )
     
-    presion_arterial_sistolica = models.PositiveIntegerField(
+    presion_arterial = models.CharField(
+        max_length=20,
         null=True, 
         blank=True, 
-        verbose_name="Presión arterial sistólica (mmHg)"
-    )
-    
-    presion_arterial_diastolica = models.PositiveIntegerField(
-        null=True, 
-        blank=True, 
-        verbose_name="Presión arterial diastólica (mmHg)"
+        verbose_name="Presión arterial (mmHg)",
+        help_text="Formato: 120/80"
     )
     
     class Meta:
@@ -53,21 +53,19 @@ class ConstantesVitales(BaseModel):
     
     def clean(self):
         """Validaciones del formulario"""
-        # Validación: presión arterial
-        if (self.presion_arterial_sistolica and not self.presion_arterial_diastolica) or \
-           (not self.presion_arterial_sistolica and self.presion_arterial_diastolica):
-            raise ValidationError("Debe especificar tanto la presión sistólica como diastólica.")
-        
         # Validación: temperatura normal
         if self.temperatura and (self.temperatura < 35 or self.temperatura > 42):
-            raise ValidationError("La temperatura debe estar entre 35°C y 42°C.")
+            raise ValidationError({
+                'temperatura': 'La temperatura debe estar entre 35°C y 42°C.'
+            })
+        
+        # Validación: formato de presión arterial
+        if self.presion_arterial:
+            import re
+            if not re.match(r'^\d{2,3}/\d{2,3}$', self.presion_arterial):
+                raise ValidationError({
+                    'presion_arterial': 'Formato inválido. Use formato: 120/80'
+                })
     
     def __str__(self):
         return f"Constantes vitales de {self.paciente.nombre_completo}"
-    
-    @property
-    def presion_arterial(self):
-        """Retorna la presión arterial formateada"""
-        if self.presion_arterial_sistolica and self.presion_arterial_diastolica:
-            return f"{self.presion_arterial_sistolica}/{self.presion_arterial_diastolica} mmHg"
-        return "No registrada"
