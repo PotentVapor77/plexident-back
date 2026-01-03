@@ -4,12 +4,14 @@ from django import forms
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 
+from .models.examen_estomatognatico import ExamenEstomatognatico
+
 # Importar modelos
 from .models.paciente import Paciente
 from .models.antecedentes_personales import AntecedentesPersonales
 from .models.antecedentes_familiares import AntecedentesFamiliares
 from .models.constantes_vitales import ConstantesVitales
-from .models.examen_estomatognatico import ExamenEstomatognatico
+#from .models.examen_estomatognatico import ExamenEstomatognatico
 
 
 # ================== PACIENTE ADMIN ==================
@@ -231,5 +233,133 @@ class ConstantesVitalesAdmin(admin.ModelAdmin):
 
 @admin.register(ExamenEstomatognatico)
 class ExamenEstomatognaticoAdmin(admin.ModelAdmin):
-    list_display = ['paciente', 'examen_labios', 'examen_mejillas']
-    search_fields = ['paciente__nombres', 'paciente__apellidos']
+    list_display = [
+        'paciente', 
+        'examen_sin_patologia',
+        'tiene_patologias',
+        'activo',
+        'fecha_creacion'
+    ]
+    
+    list_filter = [
+        'examen_sin_patologia',
+        'activo',
+        'atm_cp',
+        'mejillas_cp',
+        'fecha_creacion'
+    ]
+    
+    search_fields = [
+        'paciente__nombres', 
+        'paciente__apellidos',
+        'paciente__cedula_pasaporte'
+    ]
+    
+    readonly_fields = ['fecha_creacion', 'fecha_modificacion']
+    
+    fieldsets = (
+        ('Información del Paciente', {
+            'fields': ('paciente', 'examen_sin_patologia')
+        }),
+        ('ATM - Articulación Temporomandibular', {
+            'fields': (
+                ('atm_cp', 'atm_sp'),
+                ('atm_absceso', 'atm_fibroma', 'atm_herpes'),
+                ('atm_ulcera', 'atm_otra_patologia'),
+                'atm_observacion'
+            )
+        }),
+        ('Mejillas', {
+            'fields': (
+                ('mejillas_cp', 'mejillas_sp'),
+                ('mejillas_absceso', 'mejillas_fibroma', 'mejillas_herpes'),
+                ('mejillas_ulcera', 'mejillas_otra_patologia'),
+                'mejillas_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Maxilar Inferior', {
+            'fields': (
+                ('maxilar_inferior_cp', 'maxilar_inferior_sp'),
+                ('maxilar_inferior_absceso', 'maxilar_inferior_fibroma', 'maxilar_inferior_herpes'),
+                ('maxilar_inferior_ulcera', 'maxilar_inferior_otra_patologia'),
+                'maxilar_inferior_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Maxilar Superior', {
+            'fields': (
+                ('maxilar_superior_cp', 'maxilar_superior_sp'),
+                ('maxilar_superior_absceso', 'maxilar_superior_fibroma', 'maxilar_superior_herpes'),
+                ('maxilar_superior_ulcera', 'maxilar_superior_otra_patologia'),
+                'maxilar_superior_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Paladar', {
+            'fields': (
+                ('paladar_cp', 'paladar_sp'),
+                ('paladar_absceso', 'paladar_fibroma', 'paladar_herpes'),
+                ('paladar_ulcera', 'paladar_otra_patologia'),
+                'paladar_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Piso de Boca', {
+            'fields': (
+                ('piso_boca_cp', 'piso_boca_sp'),
+                ('piso_boca_absceso', 'piso_boca_fibroma', 'piso_boca_herpes'),
+                ('piso_boca_ulcera', 'piso_boca_otra_patologia'),
+                'piso_boca_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Carrillos', {
+            'fields': (
+                ('carrillos_cp', 'carrillos_sp'),
+                ('carrillos_absceso', 'carrillos_fibroma', 'carrillos_herpes'),
+                ('carrillos_ulcera', 'carrillos_otra_patologia'),
+                'carrillos_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Glándulas Salivales', {
+            'fields': (
+                ('glandulas_salivales_cp', 'glandulas_salivales_sp'),
+                ('glandulas_salivales_absceso', 'glandulas_salivales_fibroma', 'glandulas_salivales_herpes'),
+                ('glandulas_salivales_ulcera', 'glandulas_salivales_otra_patologia'),
+                'glandulas_salivales_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Ganglios de Cabeza y Cuello', {
+            'fields': (
+                ('ganglios_cp', 'ganglios_sp'),
+                ('ganglios_absceso', 'ganglios_fibroma', 'ganglios_herpes'),
+                ('ganglios_ulcera', 'ganglios_otra_patologia'),
+                'ganglios_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Lengua', {
+            'fields': (
+                ('lengua_cp', 'lengua_sp'),
+                ('lengua_absceso', 'lengua_fibroma', 'lengua_herpes'),
+                ('lengua_ulcera', 'lengua_otra_patologia'),
+                'lengua_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Labios', {
+            'fields': (
+                ('labios_cp', 'labios_sp'),
+                ('labios_absceso', 'labios_fibroma', 'labios_herpes'),
+                ('labios_ulcera', 'labios_otra_patologia'),
+                'labios_descripcion'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Estado', {
+            'fields': ('activo', 'fecha_creacion', 'fecha_modificacion')
+        })
+    )

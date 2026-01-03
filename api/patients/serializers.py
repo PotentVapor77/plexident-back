@@ -6,6 +6,7 @@ from api.patients.models.antecedentes_personales import AntecedentesPersonales
 from api.patients.models.antecedentes_familiares import AntecedentesFamiliares
 from api.patients.models.constantes_vitales import ConstantesVitales
 from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
+#from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
 
 
 class PacienteSerializer(serializers.ModelSerializer):
@@ -362,22 +363,169 @@ class AntecedentesFamiliaresSerializer(serializers.ModelSerializer):
         return attrs
 
 
+# ============================================================================
+# ✅ SERIALIZER CONSTANTES VITALES
+# ============================================================================
+
+class ConstantesVitalesSerializer(serializers.ModelSerializer):
+    """Serializer para constantes vitales del paciente"""
+    
+    paciente_nombre = serializers.CharField(source='paciente.get_full_name', read_only=True)
+    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
+    
+    class Meta:
+        model = ConstantesVitales
+        fields = "__all__"
+        read_only_fields = [
+            "id", "creado_por", "actualizado_por",
+            "fecha_creacion", "fecha_modificacion",
+            "paciente_nombre", "paciente_cedula"
+        ]
+
+    def validate_temperatura(self, value):
+        """Validar rango de temperatura corporal"""
+        if value and (value < 35 or value > 42):
+            raise serializers.ValidationError("La temperatura debe estar entre 35°C y 42°C")
+        return value
+
+    def validate_pulso(self, value):
+        """Validar pulso"""
+        if value and (value < 30 or value > 220):
+            raise serializers.ValidationError("El pulso debe estar entre 30 y 220 lpm")
+        return value
+
+    def validate_frecuencia_respiratoria(self, value):
+        """Validar frecuencia respiratoria"""
+        if value and (value < 8 or value > 60):
+            raise serializers.ValidationError("La frecuencia respiratoria debe estar entre 8 y 60 rpm")
+        return value
+
+    def validate_presion_arterial(self, value):
+        """Validar formato de presión arterial"""
+        if value:
+            import re
+            if not re.match(r'^\d{2,3}/\d{2,3}$', value):
+                raise serializers.ValidationError("Formato inválido. Use formato: 120/80")
+            
+            # Validar que sistólica > diastólica
+            sistolica, diastolica = map(int, value.split('/'))
+            if sistolica <= diastolica:
+                raise serializers.ValidationError("La presión sistólica debe ser mayor que la diastólica")
+            if sistolica < 50 or sistolica > 250:
+                raise serializers.ValidationError("La presión sistólica debe estar entre 50 y 250 mmHg")
+            if diastolica < 30 or diastolica > 150:
+                raise serializers.ValidationError("La presión diastólica debe estar entre 30 y 150 mmHg")
+        
+        return value
+
+    def validate_paciente(self, value):
+        """Validar que el paciente exista y esté activo"""
+        if not value.activo:
+            raise serializers.ValidationError("No se pueden crear constantes vitales para un paciente inactivo")
+        
+        # Validar duplicados en creación
+        if not self.instance:
+            if ConstantesVitales.objects.filter(paciente=value, activo=True).exists():
+                raise serializers.ValidationError(
+                    "Ya existe un registro de constantes vitales activo para este paciente"
+                )
+        
+        return value
+    
+
+
+
 class ExamenEstomatognaticoSerializer(serializers.ModelSerializer):
     """Serializer para examen estomatognático"""
     
+    # Campos calculados de solo lectura
     paciente_nombre = serializers.CharField(source='paciente.get_full_name', read_only=True)
+    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
     
     class Meta:
         model = ExamenEstomatognatico
         fields = "__all__"
         read_only_fields = [
-            "id", "creado_por", "actualizado_por", 
+            "id", "creado_por", "actualizado_por",
             "fecha_creacion", "fecha_modificacion",
-            "paciente_nombre"
+            "paciente_nombre", "paciente_cedula",
+            "tiene_patologias", "regiones_con_patologia", "atm_patologias"
         ]
+
+    def to_representation(self, instance):
+        """Personalizar representación para el frontend"""
+        data = super().to_representation(instance)
+        
+        # Convertir fechas a ISO string
+        if data.get('fecha_creacion'):
+            data['fecha_creacion'] = instance.fecha_creacion.isoformat()
+        if data.get('fecha_modificacion') and instance.fecha_modificacion:
+            data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
+        
+        # Agregar propiedades calculadas
+        data['tiene_patologias'] = instance.tiene_patologias
+        data['regiones_con_patologia'] = instance.regiones_con_patologia
+        data['atm_patologias'] = instance.atm_patologias
+        data['total_regiones_anormales'] = len(instance.regiones_con_patologia)
+        
+        return data
 
     def validate_paciente(self, value):
         """Validar que el paciente exista y esté activo"""
         if not value.activo:
             raise serializers.ValidationError("No se pueden crear exámenes para un paciente inactivo")
+        
+        # Validar duplicados en creación
+        if not self.instance:
+            if ExamenEstomatognatico.objects.filter(paciente=value, activo=True).exists():
+                raise serializers.ValidationError(
+                    "Ya existe un examen estomatognático activo para este paciente"
+                )
+        
         return value
+
+    def validate(self, attrs):
+        """Validaciones generales"""
+        examen_sin_patologia = attrs.get('examen_sin_patologia', False)
+        
+        # Si está marcado "sin patología", todos los CP deben ser False
+        if examen_sin_patologia:
+            campos_cp = [
+                'mejillas_cp', 'maxilar_inferior_cp', 'maxilar_superior_cp',
+                'paladar_cp', 'piso_boca_cp', 'carrillos_cp',
+                'glandulas_salivales_cp', 'ganglios_cp', 'lengua_cp',
+                'labios_cp', 'atm_cp'
+            ]
+            
+            for campo in campos_cp:
+                if attrs.get(campo, False):
+                    raise serializers.ValidationError(
+                        f"No se puede marcar '{campo.replace('_cp', ' - Con Patología')}' "
+                        f"si el examen está marcado como 'Sin Patología'"
+                    )
+        
+        # Verificar coherencia CP/SP por región
+        regiones = [
+            ('mejillas', 'mejillas_cp', 'mejillas_sp'),
+            ('maxilar_inferior', 'maxilar_inferior_cp', 'maxilar_inferior_sp'),
+            ('maxilar_superior', 'maxilar_superior_cp', 'maxilar_superior_sp'),
+            ('paladar', 'paladar_cp', 'paladar_sp'),
+            ('piso_boca', 'piso_boca_cp', 'piso_boca_sp'),
+            ('carrillos', 'carrillos_cp', 'carrillos_sp'),
+            ('glandulas_salivales', 'glandulas_salivales_cp', 'glandulas_salivales_sp'),
+            ('ganglios', 'ganglios_cp', 'ganglios_sp'),
+            ('lengua', 'lengua_cp', 'lengua_sp'),
+            ('labios', 'labios_cp', 'labios_sp'),
+            ('atm', 'atm_cp', 'atm_sp'),
+        ]
+        
+        for region_name, cp_field, sp_field in regiones:
+            cp = attrs.get(cp_field, False)
+            sp = attrs.get(sp_field, False)
+            
+            if cp and sp:
+                raise serializers.ValidationError(
+                    f"No se puede marcar tanto 'CP' como 'SP' para {region_name}"
+                )
+        
+        return attrs
