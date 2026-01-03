@@ -1,5 +1,4 @@
 # api/odontogram/signals.py
-# api/odontogram/signals.py
 """
 Observer Pattern con Django Signals
 Adaptado para la nueva estructura: Catálogo + Instancias de Pacientes
@@ -308,10 +307,11 @@ def registrar_cambio_diagnostico_dental(sender, instance, created, **kwargs):
             }
         )
  """
-
+ 
+"""
 @receiver(post_delete, sender=DiagnosticoDental)
 def registrar_eliminacion_diagnostico_dental(sender, instance, **kwargs):
-    """Registra en historial cuando se elimina un diagnóstico dental"""
+    Registra en historial cuando se elimina un diagnóstico dental
     HistorialOdontograma.objects.create(
         diente=instance.superficie.diente,
         tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_ELIMINADO,
@@ -323,6 +323,7 @@ def registrar_eliminacion_diagnostico_dental(sender, instance, **kwargs):
         }
     )
 
+"""
 
 @receiver(pre_save, sender=Diente)
 def registrar_ausencia_diente(sender, instance, **kwargs):

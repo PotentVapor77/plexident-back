@@ -459,13 +459,14 @@ class DiagnosticoListSerializer(serializers.ModelSerializer):
 
 class HistorialOdontogramaSerializer(serializers.ModelSerializer):
     odontologo_nombre = serializers.SerializerMethodField()
+    paciente_nombre = serializers.SerializerMethodField() 
     tipo_cambio_display = serializers.CharField(source='get_tipo_cambio_display', read_only=True)
     
     class Meta:
         model = HistorialOdontograma
         fields = [
             'id', 'tipo_cambio', 'tipo_cambio_display',
-            'descripcion', 'odontologo_nombre', 'fecha',
+            'descripcion', 'odontologo_nombre','paciente_nombre', 'fecha',
             'datos_anteriores', 'datos_nuevos', 'version_id'
         ]
         read_only_fields = ['id', 'fecha']
@@ -474,3 +475,9 @@ class HistorialOdontogramaSerializer(serializers.ModelSerializer):
         if obj.odontologo:
             return f"{obj.odontologo.nombres} {obj.odontologo.apellidos}"
         return "N/A"
+    def get_paciente_nombre(self, obj):
+        """Obtiene el nombre del paciente desde el diente"""
+        if obj.diente and obj.diente.paciente:
+            paciente = obj.diente.paciente
+            return f"{paciente.nombres} {paciente.apellidos}"
+        return None
