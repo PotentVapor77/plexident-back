@@ -8,6 +8,8 @@ from django.db.models import Q
 from api.odontogram.models import (
     AreaAfectada,
     Diagnostico,
+    IndicadoresSaludBucal,
+    IndiceCariesSnapshot,
     OpcionAtributoClinico,
     Paciente,
     Diente,
@@ -481,3 +483,19 @@ class HistorialOdontogramaSerializer(serializers.ModelSerializer):
             paciente = obj.diente.paciente
             return f"{paciente.nombres} {paciente.apellidos}"
         return None
+    
+class IndiceCariesSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IndiceCariesSnapshot
+        fields = [
+            'id', 'paciente', 'version_id', 'fecha',
+            'cpo_c', 'cpo_p', 'cpo_o', 'cpo_total',
+            'ceo_c', 'ceo_e', 'ceo_o', 'ceo_total',
+        ]
+        read_only_fields = fields
+        
+class IndicadoresSaludBucalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IndicadoresSaludBucal
+        fields = "__all__"
+        read_only_fields = ("id", "fecha",)

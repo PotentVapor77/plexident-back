@@ -1,12 +1,4 @@
 # api/odontogram/views/odontograma_views.py
-"""
-ViewSets para instancias de odontogramas
-- Pacientes
-- Dientes
-- Superficies dentales
-- Diagnósticos dentales aplicados
-- Historial
-"""
 
 import logging
 from django.shortcuts import get_object_or_404
@@ -18,6 +10,7 @@ from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from api.odontogram.models import (
+    IndicadoresSaludBucal,
     Paciente,
     Diente,
     SuperficieDental,
@@ -38,9 +31,9 @@ from api.odontogram.serializers import (
     HistorialOdontogramaSerializer,
 )
 
-from api.odontogram.services.odontogram_services import OdontogramaService
+from api.odontogram.services.odontogram_services import IndicadoresSaludBucalService, OdontogramaService, IndiceCariesService
 from api.odontogram.serializers.bundle_serializers import FHIRBundleSerializer
-from api.odontogram.serializers.serializers import DienteSerializer
+from api.odontogram.serializers.serializers import DienteSerializer, IndicadoresSaludBucalSerializer
 from api.users.permissions import UserBasedPermission
 from django.db import models
 
@@ -112,6 +105,15 @@ class PacienteViewSet(viewsets.ModelViewSet):
         logger.info(f"Odontograma cargado para paciente {paciente.id}: {len(dientes_data)} dientes")
         
         return Response(response_data)
+    
+    @action(detail=True, methods=['get'], url_path='indices-cpo-ceo')
+    def indices_cpo_ceo(self, request, pk=None):
+        """
+        GET /api/odontogram/pacientes/{id}/indices-cpo-ceo/
+        """
+        paciente = self.get_object()
+        indices = IndiceCariesService.calcular_indices_paciente(str(paciente.id))
+        return Response(indices, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['get'])
     def por_version(self, request):
@@ -578,3 +580,26 @@ def guardar_odontograma_completo(request, paciente_id):
     )
     return Response(resultado, status=status.HTTP_200_OK)
 
+class IndicadoresSaludBucalViewSet(viewsets.ModelViewSet):
+    """
+    CRUD de Indicadores de Salud Bucal por paciente.
+    Se usará desde el formulario del menú Odontograma.
+    """
+    serializer_class = IndicadoresSaludBucalSerializer
+    permission_classes = [IsAuthenticated, UserBasedPermission]
+    permission_model_name = "indicadoresaludbucal"
+
+    def get_queryset(self):
+        paciente_id = self.request.query_params.get("paciente_id")
+        qs = IndicadoresSaludBucal.objects.all()
+        if paciente_id:
+            qs = qs.filter(paciente_id=paciente_id)
+        return qs
+
+    def perform_create(self, serializer):
+        indicadores = serializer.save()
+        IndicadoresSaludBucalService.calcular_promedios(indicadores)
+
+    def perform_update(self, serializer):
+        indicadores = serializer.save()
+        IndicadoresSaludBucalService.calcular_promedios(indicadores)

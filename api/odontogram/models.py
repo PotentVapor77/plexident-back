@@ -662,3 +662,124 @@ class HistorialOdontograma(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_cambio_display()} - {self.diente.codigo_fdi} - {self.fecha.strftime('%d/%m/%Y')}"
+    
+    
+    
+class IndiceCariesSnapshot(models.Model):
+    """
+    Snapshot de índices de caries (CPO / ceo) ligado a una versión del odontograma.
+    Permite ver cómo evolucionan los índices en el tiempo.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    paciente = models.ForeignKey(
+        Paciente,
+        on_delete=models.CASCADE,
+        related_name='indices_caries'
+    )
+
+    # Opcional: enlazar a una versión específica del historial de odontograma
+    version_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="ID de versión del odontograma (HistorialOdontograma.version_id)"
+    )
+
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    # Índices para dentición permanente (CPO)
+    cpo_c = models.PositiveIntegerField(default=0, help_text="Dientes permanentes cariados")
+    cpo_p = models.PositiveIntegerField(default=0, help_text="Dientes permanentes perdidos por caries")
+    cpo_o = models.PositiveIntegerField(default=0, help_text="Dientes permanentes obturados")
+    cpo_total = models.PositiveIntegerField(default=0)
+
+    # Índices para dentición temporal (ceo) – listo para futuro
+    ceo_c = models.PositiveIntegerField(default=0, help_text="Dientes temporales cariados")
+    ceo_e = models.PositiveIntegerField(default=0, help_text="Dientes temporales con extracción indicada")
+    ceo_o = models.PositiveIntegerField(default=0, help_text="Dientes temporales obturados")
+    ceo_total = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'odonto_indice_caries_snapshot'
+        verbose_name = 'Snapshot índice de caries'
+        verbose_name_plural = 'Snapshots índices de caries'
+        ordering = ['-fecha']
+        indexes = [
+            models.Index(fields=['paciente', '-fecha'], name='idx_indice_paciente_fecha'),
+            models.Index(fields=['version_id', '-fecha'], name='idx_indice_version_fecha'),
+        ]
+
+    def __str__(self):
+        return f"CPO {self.cpo_total} / ceo {self.ceo_total} - {self.paciente_id} - {self.fecha.date()}"
+    
+    
+class IndicadoresSaludBucal(models.Model):
+    
+    class NivelPeriodontal(models.TextChoices):
+        LEVE = "LEVE", "Leve"
+        MODERADA = "MODERADA", "Moderada"
+        SEVERA = "SEVERA", "Severa"
+
+    class TipoOclusion(models.TextChoices):
+        ANGLE_I = "ANGLE_I", "Angle I"
+        ANGLE_II = "ANGLE_II", "Angle II"
+        ANGLE_III = "ANGLE_III", "Angle III"
+
+    class NivelFluorosis(models.TextChoices):
+        NINGUNA = "NINGUNA", "No presenta"
+        LEVE = "LEVE", "Leve"
+        MODERADA = "MODERADA", "Moderada"
+        SEVERA = "SEVERA", "Severa"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # FK correcta al modelo Paciente de esta misma app
+    paciente = models.ForeignKey(
+        Paciente,                      # referencia directa al modelo importado
+        on_delete=models.CASCADE,
+        related_name="indicadores_bucales",
+    )
+
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    # Higiene oral simplificada: piezas índice + puntajes 0–3
+    pieza_16_placa = models.IntegerField(null=True, blank=True)
+    pieza_16_calculo = models.IntegerField(null=True, blank=True)
+    pieza_11_placa = models.IntegerField(null=True, blank=True)
+    pieza_11_calculo = models.IntegerField(null=True, blank=True)
+    pieza_26_placa = models.IntegerField(null=True, blank=True)
+    pieza_26_calculo = models.IntegerField(null=True, blank=True)
+    pieza_36_placa = models.IntegerField(null=True, blank=True)
+    pieza_36_calculo = models.IntegerField(null=True, blank=True)
+    pieza_31_placa = models.IntegerField(null=True, blank=True)
+    pieza_31_calculo = models.IntegerField(null=True, blank=True)
+    pieza_46_placa = models.IntegerField(null=True, blank=True)
+    pieza_46_calculo = models.IntegerField(null=True, blank=True)
+
+    ohi_promedio_placa = models.FloatField(null=True, blank=True)
+    ohi_promedio_calculo = models.FloatField(null=True, blank=True)
+
+    enfermedad_periodontal = models.CharField(
+        max_length=10,
+        choices=NivelPeriodontal.choices,
+        null=True,
+        blank=True,
+    )
+    tipo_oclusion = models.CharField(
+        max_length=10,
+        choices=TipoOclusion.choices,
+        null=True,
+        blank=True,
+    )
+    nivel_fluorosis = models.CharField(
+        max_length=10,
+        choices=NivelFluorosis.choices,
+        null=True,
+        blank=True,
+    )
+
+    observaciones = models.TextField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-fecha"]
