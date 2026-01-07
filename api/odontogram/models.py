@@ -713,9 +713,19 @@ class IndiceCariesSnapshot(models.Model):
     def __str__(self):
         return f"CPO {self.cpo_total} / ceo {self.ceo_total} - {self.paciente_id} - {self.fecha.date()}"
     
+class IndicadoresSaludBucalManager(models.Manager):
+    """Manager que filtra solo registros activos por defecto"""
     
+    def get_queryset(self):
+        return super().get_queryset().filter(activo=True)
+
+
+class IndicadoresSaludBucalAllManager(models.Manager):
+    """Manager que incluye todos los registros (activos e inactivos)"""
+    
+    def get_queryset(self):
+        return super().get_queryset()
 class IndicadoresSaludBucal(models.Model):
-    
     class NivelPeriodontal(models.TextChoices):
         LEVE = "LEVE", "Leve"
         MODERADA = "MODERADA", "Moderada"
@@ -733,15 +743,52 @@ class IndicadoresSaludBucal(models.Model):
         SEVERA = "SEVERA", "Severa"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
-    # FK correcta al modelo Paciente de esta misma app
+    
+    # FK al paciente
     paciente = models.ForeignKey(
-        Paciente,                      # referencia directa al modelo importado
+        Paciente,
         on_delete=models.CASCADE,
         related_name="indicadores_bucales",
     )
-
+    
+    # Timestamps
     fecha = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+    
+    # ===== CAMPOS DE AUDITORÍA =====
+    creado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="indicadores_creados",
+        null=True,
+        blank=True,
+        help_text="Usuario que creó el registro"
+    )
+    
+    actualizado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="indicadores_actualizados",
+        null=True,
+        blank=True,
+        help_text="Usuario que realizó la última actualización"
+    )
+    
+    eliminado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="indicadores_eliminados",
+        null=True,
+        blank=True,
+        help_text="Usuario que eliminó el registro"
+    )
+    
+    fecha_eliminacion = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Fecha y hora de eliminación lógica"
+    )
+    # ================================
 
     # Higiene oral simplificada: piezas índice + puntajes 0–3
     pieza_16_placa = models.IntegerField(null=True, blank=True)
@@ -766,12 +813,14 @@ class IndicadoresSaludBucal(models.Model):
         null=True,
         blank=True,
     )
+
     tipo_oclusion = models.CharField(
         max_length=10,
         choices=TipoOclusion.choices,
         null=True,
         blank=True,
     )
+
     nivel_fluorosis = models.CharField(
         max_length=10,
         choices=NivelFluorosis.choices,
@@ -780,6 +829,24 @@ class IndicadoresSaludBucal(models.Model):
     )
 
     observaciones = models.TextField(null=True, blank=True)
+    
+    # ===== BORRADO LÓGICO =====
+    activo = models.BooleanField(
+        default=True,
+        help_text="False indica que el registro fue eliminado lógicamente"
+    )
+    # ==========================
 
     class Meta:
         ordering = ["-fecha"]
+        db_table = 'odonto_indicadores_salud_bucal'
+        verbose_name = 'Indicador de Salud Bucal'
+        verbose_name_plural = 'Indicadores de Salud Bucal'
+        indexes = [
+            models.Index(fields=['paciente', '-fecha', 'activo'], name='idx_indicador_paciente'),
+            models.Index(fields=['activo'], name='idx_indicador_activo'),
+        ]
+    
+    def __str__(self):
+        estado = " (ELIMINADO)" if not self.activo else ""
+        return f"Indicadores {self.paciente.nombres} - {self.fecha.date()}{estado}"

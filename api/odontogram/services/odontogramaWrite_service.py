@@ -303,7 +303,7 @@ class OdontogramaWriteService:
                                     "colorHex": diagnostico_cat.simbolo_color,
                                     "categoria_nombre": diagnostico_cat.categoria.nombre,
                                     "categoria_color_key": diagnostico_cat.categoria.color_key,
-                                    "prioridadKey": diagnostico_cat.categoria.prioridad_key,  # ← Frontend espera camelCase
+                                    "prioridadKey": diagnostico_cat.categoria.prioridad_key, 
                                     "prioridad": diagnostico_cat.prioridad,
                                     "afectaArea": list(
                                         diagnostico_cat.areas_relacionadas.values_list(

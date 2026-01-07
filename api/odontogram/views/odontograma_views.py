@@ -579,27 +579,148 @@ def guardar_odontograma_completo(request, paciente_id):
         odontologo_id=odontologo_id
     )
     return Response(resultado, status=status.HTTP_200_OK)
-
+class IndicadoresSaludBucalPagination(PageNumberPagination):
+    """
+    Paginación para indicadores de salud bucal.
+    10 registros por página es razonable para este tipo de datos.
+    """
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+    
+    
 class IndicadoresSaludBucalViewSet(viewsets.ModelViewSet):
     """
     CRUD de Indicadores de Salud Bucal por paciente.
-    Se usará desde el formulario del menú Odontograma.
+    Implementa borrado lógico usando el campo 'activo'.
     """
     serializer_class = IndicadoresSaludBucalSerializer
-    permission_classes = [IsAuthenticated, UserBasedPermission]
-    permission_model_name = "indicadoresaludbucal"
+    permission_classes = [IsAuthenticated]
+    permission_model_name = 'indicadores_salud_bucal'
+    pagination_class = IndicadoresSaludBucalPagination
 
     def get_queryset(self):
-        paciente_id = self.request.query_params.get("paciente_id")
-        qs = IndicadoresSaludBucal.objects.all()
+        paciente_id = self.request.query_params.get('paciente_id')
+        incluir_inactivos = self.request.query_params.get('incluir_inactivos', 'false').lower() == 'true'
+        
+        logger.info(f"[IndicadoresSaludBucalViewSet] GET queryset")
+        logger.info(f" → paciente_id: {paciente_id}")
+        logger.info(f" → incluir_inactivos: {incluir_inactivos}")
+
+        # Usar el manager apropiado
+        if incluir_inactivos:
+            qs = IndicadoresSaludBucal.all_objects.select_related(
+                'paciente', 'creado_por', 'actualizado_por', 'eliminado_por'
+            ).all()
+        else:
+            qs = IndicadoresSaludBucal.objects.select_related(
+                'paciente', 'creado_por', 'actualizado_por'
+            ).all()
+
         if paciente_id:
             qs = qs.filter(paciente_id=paciente_id)
-        return qs
+            count = qs.count()
+            logger.info(f" → Registros encontrados: {count}")
+        else:
+            logger.warning(" → ⚠️ NO se proporcionó paciente_id")
+
+        return qs.order_by('-fecha')
 
     def perform_create(self, serializer):
-        indicadores = serializer.save()
+        logger.info(f"[IndicadoresSaludBucalViewSet] CREATE")
+        logger.info(f" → Usuario: {self.request.user}")
+        
+        # Asignar creado_por automáticamente
+        indicadores = serializer.save(
+            creado_por=self.request.user,
+            activo=True
+        )
         IndicadoresSaludBucalService.calcular_promedios(indicadores)
+        
+        logger.info(f" → Indicador creado: {indicadores.id}")
 
     def perform_update(self, serializer):
-        indicadores = serializer.save()
+        logger.info(f"[IndicadoresSaludBucalViewSet] UPDATE")
+        logger.info(f" → Usuario: {self.request.user}")
+        
+        # Asignar actualizado_por automáticamente
+        indicadores = serializer.save(actualizado_por=self.request.user)
         IndicadoresSaludBucalService.calcular_promedios(indicadores)
+        
+        logger.info(f" → Indicador actualizado: {indicadores.id}")
+
+    def perform_destroy(self, instance):
+        """
+        Override destroy para implementar borrado lógico.
+        No elimina físicamente el registro, solo marca activo=False.
+        """
+        logger.info(f"[IndicadoresSaludBucalViewSet] DELETE (lógico)")
+        logger.info(f" → Indicador: {instance.id}")
+        logger.info(f" → Usuario: {self.request.user}")
+        
+        # Borrado lógico
+        instance.activo = False
+        instance.eliminado_por = self.request.user
+        instance.fecha_eliminacion = timezone.now()
+        instance.save()
+        
+        logger.info(f" → Indicador marcado como inactivo")
+    
+    @action(detail=True, methods=['post'], url_path='restaurar')
+    def restaurar(self, request, pk=None):
+        """
+        POST /api/indicadores-salud-bucal/{id}/restaurar/
+        Restaura un indicador eliminado lógicamente.
+        """
+        logger.info(f"[IndicadoresSaludBucalViewSet] RESTAURAR")
+        logger.info(f" → Indicador: {pk}")
+        logger.info(f" → Usuario: {request.user}")
+        
+        # Obtener el indicador (incluyendo inactivos)
+        indicador = IndicadoresSaludBucal.all_objects.get(pk=pk)
+        
+        if indicador.activo:
+            return Response(
+                {"error": "Este indicador ya está activo"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Restaurar
+        indicador.activo = True
+        indicador.eliminado_por = None
+        indicador.fecha_eliminacion = None
+        indicador.actualizado_por = request.user
+        indicador.save()
+        
+        logger.info(f" → Indicador restaurado exitosamente")
+        
+        serializer = self.get_serializer(indicador)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], url_path='eliminados')
+    def eliminados(self, request):
+        """
+        GET /api/indicadores-salud-bucal/eliminados/?paciente_id=...
+        Lista todos los indicadores eliminados lógicamente.
+        """
+        paciente_id = request.query_params.get('paciente_id')
+        
+        logger.info(f"[IndicadoresSaludBucalViewSet] ELIMINADOS")
+        logger.info(f" → paciente_id: {paciente_id}")
+        
+        queryset = IndicadoresSaludBucal.all_objects.filter(activo=False)
+        
+        if paciente_id:
+            queryset = queryset.filter(paciente_id=paciente_id)
+        
+        queryset = queryset.select_related(
+            'paciente', 'creado_por', 'eliminado_por'
+        ).order_by('-fecha_eliminacion')
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

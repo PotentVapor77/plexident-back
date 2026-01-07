@@ -192,7 +192,7 @@ class IndiceCariesService:
             if not info:
                 continue
             logger.debug(f"[CPO] Diente {diente.codigo_fdi} info FDI: {info}")
-            denticion = info["denticion"]  # "permanente" o "temporal"
+            denticion = info["denticion"] 
             dx_diente = dx_por_diente.get(diente.id, [])
             logger.debug(
             f"[CPO] Diente {diente.codigo_fdi} dentición={denticion} "

@@ -48,7 +48,7 @@ from api.odontogram.views.form033_views import (
 )
 
 
-from api.odontogram.views.odontograma_views import OdontogramaCompletoView, guardar_odontograma_completo, obtener_definiciones_superficies
+from api.odontogram.views.odontograma_views import IndicadoresSaludBucalViewSet, OdontogramaCompletoView, guardar_odontograma_completo, obtener_definiciones_superficies
 # ==================== ROUTER SETUP ====================
 
 router = DefaultRouter()
@@ -76,6 +76,8 @@ router.register(
 )
 
 router.register(r"historial", HistorialOdontogramaViewSet, basename="historial")
+
+router.register(r"indicadores-salud-bucal", IndicadoresSaludBucalViewSet,basename="indicadores-salud-bucal",)
 
 # ==================== APP NAME ====================
 
@@ -184,6 +186,7 @@ urlpatterns = [
     ),
     # /
     
+
 ]   
 
 
