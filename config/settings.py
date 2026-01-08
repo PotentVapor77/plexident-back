@@ -18,13 +18,13 @@ load_dotenv(BASE_DIR / '.env')
 # SECURITY SETTINGS
 # ============================================================================
 
-# ✅ CORREGIDO: Leer desde variable de entorno
+# CORREGIDO: Leer desde variable de entorno
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-CHANGE-THIS-IN-PRODUCTION')
 
-# ✅ CORREGIDO: Leer desde variable de entorno
+# CORREGIDO: Leer desde variable de entorno
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-# ✅ CORREGIDO: Lista específica de hosts
+# CORREGIDO: Lista específica de hosts
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 # ============================================================================
@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'api.users.apps.UsersConfig',
     'api.odontogram.apps.OdontogramConfig',
     'api.patients.apps.PatientsConfig',
+    'api.appointment.apps.AppointmentConfig'
 ]
 
 MIDDLEWARE = [

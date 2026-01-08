@@ -11,7 +11,7 @@ urlpatterns = [
 
     # Endpoints del sistema
     path('api/patients/', include('api.patients.urls', namespace="patients")),
- 
+    path('api/appointment/', include('api.appointment.urls', namespace="appointment")),
 
     path('api/auth/', include('authentication.urls')),
     path('api/users/', include('api.users.urls', namespace='users')),
