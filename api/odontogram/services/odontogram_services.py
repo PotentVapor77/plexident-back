@@ -4,874 +4,334 @@ Servicios para la nueva estructura de Odontograma
 Maneja: Paciente -> Diente -> Superficie -> DiagnosticoDental
 """
 
+from collections import defaultdict
 from typing import List, Dict, Any, Optional
-import uuid
+from venv import logger
 from django.db import transaction
 from django.core.exceptions import ValidationError
-from django.utils import timezone
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from api.odontogram.models import (
+    IndicadoresSaludBucal,
+    IndiceCariesSnapshot,
     Paciente,
     Diente,
     SuperficieDental,
     DiagnosticoDental,
-    HistorialOdontograma,
     Diagnostico,
 )
-from django.db.models import Prefetch
+
+from api.odontogram.services.odontogramaDiagnostico_service import OdontogramaDiagnosticoService
+from api.odontogram.services.odontogramaEstadoDiente_service import OdontogramaEstadoDienteService
+from api.odontogram.services.odontogramaRead_service import OdontogramaReadService
+from api.odontogram.services.odontogramaWrite_service import OdontogramaWriteService
+from api.odontogram.constants import FDIConstants
+
 User = get_user_model()
 
-
-def _es_uuid_valido(valor: str) -> bool:
-    """
-    Devuelve True solo si valor es un UUID válido.
-    Sirve para ignorar IDs temporales del frontend (Date.now()-random).
-    """
-    try:
-        uuid.UUID(str(valor))
-        return True
-    except (ValueError, TypeError):
-        return False
-
+CARIES_KEYS = {"caries"}
+OBTURADO_KEYS = {
+    "obturacion",
+    "sellante_realizado",
+    "corona_realizada",
+    "protesis_fija_realizada",
+    "protesis_removible_realizada",
+}
+AUSENTE_KEYS = {"ausente"}
 
 class OdontogramaService:
-    """
-    Servicio para gestionar odontogramas de pacientes.
-    Conecta el frontend con la nueva estructura de BD.
-    """
 
-    @transaction.atomic
-    def guardar_odontograma_completo(
-        self,
-        paciente_id: str,
-        odontologo_id: int,
-        odontograma_data: Dict[str, Dict[str, List[Dict[str, Any]]]],
-    ) -> Dict[str, Any]:
-        """
-        Guarda el odontograma completo de un paciente.
+        def __init__(self) -> None:
+            self._write = OdontogramaWriteService()
+            self._read = OdontogramaReadService()
+            self._diente = OdontogramaEstadoDienteService()
+            self._diag = OdontogramaDiagnosticoService()
 
-        Reglas:
-        - Si viene un ID que es UUID válido -> intenta editar por ID.
-        - Si no hay ID o el ID no es UUID válido -> usa equivalencia por attrs.
-        - Si no existe ni por ID ni por attrs -> crea diagnóstico nuevo.
-        """
-        
-        try:
-            paciente = Paciente.objects.get(id=paciente_id)
-            odontologo = User.objects.get(id=odontologo_id)
-        except (Paciente.DoesNotExist, User.DoesNotExist):
-            raise ValidationError("Paciente u odontólogo no encontrado")
-
-        resultado = {
-            "paciente_id": str(paciente.id),
-            "dientes_procesados": [],
-            "diagnosticos_guardados": 0,
-            "diagnosticos_modificados": 0, 
-            "errores": [],
-        }
-        
-        version_id = uuid.uuid4()
-        now = timezone.now()
-        
-        # Procesar cada diente
-        for codigo_fdi, superficies_dict in odontograma_data.items():
-            try:
-                diente, created = Diente.objects.get_or_create(
-                    paciente=paciente,
-                    codigo_fdi=codigo_fdi,
-                )
-                resultado["dientes_procesados"].append(codigo_fdi)
-
-                # Procesar cada superficie
-                for nombre_superficie, diagnosticos_list in superficies_dict.items():
-                    try:
-                        superficie, _ = SuperficieDental.objects.get_or_create(
-                            diente=diente,
-                            nombre=nombre_superficie,
-                        )
-
-                        print("DEBUG diagnosticos_list:", diagnosticos_list)
-
-                        # Procesar cada diagnóstico
-                        for diag_data in diagnosticos_list:
-                            try:
-                                diagnostico_cat = Diagnostico.objects.get(
-                                    key=diag_data["procedimientoId"],
-                                    activo=True,
-                                )
-
-                                attrs = diag_data.get("secondaryOptions", {}) or {}
-                                descripcion = diag_data.get("descripcion", "") or ""
-                                diag_id = diag_data.get("id")
-
-                                # 1) Si viene ID y es UUID válido, intentar EDITAR por ID
-                                if diag_id and _es_uuid_valido(diag_id):
-                                    try:
-                                        diag_dental = DiagnosticoDental.objects.get(
-                                            id=diag_id,
-                                            superficie=superficie,
-                                            diagnostico_catalogo=diagnostico_cat,
-                                            activo=True,
-                                        )
-                                    except DiagnosticoDental.DoesNotExist:
-                                        diag_dental = None
-                                    
-                                    if diag_dental:
-                                        datos_anteriores = {
-                                            "descripcion": diag_dental.descripcion,
-                                            "atributos_clinicos": diag_dental.atributos_clinicos,
-                                        }
-                                        
-                                        datos_nuevos = {
-                                            "descripcion": descripcion,
-                                            "atributos_clinicos": attrs,
-                                        }
-                                        
-                                        ha_cambios = (
-                                            datos_anteriores["descripcion"] != datos_nuevos["descripcion"] or
-                                            datos_anteriores["atributos_clinicos"] != datos_nuevos["atributos_clinicos"]
-                                        )
-                                        
-                                        if ha_cambios:
-                                            diag_dental.descripcion = descripcion
-                                            diag_dental.atributos_clinicos = attrs
-                                            diag_dental.save()
-                                            
-                                            HistorialOdontograma.objects.create(
-                                                diente=superficie.diente,
-                                                tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_MODIFICADO,
-                                                descripcion=(
-                                                    f"Diagnóstico {diagnostico_cat.nombre} "
-                                                    f"modificado en {superficie.get_nombre_display()}"
-                                                ),
-                                                odontologo=odontologo,
-                                                datos_anteriores=datos_anteriores,
-                                                datos_nuevos=datos_nuevos,
-                                                fecha=now,
-                                                version_id=version_id,
-                                            )
-                                            resultado["diagnosticos_modificados"] += 1  
-                                            print(f"[DEBUG] Modificado con cambios: {diag_id}")
-                                        else:
-                                            print(f"[DEBUG] Sin cambios, no se registra: {diag_id}")
-                                        
-                                        continue
-                                
-                                # 2) Editar por equivalencia
-                                existente = DiagnosticoDental.objects.filter(
-                                    superficie=superficie,
-                                    diagnostico_catalogo=diagnostico_cat,
-                                    atributos_clinicos=attrs,
-                                    activo=True,
-                                ).first()
-                                
-                                if existente:
-                                    datos_anteriores = {
-                                        "descripcion": existente.descripcion,
-                                        "atributos_clinicos": existente.atributos_clinicos,
-                                    }
-                                    
-                                    datos_nuevos = {
-                                        "descripcion": descripcion,
-                                        "atributos_clinicos": attrs,
-                                    }
-                                    
-                                    ha_cambios = (
-                                        datos_anteriores["descripcion"] != datos_nuevos["descripcion"] or
-                                        datos_anteriores["atributos_clinicos"] != datos_nuevos["atributos_clinicos"]
-                                    )
-                                    
-                                    if ha_cambios:
-                                        existente.descripcion = descripcion
-                                        existente.atributos_clinicos = attrs
-                                        existente.save()
-                                        
-                                        HistorialOdontograma.objects.create(
-                                            diente=superficie.diente,
-                                            tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_MODIFICADO,
-                                            descripcion=(
-                                                f"Diagnóstico {diagnostico_cat.nombre} "
-                                                f"modificado en {superficie.get_nombre_display()}"
-                                            ),
-                                            odontologo=odontologo,
-                                            datos_anteriores=datos_anteriores,
-                                            datos_nuevos=datos_nuevos,
-                                            fecha=now,
-                                            version_id=version_id,
-                                        )
-                                        resultado["diagnosticos_modificados"] += 1 
-                                        print(f"[DEBUG] Modificado por attrs: {existente.id}")
-                                    else:
-                                        print(f"[DEBUG] Sin cambios por attrs: {existente.id}")
-                                    
-                                    continue
-
-                                # 3) Alta nueva real
-                                print(
-                                    "DEBUG: creando nuevo diagnostico",
-                                    diagnostico_cat.key,
-                                    attrs,
-                                )
-                                diag_dental = DiagnosticoDental.objects.create(
-                                    superficie=superficie,
-                                    diagnostico_catalogo=diagnostico_cat,
-                                    odontologo=odontologo,
-                                    descripcion=descripcion,
-                                    atributos_clinicos=attrs,
-                                    estado_tratamiento=DiagnosticoDental.EstadoTratamiento.DIAGNOSTICADO,
-                                )
-
-                                HistorialOdontograma.objects.create(
-                                    diente=diente,
-                                    tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_AGREGADO,
-                                    descripcion=(
-                                        f"Diagnóstico {diagnostico_cat.nombre} agregado en "
-                                        f"{superficie.get_nombre_display()}"
-                                    ),
-                                    odontologo=odontologo,
-                                    datos_nuevos={
-                                        "diagnostico": diagnostico_cat.key,
-                                        "superficie": nombre_superficie,
-                                        "atributos": attrs,
-                                    },
-                                    fecha=now,
-                                    version_id=version_id, 
-                                )
-
-                                resultado["diagnosticos_guardados"] += 1
-
-                            except Diagnostico.DoesNotExist:
-                                resultado["errores"].append(
-                                    f"Diagnóstico {diag_data.get('procedimientoId')} no encontrado"
-                                )
-                            except Exception as e:
-                                resultado["errores"].append(
-                                    f"Error guardando diagnóstico en {codigo_fdi}/{nombre_superficie}: {str(e)}"
-                                )
-
-                    except Exception as e:
-                        resultado["errores"].append(
-                            f"Error procesando superficie {nombre_superficie}: {str(e)}"
-                        )
-
-            except Exception as e:
-                resultado["errores"].append(
-                    f"Error procesando diente {codigo_fdi}: {str(e)}"
-                )
-
-        total_cambios = resultado["diagnosticos_guardados"] + resultado["diagnosticos_modificados"]
-        
-        if total_cambios > 0 and resultado["dientes_procesados"]:
-            primer_diente = Diente.objects.filter(
-                paciente=paciente,
-                codigo_fdi=resultado["dientes_procesados"][0]
-            ).first()
-            
-            if primer_diente:
-                odontograma_snapshot = {}
-                
-                for codigo_fdi, superficies_dict in odontograma_data.items():
-                    odontograma_snapshot[codigo_fdi] = {}
-                    
-                    for nombre_superficie, diagnosticos_list in superficies_dict.items():
-                        odontograma_snapshot[codigo_fdi][nombre_superficie] = []
-                        
-                        for diag_data in diagnosticos_list:
-                            try:
-                                diagnostico_cat = Diagnostico.objects.select_related(
-                                    'categoria'
-                                ).prefetch_related(
-                                    'areas_relacionadas__area'
-                                ).get(
-                                    key=diag_data["procedimientoId"],
-                                    activo=True,
-                                )
-                                
-                                diag_enriquecido = {
-                                    "id": diag_data.get("id"),
-                                    "procedimientoId": diagnostico_cat.key,
-                                    "key": diagnostico_cat.key,
-                                    "nombre": diagnostico_cat.nombre,
-                                    "siglas": diagnostico_cat.siglas,
-                                    "colorHex": diagnostico_cat.simbolo_color,  
-                                    "prioridad": diagnostico_cat.prioridad,
-                                    "afectaArea": list(
-                                        diagnostico_cat.areas_relacionadas.values_list(
-                                            'area__key', flat=True
-                                        )
-                                    ),
-                                    "secondaryOptions": diag_data.get("secondaryOptions", {}),
-                                    "descripcion": diag_data.get("descripcion", ""),
-                                }
-                                
-                                odontograma_snapshot[codigo_fdi][nombre_superficie].append(
-                                    diag_enriquecido
-                                )
-                            except Diagnostico.DoesNotExist:
-                                # Si el diagnóstico no existe, mantener datos originales
-                                odontograma_snapshot[codigo_fdi][nombre_superficie].append(diag_data)
-                
-                # Crear registro maestro del snapshot
-                HistorialOdontograma.objects.create(
-                    diente=primer_diente,
-                    tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO,
-                    descripcion=(
-                        f"Odontograma guardado: {resultado['diagnosticos_guardados']} diagnósticos nuevos, "
-                        f"{resultado['diagnosticos_modificados']} modificados en "
-                        f"{len(resultado['dientes_procesados'])} dientes"
-                    ),
-                    odontologo=odontologo,
-                    datos_nuevos=odontograma_snapshot,  
-                    fecha=now,
-                    version_id=version_id,
-                )
-                print(f"[DEBUG] Snapshot completo enriquecido creado: version_id={version_id}")
-
-        resultado["version_id"] = str(version_id)
-        resultado["tiene_cambios"] = total_cambios > 0
-        
-        # Invalidar caché
-        cache_key = f'odontograma:completo:{paciente_id}'
-        cache.delete(cache_key)
-
-        return resultado
-
-    def obtener_odontograma_completo(self, paciente_id: str) -> Dict[str, Any]:
-        """
-        Obtiene el odontograma completo de un paciente
-        OPTIMIZADO con prefetch_related anidado y caché
-        """
-        # 1. Intentar obtener del caché primero
-        cache_key = f'odontograma:completo:{paciente_id}'
-        cached_data = cache.get(cache_key)
-        
-        if cached_data:
-            return cached_data
-        
-        # 2. Si no hay caché, consultar BD
-        try:
-            paciente = Paciente.objects.get(id=paciente_id)
-        except Paciente.DoesNotExist:
-            raise ValidationError("Paciente no encontrado")
-        
-        odontograma_data = {}
-        
-        # 3. Prefetch anidado profundo
-        dientes = Diente.objects.filter(
-            paciente=paciente
-        ).prefetch_related(
-            Prefetch(
-                'superficies',
-                queryset=SuperficieDental.objects.prefetch_related(
-                    Prefetch(
-                        'diagnosticos',
-                        queryset=DiagnosticoDental.objects.filter(
-                            activo=True
-                        ).select_related(
-                            'diagnostico_catalogo',
-                            'diagnostico_catalogo__categoria',
-                            'odontologo'
-                        ).prefetch_related(
-                            'diagnostico_catalogo__areas_relacionadas__area'
-                        )
-                    )
-                )
-            )
-        ).order_by('codigo_fdi')
-        
-        # 4. Construir estructura de datos
-        for diente in dientes:
-            codigo_fdi = diente.codigo_fdi
-            odontograma_data[codigo_fdi] = {}
-            
-            for superficie in diente.superficies.all():
-                odontograma_data[codigo_fdi][superficie.nombre] = []
-                
-                for diag_dental in superficie.diagnosticos.all():
-                    odontograma_data[codigo_fdi][superficie.nombre].append({
-                        'id': str(diag_dental.id),
-                        'procedimientoId': diag_dental.diagnostico_catalogo.key,
-                        'nombre': diag_dental.diagnostico_catalogo.nombre,
-                        'siglas': diag_dental.diagnostico_catalogo.siglas,
-                        'colorHex': diag_dental.diagnostico_catalogo.simbolo_color,  
-                        'secondaryOptions': diag_dental.atributos_clinicos,
-                        'descripcion': diag_dental.descripcion,
-                        'afectaArea': list(
-                            diag_dental.diagnostico_catalogo.areas_relacionadas.values_list(
-                                'area__key', flat=True
-                            )
-                        ),
-                        'estado_tratamiento': diag_dental.estado_tratamiento,
-                        'prioridad': diag_dental.prioridad_efectiva,
-                        'fecha': diag_dental.fecha.isoformat(),
-                        'odontologo': diag_dental.odontologo.get_full_name(),
-                    })
-        
-        # 5. Construir respuesta
-        result = {
-            'paciente_id': str(paciente.id),
-            'paciente_nombre': f"{paciente.nombres} {paciente.apellidos}",
-            'odontograma_data': odontograma_data,
-            'fecha_obtension': timezone.now().isoformat(),
-        }
-        
-        # 6. Guardar en caché por 5 minutos
-        cache.set(cache_key, result, timeout=300)
-        
-        return result
-
-
-    @transaction.atomic
-    def marcar_diente_ausente(
-        self,
-        paciente_id: str,
-        codigo_fdi: str,
-        odontologo_id: int
-    ) -> Diente:
-        """
-        Marca un diente como ausente y registra en historial
-        """
-        try:
-            paciente = Paciente.objects.get(id=paciente_id)
-            odontologo = User.objects.get(id=odontologo_id)
-        except (Paciente.DoesNotExist, User.DoesNotExist):
-            raise ValidationError("Paciente u odontólogo no encontrado")
-
-        diente, _ = Diente.objects.get_or_create(
-            paciente=paciente,
-            codigo_fdi=codigo_fdi
-        )
-
-        # Cambiar estado
-        era_ausente = diente.ausente
-        diente.ausente = True
-        diente.save()
-
-        # Crear historial
-        if not era_ausente:
-            HistorialOdontograma.objects.create(
-                diente=diente,
-                tipo_cambio=HistorialOdontograma.TipoCambio.DIENTE_MARCADO_AUSENTE,
-                descripcion=f"Diente {codigo_fdi} marcado como ausente",
-                odontologo=odontologo,
-                datos_nuevos={'ausente': True}
+        @transaction.atomic
+        def guardar_odontograma_completo(
+            self,
+            paciente_id: str,
+            odontologo_id: int,
+            odontograma_data: Dict[str, Dict[str, List[Dict[str, Any]]]],
+        ) -> Dict[str, Any]:
+            return self._write.guardar_odontograma_completo(
+                paciente_id=paciente_id,
+                odontologo_id=odontologo_id,
+                odontograma_data=odontograma_data,
             )
 
-        return diente
+        def obtener_odontograma_completo(self, paciente_id: str) -> Dict[str, Any]:
+            return self._read.obtener_odontograma_completo(paciente_id=paciente_id)
 
-    @transaction.atomic
-    def marcar_diagnostico_tratado(
-        self,
-        diagnostico_id: str,
-        odontologo_id: int
-    ) -> DiagnosticoDental:
-        """
-        Marca un diagnóstico como 'Tratado' y registra el cambio en el historial.
-        """
-        try:
-            diagnostico = DiagnosticoDental.objects.select_for_update().get(id=diagnostico_id, activo=True)
-            odontologo = User.objects.get(id=odontologo_id)
-        except (DiagnosticoDental.DoesNotExist, User.DoesNotExist):
-            raise ValidationError("Diagnóstico u odontólogo no encontrado")
-
-        datos_anteriores = {
-            'estado_tratamiento': diagnostico.estado_tratamiento,
-            'fecha_tratamiento': diagnostico.fecha_tratamiento.isoformat() if diagnostico.fecha_tratamiento else None
-        }
-
-        # Actualizar estado y fecha
-        diagnostico.estado_tratamiento = DiagnosticoDental.EstadoTratamiento.TRATADO
-        diagnostico.fecha_tratamiento = timezone.now()
-        diagnostico.save()
-
-        datos_nuevos = {
-            'estado_tratamiento': diagnostico.estado_tratamiento,
-            'fecha_tratamiento': diagnostico.fecha_tratamiento.isoformat()
-        }
-
-        # Crear registro en el historial
-        HistorialOdontograma.objects.create(
-            diente=diagnostico.diente,
-            tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_TRATADO,
-            descripcion=f"Diagnóstico '{diagnostico.diagnostico_catalogo.nombre}' marcado como Tratado en la superficie {diagnostico.superficie.get_nombre_display()}",
-            odontologo=odontologo,
-            datos_anteriores=datos_anteriores,
-            datos_nuevos=datos_nuevos
-        )
-
-        return diagnostico
-
-    @transaction.atomic
-    def eliminar_diagnostico(
-        self,
-        diagnostico_id: str,
-        odontologo_id: int
-    ) -> bool:
-        """
-        Elimina un diagnóstico (soft delete) y registra en historial
-        SOLO con snapshot completo del estado resultante
-        """
-        try:
-            diagnostico = DiagnosticoDental.objects.get(id=diagnostico_id)
-            odontologo = User.objects.get(id=odontologo_id)
-        except (DiagnosticoDental.DoesNotExist, User.DoesNotExist):
-            return False
-        
-        paciente_id = str(diagnostico.superficie.diente.paciente.id)
-        diente = diagnostico.superficie.diente
-        
-        # Guardar info del diagnóstico eliminado para la descripción
-        diagnostico_nombre = diagnostico.diagnostico_catalogo.nombre
-        superficie_nombre = diagnostico.superficie.get_nombre_display()
-        
-        # 1. Soft delete
-        diagnostico.activo = False
-        diagnostico.save()
-        
-        # 2. Generar version_id único
-        version_id = uuid.uuid4()
-        now = timezone.now()
-        
-        # 3. NO crear registro individual de DIAGNOSTICO_ELIMINADO
-        # Ir directo al snapshot completo
-        
-        # 4. Obtener estado completo actualizado del odontograma
-        odontograma_snapshot = {}
-        
-        dientes = Diente.objects.filter(
-            paciente_id=paciente_id
-        ).prefetch_related(
-            Prefetch(
-                'superficies',
-                queryset=SuperficieDental.objects.prefetch_related(
-                    Prefetch(
-                        'diagnosticos',
-                        queryset=DiagnosticoDental.objects.filter(
-                            activo=True  # Solo los activos
-                        ).select_related(
-                            'diagnostico_catalogo',
-                            'diagnostico_catalogo__categoria'
-                        ).prefetch_related(
-                            'diagnostico_catalogo__areas_relacionadas__area'
-                        )
-                    )
-                )
+        @transaction.atomic
+        def marcar_diente_ausente(
+            self, paciente_id: str, codigo_fdi: str, odontologo_id: int
+        ) -> Diente:
+            return self._diente.marcar_diente_ausente(
+                paciente_id=paciente_id,
+                codigo_fdi=codigo_fdi,
+                odontologo_id=odontologo_id,
             )
-        ).order_by('codigo_fdi')
-        
-        
-        # Construir snapshot completo
-        total_diagnosticos = 0
-        for diente_obj in dientes:
-            codigo_fdi = diente_obj.codigo_fdi
-            odontograma_snapshot[codigo_fdi] = {}
-            
-            for superficie in diente_obj.superficies.all():
-                diagnosticos_activos = list(superficie.diagnosticos.all())
-                if diagnosticos_activos:
-                    odontograma_snapshot[codigo_fdi][superficie.nombre] = []
-                    
-                    for diag_dental in diagnosticos_activos:
-                        diag_enriquecido = {
-                            "id": str(diag_dental.id),
-                            "procedimientoId": diag_dental.diagnostico_catalogo.key,
-                            "key": diag_dental.diagnostico_catalogo.key,
-                            "nombre": diag_dental.diagnostico_catalogo.nombre,
-                            "siglas": diag_dental.diagnostico_catalogo.siglas,
-                            "colorHex": diag_dental.diagnostico_catalogo.simbolo_color,
-                            "prioridad": diag_dental.diagnostico_catalogo.prioridad,
-                            "afectaArea": list(
-                                diag_dental.diagnostico_catalogo.areas_relacionadas.values_list(
-                                    'area__key', flat=True
-                                )
-                            ),
-                            "secondaryOptions": diag_dental.atributos_clinicos,
-                            "descripcion": diag_dental.descripcion,
-                        }
-                        odontograma_snapshot[codigo_fdi][superficie.nombre].append(diag_enriquecido)
-                        total_diagnosticos += 1
-        
-        # 5. Crear UN ÚNICO snapshot completo
-        primer_diente = dientes.first()
-        if primer_diente:
-            HistorialOdontograma.objects.create(
-                diente=primer_diente,
-                tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO,
-                descripcion=(
-                    f"Eliminado '{diagnostico_nombre}' de {superficie_nombre}. "
-                    f"Odontograma actualizado: {total_diagnosticos} diagnósticos en "
-                    f"{len(odontograma_snapshot)} dientes"
-                ),
-                odontologo=odontologo,
-                datos_nuevos=odontograma_snapshot,
-                fecha=now,
-                version_id=version_id,
+
+        @transaction.atomic
+        def marcar_diagnostico_tratado(
+            self, diagnostico_id: str, odontologo_id: int
+        ) -> DiagnosticoDental:
+            return self._diag.marcar_diagnostico_tratado(
+                diagnostico_id=diagnostico_id,
+                odontologo_id=odontologo_id,
             )
-        
-        # 6. Invalidar caché
-        cache_key = f'odontograma:completo:{paciente_id}'
-        cache.delete(cache_key)
-        
-        return True
-    
-    @transaction.atomic
-    def eliminardiagnosticosbatch(self, diagnosticoids: List[str], odontologoid: int) -> Dict[str, Any]:
-        """
-        Elimina múltiples diagnósticos en una sola transacción 
-        y crea UN ÚNICO snapshot del estado resultante
-        """
-        # 1. Validar usuario
-        try:
-            odontologo = User.objects.get(id=odontologoid)
-        except User.DoesNotExist:
-            raise ValidationError("Odontólogo no encontrado")
-        
-        # 2. Validar que hay IDs
-        if not diagnosticoids:
-            return {'success': False, 'error': 'No hay diagnósticos para eliminar'}
-        
-        # 3. Obtener todos los diagnósticos a eliminar
-        diagnosticos = DiagnosticoDental.objects.filter(
-            id__in=diagnosticoids,
-            activo=True
-        ).select_related('diagnostico_catalogo', 'superficie__diente__paciente')
-        
-        if not diagnosticos.exists():
-            return {'success': False, 'error': 'No se encontraron diagnósticos activos'}
-        
-        # 4. Obtener info del paciente
-        primer_diagnostico = diagnosticos.first()
-        paciente_id = str(primer_diagnostico.superficie.diente.paciente.id)
-        
-        # 5. Generar version_id
-        version_id = uuid.uuid4()
-        now = timezone.now()
-        
-        # 6. Construir descripción
-        eliminados = []
-        for diag in diagnosticos:
-            eliminados.append(f"{diag.diagnostico_catalogo.nombre} ({diag.superficie.get_nombre_display()})")
-        
-        # 7. Soft delete
-        diagnosticos.update(activo=False)
-        
-        # 8. Obtener snapshot actualizado
-        odontograma_snapshot = {}
-        dientes = Diente.objects.filter(
-            paciente_id=paciente_id
-        ).prefetch_related(
-            Prefetch('superficies',
-                queryset=SuperficieDental.objects.prefetch_related(
-                    Prefetch('diagnosticos',
-                        queryset=DiagnosticoDental.objects.filter(activo=True)
-                        .select_related('diagnostico_catalogo', 'diagnostico_catalogo__categoria')
-                        .prefetch_related('diagnostico_catalogo__areas_relacionadas__area')
-                    )
-                )
+
+        @transaction.atomic
+        def eliminar_diagnostico(self, diagnostico_id: str, odontologo_id: int) -> bool:
+            return self._diag.eliminar_diagnostico(
+                diagnostico_id=diagnostico_id,
+                odontologo_id=odontologo_id,
             )
-        ).order_by('codigo_fdi')
-        
-        # 9. Construir snapshot
-        total_diagnosticos = 0
-        for diente_obj in dientes:
-            codigo_fdi = diente_obj.codigo_fdi
-            odontograma_snapshot[codigo_fdi] = {}
-            
-            for superficie in diente_obj.superficies.all():
-                diagnosticos_activos = list(superficie.diagnosticos.all())
-                
-                if diagnosticos_activos:
-                    odontograma_snapshot[codigo_fdi][superficie.nombre] = []
-                    
-                    for diag_dental in diagnosticos_activos:
-                        diag_enriquecido = {
-                            'id': str(diag_dental.id),
-                            'procedimientoId': diag_dental.diagnostico_catalogo.key,
-                            'key': diag_dental.diagnostico_catalogo.key,
-                            'nombre': diag_dental.diagnostico_catalogo.nombre,
-                            'siglas': diag_dental.diagnostico_catalogo.siglas,
-                            'colorHex': diag_dental.diagnostico_catalogo.simbolo_color,
-                            'prioridad': diag_dental.diagnostico_catalogo.prioridad,
-                            'afectaArea': list(
-                                diag_dental.diagnostico_catalogo.areas_relacionadas.values_list('area__key', flat=True)
-                            ),
-                            'secondaryOptions': diag_dental.atributos_clinicos,
-                            'descripcion': diag_dental.descripcion,
-                        }
-                        odontograma_snapshot[codigo_fdi][superficie.nombre].append(diag_enriquecido)
-                        total_diagnosticos += 1
-        
-        # 10. Crear historial
-        primer_diente = dientes.first()
-        if primer_diente:
-            descripcion = (
-                f"Eliminados {len(eliminados)} diagnóstico(s): "
-                f"{', '.join(eliminados[:3])}{' ...' if len(eliminados) > 3 else ''}. "
-                f"Odontograma actualizado: {total_diagnosticos} diagnósticos en {len(odontograma_snapshot)} dientes"
+
+        @transaction.atomic
+        def eliminardiagnosticosbatch(
+            self, diagnosticoids: List[str], odontologoid: int
+        ) -> Dict[str, Any]:
+            # mantiene exactamente la firma esperada por las views
+            return self._diag.eliminar_diagnosticos_batch(
+                diagnostico_ids=diagnosticoids,
+                odontologo_id=odontologoid,
             )
-            
-            HistorialOdontograma.objects.create(
-                diente=primer_diente,
-                tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO,
+
+        @transaction.atomic
+        def actualizar_diagnostico(
+            self,
+            diagnostico_id: str,
+            descripcion: Optional[str] = None,
+            atributos_clinicos: Optional[Dict] = None,
+            estado_tratamiento: Optional[str] = None,
+            prioridad_asignada: Optional[int] = None,
+            fecha_tratamiento: Optional[str] = None,
+            diagnostico_catalogo_id: Optional[int] = None,
+            odontologo_id: Optional[int] = None,
+        ) -> Optional[DiagnosticoDental]:
+            return self._diag.actualizar_diagnostico(
+                diagnostico_id=diagnostico_id,
                 descripcion=descripcion,
-                odontologo=odontologo,
-                datos_nuevos=odontograma_snapshot,
-                fecha=now,
-                version_id=version_id,
+                atributos_clinicos=atributos_clinicos,
+                estado_tratamiento=estado_tratamiento,
+                prioridad_asignada=prioridad_asignada,
+                fecha_tratamiento=fecha_tratamiento,
+                diagnostico_catalogo_id=diagnostico_catalogo_id,
+                odontologo_id=odontologo_id,
             )
+
+        def obtener_diagnosticos_paciente(
+            self, paciente_id: str, estado_tratamiento: Optional[str] = None
+        ) -> List[DiagnosticoDental]:
+            return self._read.obtener_diagnosticos_paciente(
+                paciente_id=paciente_id,
+                estado_tratamiento=estado_tratamiento,
+            )
+        def aplicar_diagnostico_desde_frontend(
+            diente, superficie_id_frontend, diagnostico_key, **kwargs
+        ):
+            nombre_superficie = SuperficieDental.normalizar_superficie_frontend(
+                superficie_id_frontend
+            )
+            superficie, created = SuperficieDental.objects.get_or_create(
+                diente=diente, nombre=nombre_superficie
+            )
+            diagnostico = Diagnostico.objects.get(key=diagnostico_key, activo=True)
+            area_superficie = superficie.areaanatomica
+            if not diagnostico.areasrelacionadas.filter(area__key=area_superficie).exists():
+                raise ValidationError(
+                    f"El diagnóstico '{diagnostico.nombre}' no es aplicable al área '{area_superficie}'. "
+                    f"Áreas válidas: {[a.key for a in diagnostico.areasrelacionadas.all()]}"
+                )
+            diagnostico_dental = DiagnosticoDental.objects.create(
+                superficie=superficie, diagnostico_catalogo=diagnostico, **kwargs
+            )
+
+            return diagnostico_dental
         
-        # 11. Invalidar caché
-        cache_key = f"odontograma_completo_{paciente_id}"
-        cache.delete(cache_key)
         
-        return {
-            'success': True,
-            'eliminados': len(eliminados),
-            'versionid': str(version_id),
-            'descripcion': descripcion
+class IndiceCariesService:
+
+    @staticmethod
+    def calcular_indices_paciente(paciente_id: str):
+        """
+        Calcula índices CPO y CPO-CEO
+        """
+        logger.info(f"[CPO] Calculando índices para paciente {paciente_id}")
+        dientes = Diente.objects.filter(
+            paciente_id=paciente_id,
+        )
+        logger.info(f"[CPO] Dientes activos encontrados: {dientes.count()}")
+        diagnosticos = (
+            DiagnosticoDental.objects.filter(
+                superficie__diente__paciente_id=paciente_id,
+                activo=True,
+            )
+            
+            .select_related(
+                "diagnostico_catalogo",
+                "superficie__diente",
+                "diagnostico_catalogo__categoria",
+            )
+        )
+        logger.info(
+                f"[CPO] Diagnósticos activos encontrados: {diagnosticos.count()}"
+            )
+        indices = {
+            "permanente": {"C": 0, "P": 0, "O": 0, "total": 0},
+            "temporal": {"c": 0, "e": 0, "o": 0, "total": 0},
         }
 
-    @transaction.atomic
-    def actualizar_diagnostico(
-        self,
-        diagnostico_id: str,
-        descripcion: Optional[str] = None,
-        atributos_clinicos: Optional[Dict] = None,
-        estado_tratamiento: Optional[str] = None,
-        prioridad_asignada: Optional[int] = None,
-        fecha_tratamiento: Optional[str] = None,
-        diagnostico_catalogo_id: Optional[int] = None,
-        odontologo_id: Optional[int] = None
-    ) -> Optional[DiagnosticoDental]:
-        """
-        Actualiza un diagnóstico y registra cambios en historial
-        """
-        try:
-            diagnostico = DiagnosticoDental.objects.select_for_update().get(id=diagnostico_id, activo=True)
-            if odontologo_id:
-                odontologo = User.objects.get(id=odontologo_id)
+        dx_por_diente = defaultdict(list)
+        for dx in diagnosticos:
+            dx_por_diente[dx.superficie.diente_id].append(dx)
+
+        for diente in dientes:
+            info = FDIConstants.obtener_info_fdi(diente.codigo_fdi)
+            if not info:
+                continue
+            logger.debug(f"[CPO] Diente {diente.codigo_fdi} info FDI: {info}")
+            denticion = info["denticion"] 
+            dx_diente = dx_por_diente.get(diente.id, [])
+            logger.debug(
+            f"[CPO] Diente {diente.codigo_fdi} dentición={denticion} "
+            f"dx_count={len(dx_diente)}"
+        )
+            if denticion == "permanente":
+                IndiceCariesService._acumular_cpo(diente, dx_diente, indices["permanente"])
             else:
-                odontologo = diagnostico.odontologo
-        except (DiagnosticoDental.DoesNotExist, User.DoesNotExist):
-            return None
+                IndiceCariesService._acumular_ceo(diente, dx_diente, indices["temporal"])
 
-        # Guardar datos anteriores para historial
-        datos_anteriores = {
-            'descripcion': diagnostico.descripcion,
-            'atributos_clinicos': diagnostico.atributos_clinicos,
-            'estado_tratamiento': diagnostico.estado_tratamiento,
-            'prioridad_asignada': diagnostico.prioridad_asignada,
-            'fecha_tratamiento': diagnostico.fecha_tratamiento,
-            'diagnostico_catalogo_id': diagnostico.diagnostico_catalogo_id,
-        }
+        p = indices["permanente"]
+        p["total"] = p["C"] + p["P"] + p["O"]
 
-        # Actualizar campos
-        if descripcion is not None:
-            diagnostico.descripcion = descripcion
-        if atributos_clinicos is not None:
-            # Merge con atributos existentes
-            current_attrs = diagnostico.atributos_clinicos or {}
-            current_attrs.update(atributos_clinicos)
-            diagnostico.atributos_clinicos = current_attrs
-        if estado_tratamiento is not None:
-            diagnostico.estado_tratamiento = estado_tratamiento
-        if prioridad_asignada is not None:
-            if not 1 <= prioridad_asignada <= 5:
-                raise ValidationError("Prioridad debe estar entre 1 y 5")
-            diagnostico.prioridad_asignada = prioridad_asignada
-        if fecha_tratamiento is not None:
-            diagnostico.fecha_tratamiento = fecha_tratamiento
-        if diagnostico_catalogo_id is not None:
-            diagnostico.diagnostico_catalogo_id = diagnostico_catalogo_id
-        if odontologo_id is not None:
-            diagnostico.odontologo_id = odontologo_id
+        t = indices["temporal"]
+        t["total"] = t["c"] + t["e"] + t["o"]
+        logger.info(f"[CPO] Resultado índices: {indices}")
+        return indices
 
-        diagnostico.save()
+    @staticmethod
+    def _acumular_cpo(diente, dx_diente, acumulador):
+        logger.debug(
+        f"[CPO] _acumular_cpo diente={diente.codigo_fdi} "
+        f"dx={[dx.diagnostico_catalogo.key for dx in dx_diente]}"
+    )
 
-        # Crear historial de cambios
-        datos_nuevos = {
-            'descripcion': diagnostico.descripcion,
-            'atributos_clinicos': diagnostico.atributos_clinicos,
-            'estado_tratamiento': diagnostico.estado_tratamiento,
-            'prioridad_asignada': diagnostico.prioridad_asignada,
-            'fecha_tratamiento': diagnostico.fecha_tratamiento,
-            'diagnostico_catalogo_id': diagnostico.diagnostico_catalogo_id,
-        }
 
-        HistorialOdontograma.objects.create(
-            diente=diagnostico.diente,
-            tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_MODIFICADO,
-            descripcion=f"Diagnóstico {diagnostico.diagnostico_catalogo.nombre} modificado",
-            odontologo=odontologo,
-            datos_anteriores=datos_anteriores,
-            datos_nuevos=datos_nuevos
-        )
+        tiene_caries = False
+        tiene_obturado = False
+        tiene_perdida_por_caries = False
 
-        return diagnostico
+        for dx in dx_diente:
+            key = dx.diagnostico_catalogo.key
+            cat = dx.diagnostico_catalogo.categoria.key 
+            
+            logger.debug(f"[CPO]   dx key={key} cat={cat}")
 
-    
+            if key in {"caries"} and cat == "patologia_activa":
+                tiene_caries = True
 
-    def obtener_diagnosticos_paciente(
-        self,
-        paciente_id: str,
-        estado_tratamiento: Optional[str] = None
-    ) -> List[DiagnosticoDental]:
+            if key in {
+                "obturacion",
+                "sellante_realizado",
+                "corona_realizada",
+                "protesis_fija_realizada",
+                "protesis_removible_realizada",
+            } and cat == "tratamiento_realizado":
+                tiene_obturado = True
+
+            # Perdidas por caries registradas como tratamiento realizado
+            if key in {"extraccion_otra_causa", "perdida_otra_causa"} and cat == "tratamiento_realizado":
+                tiene_perdida_por_caries = True
+
+            # Ausencia (diagnóstico de ausencia en catálogo)
+            if key == "ausente" and cat == "ausencia":
+                tiene_perdida_por_caries = True
+
+        # 1) P: cualquier forma de pérdida por caries / extracción
+        if tiene_perdida_por_caries or diente.ausente:
+            acumulador["P"] += 1
+            return
+
+        # 2) C: si hay caries, aunque también haya obturación
+        if tiene_caries:
+            acumulador["C"] += 1
+            return
+
+        # 3) O: restaurado sin caries
+        if tiene_obturado:
+            acumulador["O"] += 1
+
+
+
+    @staticmethod
+    def _acumular_ceo(diente, dx_diente, acumulador: dict):
         """
-        Obtiene todos los diagnósticos de un paciente
-        opcionalmente filtrados por estado
+        ceo (temporal) – placeholder:
+        - c: caries
+        - e: extracción indicada
+        - o: obturado
         """
-        try:
-            paciente = Paciente.objects.get(id=paciente_id)
-        except Paciente.DoesNotExist:
-            return []
+        # Recuerda Nava de Mapear caries extraccion o lo que sea no te olvides
+        return
+    @staticmethod
+    def crear_snapshot_indices(paciente_id: str, version_id=None) -> IndiceCariesSnapshot:
+        """
+        Calcula índices actuales y los guarda como snapshot.
+        """
+        logger.info(f"[CPO] Creando snapshot para paciente={paciente_id} version={version_id}")
+        indices = IndiceCariesService.calcular_indices_paciente(paciente_id)
+        logger.info(f"[CPO] Índices calculados antes de snapshot: {indices}")
+        perm = indices["permanente"]
+        temp = indices["temporal"]
 
-        # Obtener todos los diagnósticos del paciente
-        diagnosticos = DiagnosticoDental.objects.filter(
-            superficie__diente__paciente=paciente,
-            activo=True
-        ).select_related(
-            'diagnostico_catalogo',
-            'superficie__diente',
-            'odontologo'
+        snapshot = IndiceCariesSnapshot.objects.create(
+            paciente_id=paciente_id,
+            version_id=version_id,
+            cpo_c=perm["C"],
+            cpo_p=perm["P"],
+            cpo_o=perm["O"],
+            cpo_total=perm["total"],
+            ceo_c=temp["c"],
+            ceo_e=temp["e"],
+            ceo_o=temp["o"],
+            ceo_total=temp["total"],
         )
-
-        if estado_tratamiento:
-            diagnosticos = diagnosticos.filter(estado_tratamiento=estado_tratamiento)
-
-        return list(diagnosticos)
+        logger.info(
+        f"[CPO] Snapshot creado id={snapshot.id} "
+        f"CPO=({snapshot.cpo_c},{snapshot.cpo_p},{snapshot.cpo_o},{snapshot.cpo_total}) "
+        f"ceo=({snapshot.ceo_c},{snapshot.ceo_e},{snapshot.ceo_o},{snapshot.ceo_total})"
+    )
+        
+        
+        return snapshot
     
-    def aplicar_diagnostico_desde_frontend(diente, superficie_id_frontend, diagnostico_key, **kwargs):
-
-        # 1. Normalizar superficie
-        nombre_superficie = SuperficieDental.normalizar_superficie_frontend(
-            superficie_id_frontend
-        )
-        
-        # 2. Crear o obtener SuperficieDental
-        superficie, created = SuperficieDental.objects.get_or_create(
-            diente=diente,
-            nombre=nombre_superficie
-        )
-        
-        # 3. Obtener diagnóstico del catálogo
-        diagnostico = Diagnostico.objects.get(key=diagnostico_key, activo=True)
-        
-        # 4. Validar que el diagnóstico sea aplicable a esa área
-        area_superficie = superficie.area_anatomica
-        if not diagnostico.areas_relacionadas.filter(area__key=area_superficie).exists():
-            raise ValidationError(
-                f"El diagnóstico '{diagnostico.nombre}' no es aplicable a {area_superficie}"
-            )
-        
-        # 5. Crear DiagnosticoDental
-        diagnostico_dental = DiagnosticoDental.objects.create(
-            superficie=superficie,
-            diagnostico_catalogo=diagnostico,
-            **kwargs
-        )
     
-        return diagnostico_dental
+class IndicadoresSaludBucalService:
 
+    @staticmethod
+    def calcular_promedios(indicadores: IndicadoresSaludBucal):
+        placa_vals = [
+            indicadores.pieza_16_placa,
+            indicadores.pieza_11_placa,
+            indicadores.pieza_26_placa,
+            indicadores.pieza_36_placa,
+            indicadores.pieza_31_placa,
+            indicadores.pieza_46_placa,
+        ]
+        calculo_vals = [
+            indicadores.pieza_16_calculo,
+            indicadores.pieza_11_calculo,
+            indicadores.pieza_26_calculo,
+            indicadores.pieza_36_calculo,
+            indicadores.pieza_31_calculo,
+            indicadores.pieza_46_calculo,
+        ]
+        placa = [v for v in placa_vals if v is not None]
+        calculo = [v for v in calculo_vals if v is not None]
 
-
+        indicadores.ohi_promedio_placa = sum(placa) / len(placa) if placa else None
+        indicadores.ohi_promedio_calculo = sum(calculo) / len(calculo) if calculo else None
+        indicadores.save()
+        return indicadores

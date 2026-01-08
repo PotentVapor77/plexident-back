@@ -8,6 +8,8 @@ from django.db.models import Q
 from api.odontogram.models import (
     AreaAfectada,
     Diagnostico,
+    IndicadoresSaludBucal,
+    IndiceCariesSnapshot,
     OpcionAtributoClinico,
     Paciente,
     Diente,
@@ -480,4 +482,62 @@ class HistorialOdontogramaSerializer(serializers.ModelSerializer):
         if obj.diente and obj.diente.paciente:
             paciente = obj.diente.paciente
             return f"{paciente.nombres} {paciente.apellidos}"
+        return None
+    
+class IndiceCariesSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IndiceCariesSnapshot
+        fields = [
+            'id', 'paciente', 'version_id', 'fecha',
+            'cpo_c', 'cpo_p', 'cpo_o', 'cpo_total',
+            'ceo_c', 'ceo_e', 'ceo_o', 'ceo_total',
+        ]
+        read_only_fields = fields
+        
+class IndicadoresSaludBucalSerializer(serializers.ModelSerializer):
+    creado_por_nombre = serializers.SerializerMethodField()
+    actualizado_por_nombre = serializers.SerializerMethodField()
+    
+    paciente_nombre = serializers.SerializerMethodField()
+    paciente_apellido = serializers.SerializerMethodField()
+    paciente_cedula = serializers.SerializerMethodField()
+    paciente_nombre_completo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IndicadoresSaludBucal
+        fields = "__all__"
+        read_only_fields = ("id", "fecha", "creado_por", "actualizado_por")
+
+    def get_creado_por_nombre(self, obj):
+        if obj.creado_por:
+            return f"{obj.creado_por.nombres} {obj.creado_por.apellidos}"
+        return "N/A"
+
+    def get_actualizado_por_nombre(self, obj):
+        if obj.actualizado_por:
+            return f"{obj.actualizado_por.nombres} {obj.actualizado_por.apellidos}"
+        return None
+    
+    def get_paciente_nombre(self, obj):
+        """Obtiene el nombre del paciente"""
+        if obj.paciente:
+            return obj.paciente.nombres
+        return None
+    
+    def get_paciente_apellido(self, obj):
+        """Obtiene el apellido del paciente"""
+        if obj.paciente:
+            return obj.paciente.apellidos
+        return None
+    
+    def get_paciente_cedula(self, obj):
+        """Obtiene la cédula del paciente"""
+        if obj.paciente:
+            return obj.paciente.cedula_pasaporte
+        return None
+    
+    def get_paciente_nombre_completo(self, obj):
+        """Obtiene el nombre completo del paciente"""
+        if obj.paciente:
+            return f"{obj.paciente.nombres} {obj.paciente.apellidos}"
         return None

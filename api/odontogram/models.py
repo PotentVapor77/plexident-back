@@ -14,7 +14,7 @@ import uuid
 from api.patients.models import Paciente
 from api.odontogram.constants import FDI_CHOICES, FDIConstants
 from api.odontogram.validators.validator_fdi import validar_codigo_fdi
-
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -662,3 +662,311 @@ class HistorialOdontograma(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_cambio_display()} - {self.diente.codigo_fdi} - {self.fecha.strftime('%d/%m/%Y')}"
+    
+    
+    
+class IndiceCariesSnapshot(models.Model):
+    """
+    Snapshot de índices de caries (CPO / ceo) ligado a una versión del odontograma.
+    Permite ver cómo evolucionan los índices en el tiempo.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    paciente = models.ForeignKey(
+        Paciente,
+        on_delete=models.CASCADE,
+        related_name='indices_caries'
+    )
+
+    # Opcional: enlazar a una versión específica del historial de odontograma
+    version_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="ID de versión del odontograma (HistorialOdontograma.version_id)"
+    )
+
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    # Índices para dentición permanente (CPO)
+    cpo_c = models.PositiveIntegerField(default=0, help_text="Dientes permanentes cariados")
+    cpo_p = models.PositiveIntegerField(default=0, help_text="Dientes permanentes perdidos por caries")
+    cpo_o = models.PositiveIntegerField(default=0, help_text="Dientes permanentes obturados")
+    cpo_total = models.PositiveIntegerField(default=0)
+
+    # Índices para dentición temporal (ceo) – listo para futuro
+    ceo_c = models.PositiveIntegerField(default=0, help_text="Dientes temporales cariados")
+    ceo_e = models.PositiveIntegerField(default=0, help_text="Dientes temporales con extracción indicada")
+    ceo_o = models.PositiveIntegerField(default=0, help_text="Dientes temporales obturados")
+    ceo_total = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'odonto_indice_caries_snapshot'
+        verbose_name = 'Snapshot índice de caries'
+        verbose_name_plural = 'Snapshots índices de caries'
+        ordering = ['-fecha']
+        indexes = [
+            models.Index(fields=['paciente', '-fecha'], name='idx_indice_paciente_fecha'),
+            models.Index(fields=['version_id', '-fecha'], name='idx_indice_version_fecha'),
+        ]
+
+    def __str__(self):
+        return f"CPO {self.cpo_total} / ceo {self.ceo_total} - {self.paciente_id} - {self.fecha.date()}"
+    
+class IndicadoresSaludBucalManager(models.Manager):
+    """Manager que filtra solo registros activos por defecto"""
+    
+    def get_queryset(self):
+        return super().get_queryset().filter(activo=True)
+
+
+class IndicadoresSaludBucalAllManager(models.Manager):
+    """Manager que incluye todos los registros (activos e inactivos)"""
+    
+    def get_queryset(self):
+        return super().get_queryset()
+class IndicadoresSaludBucal(models.Model):
+    class NivelPeriodontal(models.TextChoices):
+        LEVE = "LEVE", "Leve"
+        MODERADA = "MODERADA", "Moderada"
+        SEVERA = "SEVERA", "Severa"
+
+    class TipoOclusion(models.TextChoices):
+        ANGLE_I = "ANGLE_I", "Angle I"
+        ANGLE_II = "ANGLE_II", "Angle II"
+        ANGLE_III = "ANGLE_III", "Angle III"
+
+    class NivelFluorosis(models.TextChoices):
+        NINGUNA = "NINGUNA", "No presenta"
+        LEVE = "LEVE", "Leve"
+        MODERADA = "MODERADA", "Moderada"
+        SEVERA = "SEVERA", "Severa"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # FK al paciente
+    paciente = models.ForeignKey(
+        Paciente,
+        on_delete=models.CASCADE,
+        related_name="indicadores_bucales",
+    )
+    
+    # Timestamps
+    fecha = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+    
+    # ===== CAMPOS DE AUDITORÍA =====
+    creado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="indicadores_creados",
+        null=True,
+        blank=True,
+        help_text="Usuario que creó el registro"
+    )
+    
+    actualizado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="indicadores_actualizados",
+        null=True,
+        blank=True,
+        help_text="Usuario que realizó la última actualización"
+    )
+    
+    eliminado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="indicadores_eliminados",
+        null=True,
+        blank=True,
+        help_text="Usuario que eliminó el registro"
+    )
+    
+    fecha_eliminacion = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Fecha y hora de eliminación lógica"
+    )
+    # ================================
+
+    # Higiene oral simplificada: piezas índice + puntajes 0–3
+    pieza_16_placa = models.IntegerField(null=True, blank=True)
+    pieza_16_calculo = models.IntegerField(null=True, blank=True)
+    pieza_11_placa = models.IntegerField(null=True, blank=True)
+    pieza_11_calculo = models.IntegerField(null=True, blank=True)
+    pieza_26_placa = models.IntegerField(null=True, blank=True)
+    pieza_26_calculo = models.IntegerField(null=True, blank=True)
+    pieza_36_placa = models.IntegerField(null=True, blank=True)
+    pieza_36_calculo = models.IntegerField(null=True, blank=True)
+    pieza_31_placa = models.IntegerField(null=True, blank=True)
+    pieza_31_calculo = models.IntegerField(null=True, blank=True)
+    pieza_46_placa = models.IntegerField(null=True, blank=True)
+    pieza_46_calculo = models.IntegerField(null=True, blank=True)
+
+    ohi_promedio_placa = models.FloatField(null=True, blank=True)
+    ohi_promedio_calculo = models.FloatField(null=True, blank=True)
+
+    enfermedad_periodontal = models.CharField(
+        max_length=10,
+        choices=NivelPeriodontal.choices,
+        null=True,
+        blank=True,
+    )
+
+    tipo_oclusion = models.CharField(
+        max_length=10,
+        choices=TipoOclusion.choices,
+        null=True,
+        blank=True,
+    )
+
+    nivel_fluorosis = models.CharField(
+        max_length=10,
+        choices=NivelFluorosis.choices,
+        null=True,
+        blank=True,
+    )
+
+    observaciones = models.TextField(null=True, blank=True)
+    
+    # ===== BORRADO LÓGICO =====
+    activo = models.BooleanField(
+        default=True,
+        help_text="False indica que el registro fue eliminado lógicamente"
+    )
+    # ==========================
+
+    class Meta:
+        ordering = ["-fecha"]
+        db_table = 'odonto_indicadores_salud_bucal'
+        verbose_name = 'Indicador de Salud Bucal'
+        verbose_name_plural = 'Indicadores de Salud Bucal'
+        indexes = [
+            models.Index(fields=['paciente', '-fecha', 'activo'], name='idx_indicador_paciente'),
+            models.Index(fields=['activo'], name='idx_indicador_activo'),
+        ]
+    
+    def __str__(self):
+        estado = " (ELIMINADO)" if not self.activo else ""
+        return f"Indicadores {self.paciente.nombres} - {self.fecha.date()}{estado}"
+    
+    
+    
+class PlanTratamiento(models.Model):
+    """
+    Plan de Tratamiento del paciente.
+    Agrupa múltiples sesiones de tratamiento.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    paciente = models.ForeignKey(
+        Paciente,  # Sin comillas, referencia directa
+        on_delete=models.CASCADE, 
+        related_name='planes_tratamiento'
+    )
+    titulo = models.CharField(max_length=255, blank=True, default="Plan de Tratamiento")
+    fecha_creacion = models.DateTimeField(default=timezone.now)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    creado_por = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='planes_creados'
+    )
+    activo = models.BooleanField(default=True)
+    notas_generales = models.TextField(blank=True)
+    
+    # Referencia al odontograma del cual se obtuvieron los diagnósticos
+    version_odontograma = models.UUIDField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'odontogram_plan_tratamiento'
+        ordering = ['-fecha_creacion']
+        verbose_name = 'Plan de Tratamiento'
+        verbose_name_plural = 'Planes de Tratamiento'
+    
+    def __str__(self):
+        return f"Plan {self.paciente.nombres} {self.paciente.apellidos} - {self.fecha_creacion.date()}"
+
+
+class SesionTratamiento(models.Model):
+    """
+    Sesión individual dentro de un Plan de Tratamiento.
+    Contiene diagnósticos/complicaciones, procedimientos y prescripciones.
+    """
+    
+    class EstadoSesion(models.TextChoices):
+        PLANIFICADA = 'planificada', 'Planificada'
+        EN_PROGRESO = 'en_progreso', 'En Progreso'
+        COMPLETADA = 'completada', 'Completada'
+        CANCELADA = 'cancelada', 'Cancelada'
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    plan_tratamiento = models.ForeignKey(
+        PlanTratamiento,  # Sin comillas, referencia directa
+        on_delete=models.CASCADE, 
+        related_name='sesiones'
+    )
+    numero_sesion = models.PositiveIntegerField()
+    fecha_programada = models.DateField(null=True, blank=True)
+    fecha_realizacion = models.DateTimeField(null=True, blank=True)
+    estado = models.CharField(
+        max_length=20, 
+        choices=EstadoSesion.choices, 
+        default=EstadoSesion.PLANIFICADA
+    )
+    
+    # Diagnósticos y Complicaciones (autocompletados del odontograma)
+    diagnosticos_complicaciones = models.JSONField(
+        default=list,
+        help_text="Lista de diagnósticos del odontograma en esta sesión"
+    )
+    
+    # Procedimientos a realizar
+    procedimientos = models.JSONField(
+        default=list,
+        help_text="Lista de procedimientos planificados/realizados"
+    )
+    
+    # Prescripciones
+    prescripciones = models.JSONField(
+        default=list,
+        help_text="Medicamentos y prescripciones"
+    )
+    
+    notas = models.TextField(blank=True)
+    observaciones = models.TextField(blank=True)
+    
+    # Firma digital del odontólogo
+    odontologo = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='sesiones_realizadas'
+    )
+    
+    fecha_creacion = models.DateTimeField(default=timezone.now)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    activo = models.BooleanField(default=True)
+    
+    class Meta:
+        db_table = 'odontogram_sesion_tratamiento'
+        ordering = ['plan_tratamiento', 'numero_sesion']
+        unique_together = ['plan_tratamiento', 'numero_sesion']
+        verbose_name = 'Sesión de Tratamiento'
+        verbose_name_plural = 'Sesiones de Tratamiento'
+        indexes = [
+            models.Index(fields=['plan_tratamiento', 'numero_sesion']),
+            models.Index(fields=['fecha_programada']),
+            models.Index(fields=['estado']),
+        ]
+    
+    def __str__(self):
+        return f"Sesión {self.numero_sesion} - {self.plan_tratamiento.paciente.nombres}"
+    
+    def firmar_sesion(self, odontologo):
+        """Marca la sesión como completada por el odontólogo"""
+        self.odontologo = odontologo
+        self.estado = self.EstadoSesion.COMPLETADA
+        self.fecha_realizacion = timezone.now()
+        self.save()

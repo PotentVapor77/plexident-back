@@ -30,6 +30,7 @@ from api.odontogram.models import (
     DiagnosticoDental,
     HistorialOdontograma,
 )
+from api.odontogram.services.odontogram_services import IndiceCariesService
 
 
 logger = logging.getLogger(__name__)
@@ -475,3 +476,23 @@ def invalidar_cache_historial(sender, instance, **kwargs):
     cache.delete(f'odontograma:paciente:{paciente_id}')
     
     logger.debug(f"Caché invalidado para historial paciente {paciente_id}")
+    
+    
+@receiver(post_save, sender=HistorialOdontograma)
+def crear_snapshot_indices_despues_snapshot_completo(sender, instance, created, **kwargs):
+    if not created:
+        return
+
+    if instance.tipo_cambio != HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO:
+        return
+
+    paciente_id = str(instance.diente.paciente_id)
+    version_id = instance.version_id
+    logger.info(
+        f"[CPO] post_save SNAPSHOT_COMPLETO paciente={instance.diente.paciente_id} "
+        f"version={instance.version_id}"
+    )
+    IndiceCariesService.crear_snapshot_indices(
+        paciente_id=paciente_id,
+        version_id=version_id,
+    )

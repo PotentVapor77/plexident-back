@@ -1,23 +1,17 @@
 # api/odontogram/views/odontograma_views.py
-"""
-ViewSets para instancias de odontogramas
-- Pacientes
-- Dientes
-- Superficies dentales
-- Diagnósticos dentales aplicados
-- Historial
-"""
 
 import logging
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Prefetch
 from django.utils import timezone
+from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from api.odontogram.models import (
+    IndicadoresSaludBucal,
     Paciente,
     Diente,
     SuperficieDental,
@@ -38,9 +32,9 @@ from api.odontogram.serializers import (
     HistorialOdontogramaSerializer,
 )
 
-from api.odontogram.services.odontogram_services import OdontogramaService
+from api.odontogram.services.odontogram_services import IndicadoresSaludBucalService, OdontogramaService, IndiceCariesService
 from api.odontogram.serializers.bundle_serializers import FHIRBundleSerializer
-from api.odontogram.serializers.serializers import DienteSerializer
+from api.odontogram.serializers.serializers import DienteSerializer, IndicadoresSaludBucalSerializer
 from api.users.permissions import UserBasedPermission
 from django.db import models
 
@@ -112,6 +106,15 @@ class PacienteViewSet(viewsets.ModelViewSet):
         logger.info(f"Odontograma cargado para paciente {paciente.id}: {len(dientes_data)} dientes")
         
         return Response(response_data)
+    
+    @action(detail=True, methods=['get'], url_path='indices-cpo-ceo')
+    def indices_cpo_ceo(self, request, pk=None):
+        """
+        GET /api/odontogram/pacientes/{id}/indices-cpo-ceo/
+        """
+        paciente = self.get_object()
+        indices = IndiceCariesService.calcular_indices_paciente(str(paciente.id))
+        return Response(indices, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['get'])
     def por_version(self, request):
@@ -577,4 +580,170 @@ def guardar_odontograma_completo(request, paciente_id):
         odontologo_id=odontologo_id
     )
     return Response(resultado, status=status.HTTP_200_OK)
+class IndicadoresSaludBucalPagination(PageNumberPagination):
+    """
+    Paginación para indicadores de salud bucal.
+    10 registros por página es razonable para este tipo de datos.
+    """
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+    
+    
+class IndicadoresSaludBucalViewSet(viewsets.ModelViewSet):
+    """
+    CRUD de Indicadores de Salud Bucal por paciente.
+    Implementa borrado lógico usando el campo 'activo'.
+    """
+    serializer_class = IndicadoresSaludBucalSerializer
+    permission_classes = [IsAuthenticated]
+    permission_model_name = 'indicadores_salud_bucal'
+    pagination_class = IndicadoresSaludBucalPagination
 
+    def get_queryset(self):
+        paciente_id = self.request.query_params.get('paciente_id')
+        incluir_inactivos = self.request.query_params.get('incluir_inactivos', 'false').lower() == 'true'
+        
+        logger.info(f"[IndicadoresSaludBucalViewSet] GET queryset")
+        logger.info(f" → paciente_id: {paciente_id}")
+        logger.info(f" → incluir_inactivos: {incluir_inactivos}")
+
+        # Usar el manager apropiado
+        if incluir_inactivos:
+            qs = IndicadoresSaludBucal.all_objects.select_related(
+                'paciente', 'creado_por', 'actualizado_por', 'eliminado_por'
+            ).all()
+        else:
+            qs = IndicadoresSaludBucal.objects.select_related(
+                'paciente', 'creado_por', 'actualizado_por'
+            ).all()
+
+        if paciente_id:
+            qs = qs.filter(paciente_id=paciente_id)
+            count = qs.count()
+            logger.info(f" → Registros encontrados: {count}")
+        else:
+            logger.warning(" → ⚠️ NO se proporcionó paciente_id")
+
+        return qs.order_by('-fecha')
+
+    def perform_create(self, serializer):
+        logger.info(f"[IndicadoresSaludBucalViewSet] CREATE")
+        logger.info(f" → Usuario: {self.request.user}")
+        
+        # Asignar creado_por automáticamente
+        indicadores = serializer.save(
+            creado_por=self.request.user,
+            activo=True
+        )
+        IndicadoresSaludBucalService.calcular_promedios(indicadores)
+        
+        logger.info(f" → Indicador creado: {indicadores.id}")
+
+    def perform_update(self, serializer):
+        logger.info(f"[IndicadoresSaludBucalViewSet] UPDATE")
+        logger.info(f" → Usuario: {self.request.user}")
+        
+        # Asignar actualizado_por automáticamente
+        indicadores = serializer.save(actualizado_por=self.request.user)
+        IndicadoresSaludBucalService.calcular_promedios(indicadores)
+        
+        logger.info(f" → Indicador actualizado: {indicadores.id}")
+
+    def perform_destroy(self, instance):
+        """
+        Override destroy para implementar borrado lógico.
+        No elimina físicamente el registro, solo marca activo=False.
+        """
+        logger.info(f"[IndicadoresSaludBucalViewSet] DELETE (lógico)")
+        logger.info(f" → Indicador: {instance.id}")
+        logger.info(f" → Usuario: {self.request.user}")
+        
+        # Borrado lógico
+        instance.activo = False
+        instance.eliminado_por = self.request.user
+        instance.fecha_eliminacion = timezone.now()
+        instance.save()
+        
+        logger.info(f" → Indicador marcado como inactivo")
+    
+    @action(detail=True, methods=['post'], url_path='restaurar')
+    def restaurar(self, request, pk=None):
+        """
+        POST /api/indicadores-salud-bucal/{id}/restaurar/
+        Restaura un indicador eliminado lógicamente.
+        """
+        logger.info(f"[IndicadoresSaludBucalViewSet] RESTAURAR")
+        logger.info(f" → Indicador: {pk}")
+        logger.info(f" → Usuario: {request.user}")
+        
+        # Obtener el indicador (incluyendo inactivos)
+        indicador = IndicadoresSaludBucal.all_objects.get(pk=pk)
+        
+        if indicador.activo:
+            return Response(
+                {"error": "Este indicador ya está activo"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Restaurar
+        indicador.activo = True
+        indicador.eliminado_por = None
+        indicador.fecha_eliminacion = None
+        indicador.actualizado_por = request.user
+        indicador.save()
+        
+        logger.info(f" → Indicador restaurado exitosamente")
+        
+        serializer = self.get_serializer(indicador)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], url_path='eliminados')
+    def eliminados(self, request):
+        """
+        GET /api/indicadores-salud-bucal/eliminados/?paciente_id=...
+        Lista todos los indicadores eliminados lógicamente.
+        """
+        paciente_id = request.query_params.get('paciente_id')
+        
+        logger.info(f"[IndicadoresSaludBucalViewSet] ELIMINADOS")
+        logger.info(f" → paciente_id: {paciente_id}")
+        
+        queryset = IndicadoresSaludBucal.all_objects.filter(activo=False)
+        
+        if paciente_id:
+            queryset = queryset.filter(paciente_id=paciente_id)
+        
+        queryset = queryset.select_related(
+            'paciente', 'creado_por', 'eliminado_por'
+        ).order_by('-fecha_eliminacion')
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+class IndicadoresSaludBucalListView(generics.ListAPIView):
+    serializer_class = IndicadoresSaludBucalSerializer
+
+    def get_queryset(self):
+        paciente_id = self.kwargs.get("paciente_id")
+        search = self.request.query_params.get("search", "").strip()
+
+        qs = IndicadoresSaludBucal.objects.filter(paciente_id=paciente_id)
+
+        if search:
+            qs = qs.filter(
+                Q(paciente__nombres__icontains=search) |
+                Q(paciente__apellidos__icontains=search) |
+                Q(paciente__cedulapasaporte__icontains=search) |
+                Q(enfermedad_periodontal__icontains=search) |
+                Q(tipo_oclusion__icontains=search) |
+                Q(nivel_fluorosis__icontains=search) |
+                Q(fecha__icontains=search)
+            )
+
+        return qs.order_by("-fecha")
