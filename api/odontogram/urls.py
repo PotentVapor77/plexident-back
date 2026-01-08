@@ -48,11 +48,13 @@ from api.odontogram.views.form033_views import (
 )
 
 
-from api.odontogram.views.odontograma_views import IndicadoresSaludBucalViewSet, OdontogramaCompletoView, guardar_odontograma_completo, obtener_definiciones_superficies
+from api.odontogram.views.odontograma_views import IndicadoresSaludBucalListView, IndicadoresSaludBucalViewSet, OdontogramaCompletoView, guardar_odontograma_completo, obtener_definiciones_superficies
+from api.odontogram.views import plan_tratamiento_views
 # ==================== ROUTER SETUP ====================
 
 router = DefaultRouter()
-
+router.register(r'planes-tratamiento', plan_tratamiento_views.PlanTratamientoViewSet, basename='plan-tratamiento')
+router.register(r'sesiones-tratamiento', plan_tratamiento_views.SesionTratamientoViewSet, basename='sesion-tratamiento')
 # CATÁLOGO (Lectura)
 router.register(
     r"catalogo/categorias", CategoriaDiagnosticoViewSet, basename="categoria"
@@ -185,79 +187,11 @@ urlpatterns = [
         name="odontograma-completo",
     ),
     # /
+    path(
+        "pacientes/<uuid:paciente_id>/indicadores/",
+        IndicadoresSaludBucalListView.as_view(),
+        name="indicadores-salud-bucal-list",
+    ),
     
 
 ]   
-
-
-# ==================== ENDPOINT SUMMARY ====================
-
-"""
-ENDPOINTS DISPONIBLES:
-
-=== CATÁLOGO (Lectura - GET) ===
-GET  /api/odontogram/catalogo/categorias/
-GET  /api/odontogram/catalogo/categorias/por_prioridad/?prioridad=ALTA
-GET  /api/odontogram/catalogo/diagnosticos/
-GET  /api/odontogram/catalogo/diagnosticos/{id}/
-GET  /api/odontogram/catalogo/diagnosticos/por_categoria/?categoria_id=1
-GET  /api/odontogram/catalogo/diagnosticos/criticos/
-GET  /api/odontogram/catalogo/diagnosticos/buscar/?q=caries
-GET  /api/odontogram/catalogo/areas/
-GET  /api/odontogram/catalogo/atributos/
-
-=== INSTANCIAS (CRUD) ===
-GET    /api/odontogram/pacientes/
-POST   /api/odontogram/pacientes/
-GET    /api/odontogram/pacientes/{id}/
-PUT    /api/odontogram/pacientes/{id}/
-DELETE /api/odontogram/pacientes/{id}/
-GET    /api/odontogram/pacientes/{id}/odontograma/
-GET    /api/odontogram/pacientes/{id}/diagnosticos/
-GET    /api/odontogram/pacientes/{id}/odontograma-fhir/
-
-GET    /api/odontogram/dientes/
-POST   /api/odontogram/dientes/
-GET    /api/odontogram/dientes/{id}/
-PUT    /api/odontogram/dientes/{id}/
-DELETE /api/odontogram/dientes/{id}/
-POST   /api/odontogram/dientes/{id}/marcar_ausente/
-
-GET    /api/odontogram/superficies/
-GET    /api/odontogram/diagnosticos-aplicados/
-POST   /api/odontogram/diagnosticos-aplicados/
-GET    /api/odontogram/diagnosticos-aplicados/{id}/
-PUT    /api/odontogram/diagnosticos-aplicados/{id}/
-DELETE /api/odontogram/diagnosticos-aplicados/{id}/
-POST   /api/odontogram/diagnosticos-aplicados/{id}/marcar_tratado/
-DELETE /api/odontogram/diagnosticos-aplicados/{id}/eliminar/
-
-GET    /api/odontogram/historial/
-GET    /api/odontogram/historial/{id}/
-
-=== FHIR INTEROPERABILIDAD ===
-GET    /api/odontogram/fhir/patient/{id}/
-       → FHIR Patient Resource
-
-GET    /api/odontogram/fhir/odontograma/{paciente_id}/
-       → FHIR Bundle tipo "collection"
-
-GET    /api/odontogram/fhir/cda/{paciente_id}/
-       → CDA XML en FHIR Binary
-
-POST   /api/odontogram/fhir/validate/
-       → Validar recurso FHIR
-
-GET    /api/odontogram/fhir/search/
-       → Buscar recursos FHIR
-
-=== EXPORTACIÓN CDA/FHIR ===
-GET    /api/odontogram/odontogramas/{paciente_id}/export-cda/
-       → XML descargable
-
-GET    /api/odontogram/odontogramas/{paciente_id}/export-fhir-bundle/
-       → JSON Bundle FHIR
-
-GET    /api/odontogram/diagnosticos/{diagnostico_id}/export-fhir/
-       → JSON Observation/Condition/Procedure FHIR
-"""

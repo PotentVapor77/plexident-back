@@ -4,6 +4,7 @@ import logging
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Prefetch
 from django.utils import timezone
+from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view
@@ -724,3 +725,25 @@ class IndicadoresSaludBucalViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+    
+class IndicadoresSaludBucalListView(generics.ListAPIView):
+    serializer_class = IndicadoresSaludBucalSerializer
+
+    def get_queryset(self):
+        paciente_id = self.kwargs.get("paciente_id")
+        search = self.request.query_params.get("search", "").strip()
+
+        qs = IndicadoresSaludBucal.objects.filter(paciente_id=paciente_id)
+
+        if search:
+            qs = qs.filter(
+                Q(paciente__nombres__icontains=search) |
+                Q(paciente__apellidos__icontains=search) |
+                Q(paciente__cedulapasaporte__icontains=search) |
+                Q(enfermedad_periodontal__icontains=search) |
+                Q(tipo_oclusion__icontains=search) |
+                Q(nivel_fluorosis__icontains=search) |
+                Q(fecha__icontains=search)
+            )
+
+        return qs.order_by("-fecha")
