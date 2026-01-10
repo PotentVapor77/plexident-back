@@ -52,6 +52,10 @@ class PlanTratamientoViewSet(viewsets.ModelViewSet):
         )
         
         return plan
+    def destroy(self, request, *args, **kwargs):
+        plan = self.get_object()
+        plan.eliminar_logicamente(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
     @action(detail=True, methods=['get'])
     def diagnosticos_disponibles(self, request, pk=None):
@@ -102,20 +106,28 @@ class SesionTratamientoViewSet(viewsets.ModelViewSet):
             return SesionTratamientoCreateSerializer
         return SesionTratamientoListSerializer
     
+    
     def perform_create(self, serializer):
         service = PlanTratamientoService()
-        
         sesion = service.crear_sesion_tratamiento(
             plan_tratamiento_id=str(serializer.validated_data['plan_tratamiento'].id),
             odontologo_id=self.request.user.id,
             fecha_programada=serializer.validated_data.get('fecha_programada'),
-            autocompletar_diagnosticos=serializer.validated_data.get('autocompletar_diagnosticos', True),
+            autocompletar_diagnosticos=serializer.validated_data.get(
+                'autocompletar_diagnosticos', True
+            ),
             procedimientos=serializer.validated_data.get('procedimientos', []),
             prescripciones=serializer.validated_data.get('prescripciones', []),
-            notas=serializer.validated_data.get('notas', '')
+            notas=serializer.validated_data.get('notas', ''),
+            cita_id=serializer.validated_data.get('cita_id'),
         )
-        
         return sesion
+    
+    def destroy(self, request, *args, **kwargs):
+        sesion = self.get_object()
+        sesion.eliminar_logicamente(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     
     @action(detail=True, methods=['post'])
     def firmar(self, request, pk=None):

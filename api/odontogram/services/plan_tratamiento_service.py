@@ -9,6 +9,9 @@ from api.odontogram.models import (
 from django.db.models import Prefetch, Q
 import uuid
 
+from api.appointment.models import EstadoCita
+from api.appointment.services.appointment_service import CitaService
+
 User = get_user_model()
 
 
@@ -139,29 +142,43 @@ class PlanTratamientoService:
         autocompletar_diagnosticos: bool = True,
         procedimientos: List[Dict] = None,
         prescripciones: List[Dict] = None,
-        notas: str = ""
+        notas: str = "",
+        cita_id: Optional[str] = None,
     ) -> SesionTratamiento:
-        """Crea una nueva sesión de tratamiento"""
         try:
             plan = PlanTratamiento.objects.get(id=plan_tratamiento_id)
             odontologo = User.objects.get(id=odontologo_id)
         except (PlanTratamiento.DoesNotExist, User.DoesNotExist):
             raise ValidationError("Plan de tratamiento u odontólogo no encontrado")
-        
+
+        # Obtener/validar cita si viene
+        cita = None
+        if cita_id:
+            cita = CitaService.obtener_cita_por_id(cita_id)
+            if not cita:
+                raise ValidationError("Cita no encontrada")
+            if not cita.esta_vigente:
+                raise ValidationError("La cita no está vigente")
+            if cita.paciente_id != plan.paciente_id:
+                raise ValidationError("La cita no pertenece al mismo paciente del plan")
+            # Opcional: sincronizar fecha_programada con la fecha de la cita
+            if not fecha_programada:
+                fecha_programada = cita.fecha
+
         # Calcular número de sesión
         ultima_sesion = SesionTratamiento.objects.filter(
             plan_tratamiento=plan
         ).order_by('-numero_sesion').first()
         numero_sesion = (ultima_sesion.numero_sesion + 1) if ultima_sesion else 1
-        
-        # Autocompletar diagnósticos si se solicita
+
+        # Autocompletar diagnósticos
         diagnosticos_complicaciones = []
         if autocompletar_diagnosticos:
             diagnosticos_data = self.obtener_diagnosticos_ultimo_odontograma(
                 str(plan.paciente.id)
             )
             diagnosticos_complicaciones = diagnosticos_data['diagnosticos']
-        
+
         sesion = SesionTratamiento.objects.create(
             plan_tratamiento=plan,
             numero_sesion=numero_sesion,
@@ -170,11 +187,16 @@ class PlanTratamientoService:
             procedimientos=procedimientos or [],
             prescripciones=prescripciones or [],
             notas=notas,
-            odontologo=odontologo
+            odontologo=odontologo,
+            cita=cita,
         )
-        
+
+        # Opcional: si quieres cambiar estado de cita al crear sesión
+        if cita and cita.estado == EstadoCita.PROGRAMADA:
+            CitaService.cambiar_estado_cita(cita.id, EstadoCita.EN_ATENCION)
+
         return sesion
-    
+        
     @transaction.atomic
     def firmar_sesion(
         self,
