@@ -16,6 +16,8 @@ from api.odontogram.constants import FDI_CHOICES, FDIConstants
 from api.odontogram.validators.validator_fdi import validar_codigo_fdi
 from django.utils import timezone
 
+from api.appointment.models import Cita
+
 User = get_user_model()
 
 # =============================================================================
@@ -860,24 +862,45 @@ class PlanTratamiento(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     paciente = models.ForeignKey(
-        Paciente,  # Sin comillas, referencia directa
-        on_delete=models.CASCADE, 
+        Paciente,
+        on_delete=models.CASCADE,
         related_name='planes_tratamiento'
     )
     titulo = models.CharField(max_length=255, blank=True, default="Plan de Tratamiento")
-    fecha_creacion = models.DateTimeField(default=timezone.now)
-    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    notas_generales = models.TextField(blank=True)
+    
+    # Referencia al odontograma
+    version_odontograma = models.UUIDField(null=True, blank=True)
+    
+    # Auditoría de creación
     creado_por = models.ForeignKey(
         User, 
         on_delete=models.SET_NULL, 
         null=True, 
         related_name='planes_creados'
     )
-    activo = models.BooleanField(default=True)
-    notas_generales = models.TextField(blank=True)
+    fecha_creacion = models.DateTimeField(default=timezone.now)
     
-    # Referencia al odontograma del cual se obtuvieron los diagnósticos
-    version_odontograma = models.UUIDField(null=True, blank=True)
+    # Auditoría de edición
+    editado_por = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='planes_editados'
+    )
+    fecha_edicion = models.DateTimeField(null=True, blank=True)
+    
+    # Eliminado lógico
+    activo = models.BooleanField(default=True)
+    eliminado_por = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='planes_eliminados'
+    )
+    fecha_eliminacion = models.DateTimeField(null=True, blank=True)
     
     class Meta:
         db_table = 'odontogram_plan_tratamiento'
@@ -887,6 +910,28 @@ class PlanTratamiento(models.Model):
     
     def __str__(self):
         return f"Plan {self.paciente.nombres} {self.paciente.apellidos} - {self.fecha_creacion.date()}"
+    
+    def save(self, *args, **kwargs):
+        """Override para registrar auditoría automática"""
+        user = kwargs.pop('user', None)
+        
+        if self.pk:  # Actualización
+            if user:
+                self.editado_por = user
+                self.fecha_edicion = timezone.now()
+        else:  # Creación
+            if user and not self.creado_por:
+                self.creado_por = user
+        
+        super().save(*args, **kwargs)
+    
+    def eliminar_logicamente(self, usuario):
+        """Elimina lógicamente el plan de tratamiento"""
+        self.activo = False
+        self.eliminado_por = usuario
+        self.fecha_eliminacion = timezone.now()
+        self.save()
+
 
 
 class SesionTratamiento(models.Model):
@@ -894,7 +939,6 @@ class SesionTratamiento(models.Model):
     Sesión individual dentro de un Plan de Tratamiento.
     Contiene diagnósticos/complicaciones, procedimientos y prescripciones.
     """
-    
     class EstadoSesion(models.TextChoices):
         PLANIFICADA = 'planificada', 'Planificada'
         EN_PROGRESO = 'en_progreso', 'En Progreso'
@@ -903,20 +947,29 @@ class SesionTratamiento(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     plan_tratamiento = models.ForeignKey(
-        PlanTratamiento,  # Sin comillas, referencia directa
-        on_delete=models.CASCADE, 
+        PlanTratamiento,
+        on_delete=models.CASCADE,
         related_name='sesiones'
     )
     numero_sesion = models.PositiveIntegerField()
     fecha_programada = models.DateField(null=True, blank=True)
     fecha_realizacion = models.DateTimeField(null=True, blank=True)
     estado = models.CharField(
-        max_length=20, 
-        choices=EstadoSesion.choices, 
+        max_length=20,
+        choices=EstadoSesion.choices,
         default=EstadoSesion.PLANIFICADA
     )
     
-    # Diagnósticos y Complicaciones (autocompletados del odontograma)
+    cita = models.OneToOneField(
+        Cita,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sesion_tratamiento",
+        help_text="Cita de agenda asociada a esta sesión"
+    )
+    
+    # Diagnósticos y Complicaciones
     diagnosticos_complicaciones = models.JSONField(
         default=list,
         help_text="Lista de diagnósticos del odontograma en esta sesión"
@@ -937,17 +990,43 @@ class SesionTratamiento(models.Model):
     notas = models.TextField(blank=True)
     observaciones = models.TextField(blank=True)
     
-    # Firma digital del odontólogo
+    # Odontólogo responsable
     odontologo = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name='sesiones_realizadas'
     )
     
+    # Auditoría de creación
+    creado_por = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='sesiones_creadas'
+    )
     fecha_creacion = models.DateTimeField(default=timezone.now)
-    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    # Auditoría de edición
+    editado_por = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='sesiones_editadas'
+    )
+    fecha_edicion = models.DateTimeField(null=True, blank=True)
+    
+    # Eliminado lógico
     activo = models.BooleanField(default=True)
+    eliminado_por = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='sesiones_eliminadas'
+    )
+    fecha_eliminacion = models.DateTimeField(null=True, blank=True)
     
     class Meta:
         db_table = 'odontogram_sesion_tratamiento'
@@ -964,7 +1043,28 @@ class SesionTratamiento(models.Model):
     def __str__(self):
         return f"Sesión {self.numero_sesion} - {self.plan_tratamiento.paciente.nombres}"
     
-    def firmar_sesion(self, odontologo):
+    def save(self, *args, **kwargs):
+        """Override para registrar auditoría automática"""
+        user = kwargs.pop('user', None)
+        
+        if self.pk:  # Actualización
+            if user:
+                self.editado_por = user
+                self.fecha_edicion = timezone.now()
+        else:  # Creación
+            if user and not self.creado_por:
+                self.creado_por = user
+        
+        super().save(*args, **kwargs)
+    
+    def eliminar_logicamente(self, usuario):
+        """Elimina lógicamente la sesión de tratamiento"""
+        self.activo = False
+        self.eliminado_por = usuario
+        self.fecha_eliminacion = timezone.now()
+        self.save()
+    
+    def completar_sesion(self, odontologo):
         """Marca la sesión como completada por el odontólogo"""
         self.odontologo = odontologo
         self.estado = self.EstadoSesion.COMPLETADA

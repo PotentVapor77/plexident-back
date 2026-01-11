@@ -13,75 +13,96 @@ class SesionTratamientoListSerializer(serializers.ModelSerializer):
     total_diagnosticos = serializers.SerializerMethodField()
     total_procedimientos = serializers.SerializerMethodField()
     total_prescripciones = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = SesionTratamiento
         fields = [
             'id', 'numero_sesion', 'fecha_programada', 'fecha_realizacion',
             'estado', 'estado_display', 'esta_firmada', 'odontologo_nombre',
             'total_diagnosticos', 'total_procedimientos', 'total_prescripciones',
-            'fecha_firma', 'fecha_creacion'
+            'fecha_creacion',
         ]
-    
+    def get_odontologo_info(self, obj):
+        if obj.odontologo:
+            return {
+                "id": obj.odontologo.id,
+                "nombres": obj.odontologo.nombres,
+                "apellidos": obj.odontologo.apellidos,
+            }
+        return None
     def get_odontologo_nombre(self, obj):
         if obj.odontologo:
             return f"{obj.odontologo.nombres} {obj.odontologo.apellidos}"
         return None
-    
+
     def get_esta_firmada(self, obj):
-        return bool(obj.firma_digital and obj.fecha_firma)
-    
+        return False
+
     def get_total_diagnosticos(self, obj):
         return len(obj.diagnosticos_complicaciones) if obj.diagnosticos_complicaciones else 0
-    
+
     def get_total_procedimientos(self, obj):
         return len(obj.procedimientos) if obj.procedimientos else 0
-    
+
     def get_total_prescripciones(self, obj):
         return len(obj.prescripciones) if obj.prescripciones else 0
 
 
 class SesionTratamientoDetailSerializer(serializers.ModelSerializer):
-    """Serializer detallado para una sesión"""
     odontologo_info = serializers.SerializerMethodField()
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
-    
+    cita_info = serializers.SerializerMethodField()
+
     class Meta:
         model = SesionTratamiento
         fields = [
-            'id', 'numero_sesion', 'fecha_programada', 'fecha_realizacion',
+            'id', "plan_tratamiento",'numero_sesion', 'fecha_programada', 'fecha_realizacion',
             'estado', 'estado_display', 'diagnosticos_complicaciones',
             'procedimientos', 'prescripciones', 'notas', 'observaciones',
-            'odontologo_info', 'firma_digital', 'fecha_firma',
-            'fecha_creacion', 'fecha_actualizacion', 'activo'
+            'odontologo_info',
+            'fecha_creacion', 'activo',
+            'cita_info',
         ]
-        read_only_fields = ['id', 'numero_sesion', 'fecha_creacion', 'fecha_actualizacion']
-    
     def get_odontologo_info(self, obj):
         if obj.odontologo:
             return {
-                'id': obj.odontologo.id,
-                'nombres': obj.odontologo.nombres,
-                'apellidos': obj.odontologo.apellidos,
-                'correo': obj.odontologo.correo
+                "id": obj.odontologo.id,
+                "nombres": obj.odontologo.nombres,
+                "apellidos": obj.odontologo.apellidos,
+            }
+        return None
+
+    def get_cita_info(self, obj):
+        if obj.cita:
+            return {
+                "id": str(obj.cita.id),
+                "fecha": obj.cita.fecha,
+                "hora_inicio": obj.cita.hora_inicio,
+                "hora_fin": obj.cita.hora_fin,
+                "estado": obj.cita.estado,
             }
         return None
 
 
 class SesionTratamientoCreateSerializer(serializers.ModelSerializer):
-    """Serializer para crear/actualizar sesiones"""
     autocompletar_diagnosticos = serializers.BooleanField(
-        default=True, 
+        default=True,
         write_only=True,
         help_text="Si es True, autocompleta diagnósticos del último odontograma"
     )
-    
+    cita_id = serializers.UUIDField(
+        write_only=True,
+        required=False,
+        allow_null=True,
+        help_text="ID de la cita de agenda a vincular"
+    )
+
     class Meta:
         model = SesionTratamiento
         fields = [
             'plan_tratamiento', 'fecha_programada', 'diagnosticos_complicaciones',
             'procedimientos', 'prescripciones', 'notas', 'observaciones',
-            'autocompletar_diagnosticos', 'estado'
+            'autocompletar_diagnosticos', 'estado', 'cita_id',
         ]
     
     def validate(self, data):
@@ -136,15 +157,15 @@ class PlanTratamientoDetailSerializer(serializers.ModelSerializer):
     creado_por_info = serializers.SerializerMethodField()
     sesiones = SesionTratamientoListSerializer(many=True, read_only=True)
     estadisticas = serializers.SerializerMethodField()
-    
+    paciente = serializers.CharField(source="paciente.id")
     class Meta:
         model = PlanTratamiento
         fields = [
-            'id', 'titulo', 'paciente_info', 'fecha_creacion', 'fecha_actualizacion',
+            'id', 'titulo', "paciente", 'paciente_info', 'fecha_creacion', 
             'creado_por_info', 'notas_generales', 'version_odontograma',
             'sesiones', 'estadisticas', 'activo'
         ]
-        read_only_fields = ['id', 'fecha_creacion', 'fecha_actualizacion']
+        read_only_fields = ['id', 'fecha_creacion']
     
     def get_paciente_info(self, obj):
         return {
@@ -162,7 +183,6 @@ class PlanTratamientoDetailSerializer(serializers.ModelSerializer):
                 'apellidos': obj.creado_por.apellidos
             }
         return None
-    
     def get_estadisticas(self, obj):
         sesiones = obj.sesiones.filter(activo=True)
         return {
