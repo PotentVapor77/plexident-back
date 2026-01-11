@@ -140,6 +140,20 @@ class CitaRepository:
             fecha__gte=limite_inferior.date(),
             fecha__lte=limite_superior.date()
         ).select_related('paciente', 'odontologo')
+    
+    @staticmethod
+    def obtener_citas_pendientes_recordatorio():
+        """Citas sin recordatorio para envío automático."""
+        ahora = timezone.now()
+        limite_inf = ahora - timedelta(hours=25)
+        limite_sup = ahora - timedelta(hours=23)
+        return Cita.objects.filter(
+            activo=True,
+            recordatorio_enviado=False,
+            estado__in=[EstadoCita.PROGRAMADA, EstadoCita.CONFIRMADA],
+            fecha__gt=limite_inf.date(),
+            fecha__lt=limite_sup.date()
+        ).select_related('paciente', 'odontologo')
 
 
 class HorarioAtencionRepository:
@@ -213,3 +227,4 @@ class RecordatorioCitaRepository:
             return RecordatorioCita.objects.get(id=recordatorio_id)
         except RecordatorioCita.DoesNotExist:
             return None
+

@@ -28,6 +28,7 @@ class TipoConsulta(models.TextChoices):
     ENDODONCIA = 'ENDODONCIA', 'Endodoncia'
     CIRUGIA = 'CIRUGIA', 'Cirugía'
     PROTESIS = 'PROTESIS', 'Prótesis'
+    SESION = 'SESION', 'Sesión'
     OTRO = 'OTRO', 'Otro'
 
 
@@ -216,24 +217,55 @@ class Cita(models.Model):
     
     @property
     def puede_ser_cancelada(self):
-        return self.estado in [EstadoCita.PROGRAMADA, EstadoCita.CONFIRMADA]
+        """Define qué citas pueden ser canceladas"""
+        # Estados en los que se permite cancelar
+        estados_permitidos = [
+            EstadoCita.PROGRAMADA, 
+            EstadoCita.CONFIRMADA,
+            EstadoCita.REPROGRAMADA  # ✅ AÑADIR ESTO: Permitir cancelar citas reprogramadas
+        ]
+        
+        # Además, verificar que no sea en el pasado (solo para citas futuras)
+        fecha_hora_cita = timezone.make_aware(
+            datetime.combine(self.fecha, self.hora_inicio)
+        )
+        ahora = timezone.now()
+        
+        # ✅ CORRECCIÓN: Permitir cancelar citas pasadas si son reprogramadas
+        if self.estado == EstadoCita.REPROGRAMADA:
+            # Para citas reprogramadas, siempre permitir cancelar
+            return True
+        
+        # Para otras citas, verificar que no sean en el pasado
+        if fecha_hora_cita < ahora:
+            return False
+        
+        return self.estado in estados_permitidos
 
 
 class RecordatorioCita(models.Model):
-    """Registro de recordatorios enviados"""
+    """Registro de recordatorios enviados - Solo WhatsApp y Email"""
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     cita = models.ForeignKey(Cita, on_delete=models.CASCADE, related_name='recordatorios')
     
+    destinatario = models.CharField(
+        max_length=20,
+        choices=[
+            ('PACIENTE', 'Paciente'),
+            ('ODONTOLOGO', 'Odontólogo'),
+            ('AMBOS', 'Ambos'),
+        ],
+        default='PACIENTE'
+    )
+    
+    # ✅  EMAIL
     tipo_recordatorio = models.CharField(
         max_length=20,
         choices=[
-            ('SMS', 'SMS'),
             ('EMAIL', 'Email'),
-            ('WHATSAPP', 'WhatsApp'),
-            ('LLAMADA', 'Llamada'),
         ],
-        default='EMAIL'
+        default='EMAIL'  # Por defecto EMAIL
     )
     
     fecha_envio = models.DateTimeField(auto_now_add=True)

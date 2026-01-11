@@ -43,7 +43,7 @@ class HorarioAtencionSerializer(serializers.ModelSerializer):
     
     def validate(self, data):
         """
-        ✅ CORRECCIÓN: Solo validar si ambos campos están presentes
+         CORRECCIÓN: Solo validar si ambos campos están presentes
         Esto permite actualizaciones parciales (PATCH) sin error
         """
         # Obtener valores de la instancia existente si no están en data
@@ -113,11 +113,11 @@ class CitaCreateSerializer(serializers.ModelSerializer):
             'tipo_consulta', 'motivo_consulta', 'observaciones','estado' 
         ]
         extra_kwargs = {
-            'estado': {'required': False}  # ✅ No requerido para crear nuevas citas normales
+            'estado': {'required': False}  # No requerido para crear nuevas citas normales
         }
 
     def create(self, validated_data):
-        # ✅ Si no se especifica estado, usar PROGRAMADA por defecto
+        #  Si no se especifica estado, usar PROGRAMADA por defecto
         # Pero para reprogramación, el servicio establecerá REPROGRAMADA
         if 'estado' not in validated_data:
             validated_data['estado'] = EstadoCita.PROGRAMADA
@@ -251,14 +251,95 @@ class HorariosDisponiblesSerializer(serializers.Serializer):
         except Usuario.DoesNotExist:
             raise serializers.ValidationError("Odontólogo no encontrado")
 
+
+
+
 class RecordatorioCitaSerializer(serializers.ModelSerializer):
-    """Serializer para recordatorios"""
+    """Serializer para recordatorios - Solo Email"""
     cita_detalle = CitaSerializer(source='cita', read_only=True)
+    destinatario_display = serializers.CharField(source='get_destinatario_display', read_only=True)
+    tipo_recordatorio_display = serializers.CharField(source='get_tipo_recordatorio_display', read_only=True)
+    
+    # Campos adicionales para estadísticas
+    email_destinatario = serializers.SerializerMethodField(read_only=True)
+    paciente_nombre = serializers.SerializerMethodField(read_only=True)
+    odontologo_nombre = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = RecordatorioCita
         fields = [
-            'id', 'cita', 'cita_detalle', 'tipo_recordatorio',
-            'fecha_envio', 'enviado_exitosamente', 'mensaje', 'error'
+            'id', 'cita', 'cita_detalle', 'destinatario', 'destinatario_display',
+            'tipo_recordatorio', 'tipo_recordatorio_display', 'fecha_envio', 
+            'enviado_exitosamente', 'mensaje', 'error',
+            'email_destinatario', 'paciente_nombre', 'odontologo_nombre'  # Campos adicionales
         ]
         read_only_fields = ['id', 'fecha_envio']
+    
+    def get_email_destinatario(self, obj):
+        """Obtiene el email del destinatario"""
+        if obj.destinatario == 'PACIENTE':
+            return obj.cita.paciente.correo if obj.cita.paciente.correo else None
+        elif obj.destinatario == 'ODONTOLOGO':
+            return obj.cita.odontologo.correo if obj.cita.odontologo.correo else None
+        return None
+    
+    def get_paciente_nombre(self, obj):
+        """Obtiene nombre del paciente"""
+        return obj.cita.paciente.nombre_completo if obj.cita.paciente else None
+    
+    def get_odontologo_nombre(self, obj):
+        """Obtiene nombre del odontólogo"""
+        return obj.cita.odontologo.get_full_name() if obj.cita.odontologo else None
+    
+    def validate_tipo_recordatorio(self, value):
+        """Validar que solo sea EMAIL"""
+        if value != 'EMAIL':
+            raise serializers.ValidationError(
+                f"Solo EMAIL es permitido. Recibido: {value}"
+            )
+        return value
+
+
+class RecordatorioEnvioSerializer(serializers.Serializer):
+    """Serializer para enviar recordatorios"""
+    tipo_recordatorio = serializers.ChoiceField(
+        choices=['EMAIL'],
+        default='EMAIL',
+        help_text="Tipo de recordatorio a enviar (solo EMAIL disponible)"
+    )
+    
+    destinatario = serializers.ChoiceField(
+        choices=['PACIENTE', 'ODONTOLOGO', 'AMBOS'],
+        default='PACIENTE',
+        help_text="Destinatario del recordatorio"
+    )
+    
+    mensaje = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=500,
+        help_text="Mensaje personalizado adicional (opcional)"
+    )
+    
+    def validate(self, data):
+        """Validaciones adicionales"""
+        tipo_recordatorio = data.get('tipo_recordatorio', 'EMAIL')
+        destinatario = data.get('destinatario', 'PACIENTE')
+        
+        if tipo_recordatorio != 'EMAIL':
+            raise serializers.ValidationError({
+                'tipo_recordatorio': 'Solo se permite EMAIL'
+            })
+        
+        return data
+
+
+class RecordatorioEstadisticaSerializer(serializers.Serializer):
+    """Serializer para estadísticas de recordatorios"""
+    total_enviados = serializers.IntegerField(read_only=True)
+    exitosos = serializers.IntegerField(read_only=True)
+    fallidos = serializers.IntegerField(read_only=True)
+    tasa_exito = serializers.FloatField(read_only=True)
+    por_destinatario = serializers.DictField(read_only=True)
+    por_mes = serializers.ListField(read_only=True)
+    ultimos_recordatorios = RecordatorioCitaSerializer(many=True, read_only=True)

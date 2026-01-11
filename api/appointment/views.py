@@ -11,12 +11,14 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
 from datetime import datetime, timedelta
 
+from .services.appointment_service import RecordatorioService
+
 from .models import Cita, EstadoCita, HorarioAtencion, RecordatorioCita
 from .serializers import (
     CitaSerializer, CitaDetailSerializer, CitaCreateSerializer,
     CitaUpdateSerializer, CitaCancelarSerializer, CitaReprogramarSerializer,
     CitaEstadoSerializer, HorariosDisponiblesSerializer,
-    HorarioAtencionSerializer, RecordatorioCitaSerializer
+    HorarioAtencionSerializer, RecordatorioCitaSerializer, RecordatorioEnvioSerializer
 )
 from .services import CitaService, HorarioAtencionService
 from api.users.permissions import UserBasedPermission
@@ -34,7 +36,7 @@ class CitaViewSet(viewsets.ModelViewSet):
     """ViewSet para gestión de citas"""
     queryset = Cita.objects.all()
     permission_classes = [IsAuthenticated, UserBasedPermission]
-    permission_model_name = "cita"
+    permission_model_name = "agenda"
     pagination_class = CitaPagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['odontologo', 'paciente', 'fecha', 'estado', 'tipo_consulta', 'activo']
@@ -147,7 +149,7 @@ class CitaViewSet(viewsets.ModelViewSet):
             logger.warning(f"Error cancelando cita {pk}: {str(e)} - Usuario: {request.user.username}")
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
-    
+
     @action(detail=True, methods=['post'], url_path='reprogramar')
     def reprogramar(self, request, pk=None):
         """Reprogramar una cita"""
@@ -212,6 +214,91 @@ class CitaViewSet(viewsets.ModelViewSet):
             return Response(output_serializer.data)
         except ValidationError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+    @action(detail=True, methods=["post"], url_path="recordatorio")
+    def enviar_recordatorio(self, request, pk=None) -> Response:
+        """POST /api/appointments/citas/{id}/recordatorio/"""
+        serializer = RecordatorioEnvioSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        try:
+            tipo_recordatorio = serializer.validated_data.get('tipo_recordatorio', 'EMAIL')
+            destinatario = serializer.validated_data.get('destinatario', 'PACIENTE')
+            mensaje = serializer.validated_data.get('mensaje', '')
+            
+            resultado = RecordatorioService.enviar_recordatorio_manual(
+                pk, 
+                tipo_recordatorio=tipo_recordatorio,
+                destinatario=destinatario,
+                mensaje=mensaje
+            )
+            
+            return Response(resultado, status=status.HTTP_200_OK)
+        except ValidationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Error recordatorio cita {pk}: {str(e)}")
+            return Response({"error": "Error interno"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+    @action(detail=False, methods=['get'], url_path='estadisticas-recordatorios')
+    def estadisticas_recordatorios(self, request):
+        """GET /api/appointments/citas/estadisticas-recordatorios/"""
+        try:
+            from datetime import datetime, timedelta
+            
+            # Calcular estadísticas básicas
+            ultimos_30_dias = datetime.now() - timedelta(days=30)
+            
+            total_recordatorios = RecordatorioCita.objects.count()
+            exitosos = RecordatorioCita.objects.filter(enviado_exitosamente=True).count()
+            fallidos = RecordatorioCita.objects.filter(enviado_exitosamente=False).count()
+            
+            # Por destinatario
+            por_destinatario = {
+                'PACIENTE': RecordatorioCita.objects.filter(destinatario='PACIENTE').count(),
+                'ODONTOLOGO': RecordatorioCita.objects.filter(destinatario='ODONTOLOGO').count(),
+                'AMBOS': RecordatorioCita.objects.filter(destinatario='AMBOS').count(),
+            }
+            
+            # Últimos recordatorios
+            ultimos = RecordatorioCita.objects.select_related(
+                'cita', 'cita__paciente', 'cita__odontologo'
+            ).order_by('-fecha_envio')[:10]
+            
+            datos = {
+                'total_enviados': total_recordatorios,
+                'exitosos': exitosos,
+                'fallidos': fallidos,
+                'tasa_exito': (exitosos / total_recordatorios * 100) if total_recordatorios > 0 else 0,
+                'por_destinatario': por_destinatario,
+                'ultimos_recordatorios': RecordatorioCitaSerializer(ultimos, many=True).data
+            }
+            
+            return Response(datos)
+        except Exception as e:
+            logger.error(f"Error obteniendo estadísticas: {str(e)}")
+            return Response(
+                {'error': 'Error al obtener estadísticas'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+
+
     
     @action(detail=False, methods=['get'], url_path='por-odontologo/(?P<odontologo_id>[^/.]+)')
     def por_odontologo(self, request, odontologo_id=None):
@@ -295,7 +382,7 @@ class HorarioAtencionViewSet(viewsets.ModelViewSet):
     serializer_class = HorarioAtencionSerializer
     queryset = HorarioAtencion.objects.all()
     permission_classes = [IsAuthenticated, UserBasedPermission]
-    permission_model_name = "cita"
+    permission_model_name = "agenda"
     pagination_class = CitaPagination
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['odontologo', 'dia_semana', 'activo']
@@ -379,7 +466,7 @@ class RecordatorioCitaViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = RecordatorioCitaSerializer
     queryset = RecordatorioCita.objects.all()
     permission_classes = [IsAuthenticated, UserBasedPermission]
-    permission_model_name = "cita"
+    permission_model_name = "agenda"
     pagination_class = CitaPagination
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['cita', 'tipo_recordatorio', 'enviado_exitosamente']
