@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agenda del Día - FamySALUD</title>
+</head>
+<body style="font-family: 'Arial', sans-serif; background-color: #ffffff; margin: 0; padding: 0; color: #333333;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background: #ffffff;">
+        <!-- Header (mismo diseño que recordatorio paciente) -->
+        <tr>
+            <td style="background: #1a56db; color: white; padding: 25px 30px; text-align: center;">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td align="center" style="padding-bottom: 15px;">
+                            <div style="font-size: 40px; margin-bottom: 10px;">🏥</div>
+                            <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: white;">FamySALUD</h1>
+                            <p style="margin: 8px 0 0; font-size: 16px; opacity: 0.9; color: white;">CENTRO MÉDICO</p>
+                            <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.9; color: #e0ecff;">
+                                📅 Agenda del Día – Dr./Dra. {{ odontologo_nombre }}
+                            </p>
+                            <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9; color: #e0ecff;">
+                                {{ fecha_hoy }}
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+
+        <!-- Content -->
+        <tr>
+            <td style="padding: 40px 30px;">
+                <!-- Título -->
+                <h2 style="color: #1a56db; margin: 0 0 25px 0; font-size: 22px; font-weight: 600;">
+                    Agenda del Día
+                </h2>
+
+                <!-- Resumen de estadísticas (usando tarjetas similares a bloques claros) -->
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 30px 0;">
+                    <tr>
+                        <td style="padding: 0;">
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td width="50%" style="padding: 5px;">
+                                        <table width="100%" cellpadding="0" cellspacing="0" style="background: #f3f4f6; border-radius: 8px;">
+                                            <tr>
+                                                <td style="padding: 12px; text-align: center;">
+                                                    <div style="font-size: 24px; font-weight: 700; color: #1a56db;">
+                                                        {{ total_citas }}
+                                                    </div>
+                                                    <div style="color: #6b7280; font-size: 13px;">Total Citas</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td width="50%" style="padding: 5px;">
+                                        <table width="100%" cellpadding="0" cellspacing="0" style="background: #f3f4f6; border-radius: 8px;">
+                                            <tr>
+                                                <td style="padding: 12px; text-align: center;">
+                                                    <div style="font-size: 24px; font-weight: 700; color: #d97706;">
+                                                        {{ citas_pendientes }}
+                                                    </div>
+                                                    <div style="color: #6b7280; font-size: 13px;">Por Confirmar</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+
+                {% if mensaje_personalizado %}
+                <!-- Nota / mensaje personalizado -->
+                <table width="100%" cellpadding="0" cellspacing="0" style="background: #fff8e1; border-radius: 8px; border-left: 4px solid #ffa000; margin: 0 0 30px 0;">
+                    <tr>
+                        <td style="padding: 15px;">
+                            <p style="margin: 0; font-weight: 600; color: #b45309; font-size: 14px;">📌 Nota:</p>
+                            <p style="margin: 8px 0 0; color: #78350f; font-size: 14px;">
+                                {{ mensaje_personalizado }}
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+                {% endif %}
+
+                <!-- Lista de citas -->
+                <h3 style="color: #1a56db; margin: 0 0 20px 0; font-size: 18px; font-weight: 600; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb;">
+                    📋 Citas Programadas
+                </h3>
+
+                {% if citas_hoy %}
+                    {% for cita in citas_hoy %}
+                    <table width="100%" cellpadding="0" cellspacing="0" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+                        <tr>
+                            <td style="padding: 10px 0;">
+                                <!-- Hora + paciente + badge -->
+                                <table width="100%" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                        <td style="vertical-align: top;">
+                                            <div style="font-weight: 700; color: #1f2937; font-size: 16px; margin-bottom: 5px;">
+                                                {{ cita.hora }}
+                                            </div>
+                                            <div style="font-weight: 600; color: #374151; font-size: 15px;">
+                                                {{ cita.paciente_nombre }}
+                                                {% if cita.es_primera_vez %}
+                                                    <span style="background: #d1fae5; color: #047857; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">
+                                                        NUEVO
+                                                    </span>
+                                                {% elif cita.es_urgencia %}
+                                                    <span style="background: #fee2e2; color: #b91c1c; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">
+                                                        URGENCIA
+                                                    </span>
+                                                {% else %}
+                                                    <span style="background: #e5e7eb; color: #374151; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">
+                                                        CONTROL
+                                                    </span>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                        <td align="right" style="vertical-align: top;">
+                                            <div style="background: #f3f4f6; padding: 6px 12px; border-radius: 6px; font-size: 13px; color: #6b7280; display: inline-block;">
+                                                ⏱️ {{ cita.duracion }} min
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <!-- Teléfono -->
+                                <p style="color: #6b7280; font-size: 14px; margin: 5px 0;">
+                                    📞 {{ cita.telefono }}
+                                </p>
+
+                                <!-- Tipo de consulta -->
+                                <p style="color: #1f2937; font-size: 14px; margin: 5px 0; font-weight: 500;">
+                                    📋 {{ cita.tipo_consulta }}
+                                </p>
+
+                                <!-- Motivo -->
+                                {% if cita.motivo %}
+                                <div style="color: #6b7280; font-size: 14px; margin: 8px 0; background: #f9fafb; padding: 10px; border-radius: 6px;">
+                                    <strong>Motivo:</strong> {{ cita.motivo|truncatechars:120 }}
+                                </div>
+                                {% endif %}
+
+                                <!-- Observaciones -->
+                                {% if cita.observaciones %}
+                                <div style="color: #6b7280; font-size: 14px; margin: 8px 0; background: #f0f9ff; padding: 10px; border-radius: 6px; border-left: 3px solid #0ea5e9;">
+                                    <strong>Notas:</strong> {{ cita.observaciones|truncatechars:100 }}
+                                </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                    {% endfor %}
+                {% else %}
+                    <table width="100%" cellpadding="0" cellspacing="0" style="text-align: center; padding: 40px 0; margin: 0 0 20px 0;">
+                        <tr>
+                            <td>
+                                <div style="font-size: 48px; margin-bottom: 20px;">🎉</div>
+                                <p style="font-size: 16px; margin: 0; color: #374151;">No hay citas programadas para hoy</p>
+                                <p style="font-size: 14px; margin: 10px 0 0; color: #9ca3af;">¡Disfrute de su día!</p>
+                            </td>
+                        </tr>
+                    </table>
+                {% endif %}
+        </tr>
+        <!-- Footer (mismo diseño que recordatorio paciente) -->
+        <tr>
+            <td style="background: #0f172a; color: white; padding: 30px;">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td align="center" style="padding-bottom: 20px;">
+                            <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: white;">
+                                🏥 FamySALUD CENTRO MÉDICO
+                            </p>
+                            <p style="margin: 0; font-size: 14px; color: #cbd5e1;">
+                                © {{ current_year }} Todos los derechos reservados
+                            </p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td align="center" style="padding: 15px 0;">
+                            <table cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="padding: 0 15px;">
+                                        <a href="https://www.famysalud.com" style="color: #60a5fa; text-decoration: none; font-size: 14px;">
+                                            www.famysalud.com
+                                        </a>
+                                    </td>
+                                    <td style="padding: 0 15px;">
+                                        <a href="mailto:info@famysalud.com" style="color: #60a5fa; text-decoration: none; font-size: 14px;">
+                                            info@famysalud.com
+                                        </a>
+                                    </td>
+                                    <td style="padding: 0 15px;">
+                                        <a href="tel:+59321234567" style="color: #60a5fa; text-decoration: none; font-size: 14px;">
+                                            (02) 123-4567
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td align="center" style="padding-top: 20px; border-top: 1px solid #334155;">
+                            <p style="margin: 0 0 10px 0; font-size: 12px; color: #94a3b8;">
+                                📧 Este es un mensaje automático. Por favor, no responder este correo.
+                            </p>
+                            <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+                                📍 Av. Principal 123, Quito, Ecuador
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
