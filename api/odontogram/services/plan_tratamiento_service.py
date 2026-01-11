@@ -50,7 +50,7 @@ class PlanTratamientoService:
                             'siglas': diag.get('siglas'),
                             'color_hex': diag.get('colorHex'),
                             'prioridad': diag.get('prioridad'),
-                            'categoria': diag.get('categorianombre'),
+                            'categoria': diag.get('categoria_nombre'),
                             'descripcion': diag.get('descripcion', ''),
                             'estado_tratamiento': diag.get('estadotratamiento', 'diagnosticado'),
                             'atributos_clinicos': diag.get('secondaryOptions', {}),
@@ -161,6 +161,8 @@ class PlanTratamientoService:
                 raise ValidationError("La cita no está vigente")
             if cita.paciente_id != plan.paciente_id:
                 raise ValidationError("La cita no pertenece al mismo paciente del plan")
+            if cita.sesiones.exists():
+                raise ValidationError("La cita ya está vinculada a otra sesión")
             # Opcional: sincronizar fecha_programada con la fecha de la cita
             if not fecha_programada:
                 fecha_programada = cita.fecha
@@ -221,3 +223,39 @@ class PlanTratamientoService:
             estado__in=['planificada', 'en_progreso'],
             activo=True
         ).select_related('plan_tratamiento', 'odontologo').order_by('fecha_programada')
+        
+        
+    def obtenerdiagnosticosultimassesion(self, plan_id: str) -> dict:
+        """
+        Obtiene los diagnósticos agregados en la última sesión guardada
+        """
+        plan = PlanTratamiento.objects.get(id=plan_id)
+        
+        ultimasesion = SesionTratamiento.objects.filter(
+            plantratamiento=plan,
+            activo=True
+        ).order_by('-numerosesion').first()
+        
+        if not ultimasesion or not ultimasesion.diagnosticoscomplicaciones:
+            return {
+                'diagnosticos': [],
+                'sesion_numero': None,
+                'total': 0
+            }
+        diagnosticos_ids = [
+            d.get('id') for d in ultimasesion.diagnosticoscomplicaciones
+        ]
+        
+        todos_disponibles = self.obtenerdiagnosticosultimoodontograma(plan.paciente.id)
+        
+        # Filtra solo los que están en la última sesión
+        diagnosticos_filtrados = [
+            d for d in todos_disponibles.get('diagnosticos', [])
+            if d.get('id') in diagnosticos_ids
+        ]
+        
+        return {
+            'diagnosticos': diagnosticos_filtrados,
+            'sesion_numero': ultimasesion.numerosesion,
+            'total': len(diagnosticos_filtrados)
+        }
