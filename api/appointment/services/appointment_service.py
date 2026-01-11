@@ -4,7 +4,6 @@ from django.utils import timezone
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from datetime import datetime, timedelta
-import requests
 import re
 from api.appointment.serializers import RecordatorioCitaSerializer
 from django.core.mail import EmailMultiAlternatives, send_mail
