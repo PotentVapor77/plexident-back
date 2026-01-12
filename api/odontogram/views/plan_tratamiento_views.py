@@ -368,6 +368,7 @@ class SesionTratamientoViewSet(viewsets.ModelViewSet):
                 notas=serializer.validated_data.get('notas', ''),
                 cita_id=serializer.validated_data.get('cita_id'),
                 diagnosticos_complicaciones=serializer.validated_data.get('diagnosticos_complicaciones'),
+                estado=serializer.validated_data.get("estado"),
             )
 
             serializer.instance = sesion

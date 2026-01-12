@@ -146,6 +146,7 @@ class PlanTratamientoService:
         notas: str = "",
         cita_id: Optional[str] = None,
         diagnosticos_complicaciones: Optional[List[Dict[str, Any]]] = None,
+        estado: str = "planificada",
     ) -> SesionTratamiento:
         
         try:
@@ -223,6 +224,7 @@ class PlanTratamientoService:
             notas=notas,
             odontologo=odontologo,
             cita=cita,
+            estado=estado,
         )
 
         if cita and cita.estado == EstadoCita.PROGRAMADA:
