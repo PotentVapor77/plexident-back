@@ -106,39 +106,39 @@ class PlanTratamientoViewSet(viewsets.ModelViewSet):
         try:
             service = PlanTratamientoService()
             paciente_id = serializer.validated_data['paciente'].id
-            
+
             plan = service.crear_plan_tratamiento(
                 paciente_id=str(paciente_id),
                 odontologo_id=self.request.user.id,
                 titulo=serializer.validated_data.get('titulo', 'Plan de Tratamiento'),
                 notas_generales=serializer.validated_data.get('notas_generales', ''),
-                usar_ultimo_odontograma=serializer.validated_data.get('usar_ultimo_odontograma', True)
+                usar_ultimo_odontograma=serializer.validated_data.get('usar_ultimo_odontograma', True),
             )
-            
-            # ✅ CORRECCIÓN YA APLICADA
+
             serializer.instance = plan
-            
+
             logger.info(
-                f"Plan creado exitosamente",
+                "Plan creado exitosamente",
                 extra={
                     'plan_id': str(plan.id),
                     'user_id': self.request.user.id,
-                    'paciente_id': str(paciente_id)
-                }
+                    'paciente_id': str(paciente_id),
+                },
             )
-            
+
             return plan
-            
+
         except ValidationError as e:
             logger.warning(f"Validación fallida al crear plan: {str(e)}")
             raise DRFValidationError(detail=str(e))
-        except Exception as e:
+        except Exception:
             logger.error(
-                f"Error inesperado al crear plan",
+                "Error inesperado al crear plan",
                 exc_info=True,
-                extra={'user_id': self.request.user.id}
+                extra={'user_id': self.request.user.id},
             )
             raise DRFValidationError(detail="Error interno al crear el plan")
+
     
     def perform_update(self, serializer):
         """
@@ -349,39 +349,50 @@ class SesionTratamientoViewSet(viewsets.ModelViewSet):
         return SesionTratamientoListSerializer
     
     def perform_create(self, serializer):
-        """Creación de sesión con manejo robusto"""
+        """
+        Creación de sesión con manejo robusto de errores
+        """
         try:
             service = PlanTratamientoService()
-            
+
+            plan = serializer.validated_data['plan_tratamiento']
+            paciente_id = plan.paciente.id
+
             sesion = service.crear_sesion_tratamiento(
-                plan_tratamiento_id=str(serializer.validated_data['plan_tratamiento'].id),
+                plan_tratamiento_id=str(plan.id),
                 odontologo_id=self.request.user.id,
                 fecha_programada=serializer.validated_data.get('fecha_programada'),
                 autocompletar_diagnosticos=serializer.validated_data.get('autocompletar_diagnosticos', True),
-                procedimientos=serializer.validated_data.get('procedimientos', []),
-                prescripciones=serializer.validated_data.get('prescripciones', []),
+                procedimientos=serializer.validated_data.get('procedimientos'),
+                prescripciones=serializer.validated_data.get('prescripciones'),
                 notas=serializer.validated_data.get('notas', ''),
                 cita_id=serializer.validated_data.get('cita_id'),
+                diagnosticos_complicaciones=serializer.validated_data.get('diagnosticos_complicaciones'),
             )
-            
+
             serializer.instance = sesion
-            
+
             logger.info(
-                f"Sesión creada exitosamente",
+                "Sesión creada exitosamente",
                 extra={
                     'sesion_id': str(sesion.id),
-                    'plan_id': str(sesion.plan_tratamiento_id),
-                    'user_id': self.request.user.id
-                }
+                    'plan_id': str(plan.id),
+                    'user_id': self.request.user.id,
+                    'paciente_id': str(paciente_id),
+                },
             )
-            
+
             return sesion
-            
+
         except ValidationError as e:
             logger.warning(f"Validación fallida al crear sesión: {str(e)}")
             raise DRFValidationError(detail=str(e))
-        except Exception as e:
-            logger.error(f"Error al crear sesión", exc_info=True)
+        except Exception:
+            logger.error(
+                "Error inesperado al crear sesión",
+                exc_info=True,
+                extra={'user_id': self.request.user.id},
+            )
             raise DRFValidationError(detail="Error interno al crear la sesión")
     
     def destroy(self, request, *args, **kwargs):
@@ -543,4 +554,71 @@ class SesionTratamientoViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @swagger_auto_schema(
+    method='get',
+    operation_description="Obtiene solo los diagnósticos nuevos de la versión del plan",
+    manual_parameters=[
+        openapi.Parameter(
+            'version_id',
+            openapi.IN_QUERY,
+            description="ID de versión del odontograma",
+            type=openapi.TYPE_STRING,
+            required=False
+        )
+    ],
+    responses={
+        200: openapi.Response(
+            description="Diagnósticos nuevos de la versión",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'version_odontograma': openapi.Schema(type=openapi.TYPE_STRING),
+                    'fecha_odontograma': openapi.Schema(type=openapi.TYPE_STRING),
+                    'total_diagnosticos': openapi.Schema(type=openapi.TYPE_INTEGER),
+                    'diagnosticos': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_OBJECT))
+                }
+            )
+        )
+    }
+)
+    @action(detail=True, methods=['get'], url_path='diagnosticos-nuevos-version')
+    def diagnosticos_nuevos_version(self, request, pk=None):
+        """
+        GET /api/planes-tratamiento/{id}/diagnosticos-nuevos-version/?version_id=xxx
+        Retorna solo los diagnósticos agregados en una versión específica
+        """
+        try:
+            plan = self.get_object()
+            version_id = request.query_params.get('version_id')
+            
+            if not version_id:
+                # Si no se especifica versión, usar la del plan
+                version_id = str(plan.version_odontograma) if plan.version_odontograma else None
+            
+            if not version_id:
+                return Response(
+                    {'error': 'No hay versión de odontograma asociada al plan'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            service = PlanTratamientoService()
+            diagnosticos_data = service.obtener_diagnosticos_nuevos_version(
+                str(plan.paciente.id),
+                version_id
+            )
+            
+            return Response(diagnosticos_data, status=status.HTTP_200_OK)
+            
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error obteniendo diagnósticos nuevos: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'Error obteniendo diagnósticos'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
