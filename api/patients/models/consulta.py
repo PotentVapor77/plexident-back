@@ -28,15 +28,7 @@ class Consulta(BaseModel):
         help_text="Descripción detallada: síntomas, cronología, localización, intensidad"
     )
     
-    # Campos adicionales opcionales
-    diagnostico = models.TextField(
-        blank=True,
-        help_text="Diagnóstico médico realizado"
-    )
-    plan_tratamiento = models.TextField(
-        blank=True,
-        help_text="Plan de tratamiento propuesto"
-    )
+  
     observaciones = models.TextField(
         blank=True,
         help_text="Observaciones adicionales"
