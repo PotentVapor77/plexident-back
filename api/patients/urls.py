@@ -3,7 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 #  CORREGIDO: from .views (relativo) en lugar de patients.views (absoluto)
-from .views import AntecedentesFamiliaresViewSet, AntecedentesPersonalesViewSet, ConstantesVitalesViewSet, ExamenEstomatognaticoViewSet, PacienteViewSet
+from .views import AnamnesisGeneralViewSet, AntecedentesFamiliaresViewSet, AntecedentesPersonalesViewSet, ConstantesVitalesViewSet, ConsultaViewSet, ExamenEstomatognaticoViewSet, PacienteViewSet
 
 router = DefaultRouter()
 router.register(r"pacientes", PacienteViewSet, basename="paciente")
@@ -12,7 +12,8 @@ router.register(r"antecedentes-personales", AntecedentesPersonalesViewSet, basen
 router.register(r"antecedentes-familiares", AntecedentesFamiliaresViewSet, basename="antecedentes-familiares")
 router.register(r"constantes-vitales", ConstantesVitalesViewSet, basename="constantes-vitales")
 router.register(r"examen-estomatognatico", ExamenEstomatognaticoViewSet, basename="examen-estomatognatico")
-
+router.register(r'anamnesis-general', AnamnesisGeneralViewSet, basename='anamnesis-general')  # ✅ Agregar
+router.register(r'consultas', ConsultaViewSet, basename='consulta')
 app_name = "patients"
 
 urlpatterns = [

@@ -21,6 +21,7 @@ class Paciente(BaseModel):
     # Datos de identificación
     cedula_pasaporte = models.CharField(max_length=20, unique=True, verbose_name="Cédula/Pasaporte")
     fecha_nacimiento = models.DateField(verbose_name="Fecha de nacimiento")
+    fecha_ingreso = models.DateField(verbose_name="Fecha de ingreso")
     direccion = models.CharField(max_length=255, blank=True, verbose_name="Dirección")
     telefono = models.CharField(
         max_length=20,
@@ -43,10 +44,9 @@ class Paciente(BaseModel):
         verbose_name="Contacto de emergencia - Teléfono"
     )
     
-    # ================== SECCIÓN B Y C ==================
-    motivo_consulta = models.TextField(blank=True, verbose_name="Motivo de consulta")
-    enfermedad_actual = models.TextField(blank=True, verbose_name="Enfermedad actual")
     
+
+  
     class Meta:
         verbose_name = "Paciente"
         verbose_name_plural = "Pacientes"

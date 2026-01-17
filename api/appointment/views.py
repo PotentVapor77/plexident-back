@@ -10,6 +10,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
 from datetime import datetime, timedelta
+from django.utils import timezone
 
 from .services.appointment_service import RecordatorioService
 
@@ -243,12 +244,80 @@ class CitaViewSet(viewsets.ModelViewSet):
 
 
     
+    
 
-
-
-
-
-
+    @action(detail=False, methods=['get'], url_path='proximas')
+    def citas_proximas(self, request):
+        """
+        Endpoint para obtener las próximas citas programadas
+        """
+        try:
+            from datetime import datetime
+            from django.utils import timezone
+            
+            ahora = timezone.localtime(timezone.now())
+            
+            # Obtener próximas citas (futuras desde ahora)
+            citas_futuras = []
+            citas = Cita.objects.filter(
+                activo=True,
+                estado__in=['PROGRAMADA', 'CONFIRMADA']
+            ).select_related('paciente', 'odontologo').order_by('fecha', 'hora_inicio')
+            
+            # Filtrar solo las que son futuras
+            for cita in citas:
+                fecha_hora_cita = timezone.make_aware(
+                    datetime.combine(cita.fecha, cita.hora_inicio)
+                )
+                if fecha_hora_cita > ahora:  # ✅ Solo futuras
+                    citas_futuras.append(cita)
+                    if len(citas_futuras) >= 10:  # ✅ Máximo 10
+                        break
+            
+            logger.info(f"🔍 Hora actual: {ahora}")
+            logger.info(f"🔍 Próximas citas encontradas: {len(citas_futuras)}")
+            
+            # Formatear respuesta
+            resultado = []
+            for cita in citas_futuras:
+                fecha_hora_cita = timezone.make_aware(
+                    datetime.combine(cita.fecha, cita.hora_inicio)
+                )
+                minutos = int((fecha_hora_cita - ahora).total_seconds() / 60)
+                horas = minutos // 60
+                
+                resultado.append({
+                    'id': str(cita.id),
+                    'fecha': cita.fecha.strftime('%Y-%m-%d'),
+                    'hora_inicio': cita.hora_inicio.strftime('%H:%M'),
+                    'hora_fin': cita.hora_fin.strftime('%H:%M'),
+                    'duracion': cita.duracion,
+                    'estado': cita.estado,
+                    'estado_display': cita.get_estado_display(),
+                    'tipo_consulta': cita.tipo_consulta,
+                    'tipo_consulta_display': cita.get_tipo_consulta_display(),
+                    'motivo_consulta': cita.motivo_consulta or '',
+                    'observaciones': cita.observaciones or '',
+                    'minutos_faltantes': minutos,
+                    'paciente_detalle': {
+                        'id': str(cita.paciente.id),
+                        'nombre_completo': cita.paciente.nombre_completo,
+                        'cedula_pasaporte': cita.paciente.cedula_pasaporte,
+                        'telefono': cita.paciente.telefono or '',
+                        'correo': cita.paciente.correo or '',
+                    },
+                    'odontologo_detalle': {
+                        'id': str(cita.odontologo.id),
+                        'nombre_completo': cita.odontologo.get_full_name(),
+                        'correo': cita.odontologo.correo or '',
+                    }
+                })
+            
+            return Response(resultado, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"❌ Error en citas_proximas: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -471,3 +540,4 @@ class RecordatorioCitaViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['cita', 'tipo_recordatorio', 'enviado_exitosamente']
     ordering = ['-fecha_envio']
+

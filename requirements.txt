@@ -16,3 +16,4 @@ django-extensions
 python-dotenv
 jsonschema
 psycopg2-binary
+drf-yasg

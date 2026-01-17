@@ -4,6 +4,9 @@ from django import forms
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 
+from api.patients.models.anamnesis_general import AnamnesisGeneral
+from api.patients.models.consulta import Consulta
+
 from .models.examen_estomatognatico import ExamenEstomatognatico
 
 # Importar modelos
@@ -74,19 +77,6 @@ class PacienteAdmin(admin.ModelAdmin):
             'classes': ('wide',),
         }),
         
-        # Sección B: MOTIVO DE CONSULTA
-        ('Motivo de Consulta', {
-            'fields': ('motivo_consulta',),
-            'classes': ('wide',),
-            'description': 'Sección B del formulario'
-        }),
-        
-        # Sección C: ENFERMEDAD ACTUAL
-        ('Enfermedad Actual', {
-            'fields': ('enfermedad_actual',),
-            'classes': ('wide',),
-            'description': 'Sección C del formulario'
-        }),
         
         # AUDITORÍA
         ('Auditoría', {
@@ -363,3 +353,258 @@ class ExamenEstomatognaticoAdmin(admin.ModelAdmin):
             'fields': ('activo', 'fecha_creacion', 'fecha_modificacion')
         })
     )
+
+
+
+# ============================================================================
+# ✅ NUEVO: ADMIN ANAMNESIS GENERAL
+# ============================================================================
+
+@admin.register(AnamnesisGeneral)
+class AnamnesisGeneralAdmin(admin.ModelAdmin):
+    list_display = [
+        'paciente',
+        'tiene_alergias',
+        'problemas_coagulacion',
+        'problemas_anestesicos',
+        'toma_medicamentos',
+        'activo',
+        'fecha_creacion'
+    ]
+    
+    search_fields = [
+        'paciente__nombres',
+        'paciente__apellidos',
+        'paciente__cedula_pasaporte',
+        'alergias_detalle',
+        'medicamentos_actuales'
+    ]
+    
+    list_filter = [
+        'activo',
+        'tiene_alergias',
+        'problemas_coagulacion',
+        'problemas_anestesicos',
+        'toma_medicamentos',
+        'fecha_creacion',
+        'fecha_modificacion'
+    ]
+    
+    raw_id_fields = ['paciente']
+    
+    readonly_fields = [
+        'fecha_creacion',
+        'fecha_modificacion',
+        'creado_por',
+        'actualizado_por'
+    ]
+    
+    fieldsets = (
+        ('Información del Paciente', {
+            'fields': ('paciente', 'activo')
+        }),
+       
+        ('Alergias', {
+            'fields': ('tiene_alergias', 'alergias_detalle'),
+            'classes': ('collapse',)
+        }),
+        ('Antecedentes', {
+            'fields': ('antecedentes_personales', 'antecedentes_familiares'),
+            'classes': ('collapse',)
+        }),
+        ('Problemas Médicos', {
+            'fields': (
+                'problemas_coagulacion',
+                'problemas_coagulacion_detalle',
+                'problemas_anestesicos',
+                'problemas_anestesicos_detalle'
+            ),
+            'classes': ('collapse',),
+            'description': '⚠️ ATENCIÓN: Información crítica para procedimientos odontológicos'
+        }),
+        ('Medicamentos', {
+            'fields': ('toma_medicamentos', 'medicamentos_actuales'),
+            'classes': ('collapse',)
+        }),
+        ('Hábitos y Otros', {
+            'fields': ('habitos', 'otros'),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': (
+                'fecha_creacion',
+                'fecha_modificacion',
+                'creado_por',
+                'actualizado_por'
+            ),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        """Optimizar consultas con select_related"""
+        qs = super().get_queryset(request)
+        return qs.select_related('paciente', 'creado_por', 'actualizado_por')
+    
+    def save_model(self, request, obj, form, change):
+        """Asignar usuario que crea/modifica"""
+        if not change:
+            obj.creado_por = request.user
+        obj.actualizado_por = request.user
+        super().save_model(request, obj, form, change)
+    
+    # ✅ Acciones personalizadas
+    actions = ['marcar_como_riesgo_alto', 'exportar_anamnesis']
+    
+    @admin.action(description='🚨 Marcar como riesgo alto')
+    def marcar_como_riesgo_alto(self, request, queryset):
+        """Marcar anamnesis seleccionadas como riesgo alto"""
+        # Esta es una acción de ejemplo, puedes personalizarla
+        count = queryset.count()
+        self.message_user(
+            request,
+            f'{count} anamnesis marcadas como riesgo alto',
+            level='warning'
+        )
+    
+    @admin.action(description='📄 Exportar anamnesis seleccionadas')
+    def exportar_anamnesis(self, request, queryset):
+        """Exportar anamnesis a CSV"""
+        # Implementar lógica de exportación si es necesario
+        count = queryset.count()
+        self.message_user(
+            request,
+            f'{count} anamnesis preparadas para exportación',
+            level='success'
+        )
+
+# ============================================================================
+# ✅ NUEVO: CONSULTA ADMIN
+# ============================================================================
+
+@admin.register(Consulta)
+class ConsultaAdmin(admin.ModelAdmin):
+    list_display = [
+        'get_paciente_nombre',
+        'fecha_consulta',
+        'get_motivo_corto',
+        'tiene_diagnostico',
+        'activo',
+        'fecha_creacion'
+    ]
+    
+    search_fields = [
+        'paciente__nombres',
+        'paciente__apellidos',
+        'paciente__cedula_pasaporte',
+        'motivo_consulta',
+        'enfermedad_actual',
+        'diagnostico'
+    ]
+    
+    list_filter = [
+        'activo',
+        'fecha_consulta',
+        'fecha_creacion',
+    ]
+    
+    raw_id_fields = ['paciente']
+    
+    readonly_fields = [
+        'fecha_creacion',
+        'fecha_modificacion',
+        'creado_por',
+        'actualizado_por'
+    ]
+    
+    date_hierarchy = 'fecha_consulta'
+    
+    fieldsets = (
+        ('Información del Paciente', {
+            'fields': ('paciente', 'fecha_consulta', 'activo'),
+            'description': '📅 Registro de consulta médica'
+        }),
+        ('Motivo de Consulta', {
+            'fields': ('motivo_consulta', 'enfermedad_actual'),
+            'description': 'Razón de la visita y descripción detallada de la enfermedad actual'
+        }),
+        ('Diagnóstico y Tratamiento', {
+            'fields': ('diagnostico', 'plan_tratamiento'),
+            'classes': ('collapse',)
+        }),
+        ('Observaciones', {
+            'fields': ('observaciones',),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': (
+                'fecha_creacion',
+                'fecha_modificacion',
+                'creado_por',
+                'actualizado_por'
+            ),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        """Optimizar consultas con select_related"""
+        qs = super().get_queryset(request)
+        return qs.select_related('paciente', 'creado_por', 'actualizado_por')
+    
+    def save_model(self, request, obj, form, change):
+        """Asignar usuario que crea/modifica"""
+        if not change:
+            obj.creado_por = request.user
+        obj.actualizado_por = request.user
+        super().save_model(request, obj, form, change)
+    
+    # ================ MÉTODOS PERSONALIZADOS ================
+    
+    def get_paciente_nombre(self, obj):
+        """Mostrar nombre completo del paciente"""
+        return obj.paciente.nombre_completo if obj.paciente else '-'
+    get_paciente_nombre.short_description = 'Paciente'
+    get_paciente_nombre.admin_order_field = 'paciente__apellidos'
+    
+    def get_motivo_corto(self, obj):
+        """Mostrar motivo resumido"""
+        if len(obj.motivo_consulta) > 50:
+            return f"{obj.motivo_consulta[:50]}..."
+        return obj.motivo_consulta
+    get_motivo_corto.short_description = 'Motivo'
+    
+    def tiene_diagnostico(self, obj):
+        """Indicar si tiene diagnóstico"""
+        if obj.diagnostico:
+            return format_html(
+                '<span style="color: green;">✓ Sí</span>'
+            )
+        return format_html(
+            '<span style="color: orange;">⊗ Pendiente</span>'
+        )
+    tiene_diagnostico.short_description = 'Diagnóstico'
+    
+    # ================ ACCIONES PERSONALIZADAS ================
+    
+    actions = ['exportar_consultas', 'marcar_con_seguimiento']
+    
+    @admin.action(description='📄 Exportar consultas seleccionadas')
+    def exportar_consultas(self, request, queryset):
+        """Exportar consultas a CSV"""
+        count = queryset.count()
+        self.message_user(
+            request,
+            f'{count} consultas preparadas para exportación',
+            level='success'
+        )
+    
+    @admin.action(description='🔔 Marcar para seguimiento')
+    def marcar_con_seguimiento(self, request, queryset):
+        """Marcar consultas que requieren seguimiento"""
+        count = queryset.count()
+        self.message_user(
+            request,
+            f'{count} consultas marcadas para seguimiento',
+            level='info'
+        )

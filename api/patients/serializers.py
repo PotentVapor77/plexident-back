@@ -6,6 +6,9 @@ from api.patients.models.antecedentes_personales import AntecedentesPersonales
 from api.patients.models.antecedentes_familiares import AntecedentesFamiliares
 from api.patients.models.constantes_vitales import ConstantesVitales
 from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
+from api.patients.models.anamnesis_general import AnamnesisGeneral
+from api.patients.models.consulta import Consulta
+
 #from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
 
 
@@ -529,3 +532,128 @@ class ExamenEstomatognaticoSerializer(serializers.ModelSerializer):
                 )
         
         return attrs
+    
+
+
+class AnamnesisGeneralSerializer(serializers.ModelSerializer):
+    paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
+    
+    class Meta:
+        model = AnamnesisGeneral
+        fields = [
+            'id',
+            'paciente',
+            'paciente_nombre',
+
+            # Alergias
+            'tiene_alergias',
+            'alergias_detalle',
+            # Antecedentes
+            'antecedentes_personales',
+            'antecedentes_familiares',
+            # Problemas de coagulación
+            'problemas_coagulacion',
+            'problemas_coagulacion_detalle',
+            # Problemas con anestésicos
+            'problemas_anestesicos',
+            'problemas_anestesicos_detalle',
+            # Medicamentos
+            'toma_medicamentos',
+            'medicamentos_actuales',
+            # Hábitos y otros
+            'habitos',
+            'otros',
+            # Metadata
+            'activo',
+            'fecha_creacion',
+            'fecha_modificacion',  # ✅ CORREGIDO
+            'creado_por',
+            'actualizado_por',
+        ]
+        read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion', 'creado_por', 'actualizado_por']  # ✅ CORREGIDO
+    
+    def validate(self, data):
+        """Validaciones personalizadas"""
+        if data.get('tiene_alergias') and not data.get('alergias_detalle'):
+            raise serializers.ValidationError({
+                'alergias_detalle': 'Debe especificar las alergias'
+            })
+        
+        if data.get('problemas_coagulacion') and not data.get('problemas_coagulacion_detalle'):
+            raise serializers.ValidationError({
+                'problemas_coagulacion_detalle': 'Debe detallar los problemas de coagulación'
+            })
+        
+        if data.get('problemas_anestesicos') and not data.get('problemas_anestesicos_detalle'):
+            raise serializers.ValidationError({
+                'problemas_anestesicos_detalle': 'Debe detallar los problemas con anestésicos'
+            })
+        
+        if data.get('toma_medicamentos') and not data.get('medicamentos_actuales'):
+            raise serializers.ValidationError({
+                'medicamentos_actuales': 'Debe especificar los medicamentos actuales'
+            })
+        
+        return data
+    
+
+
+class ConsultaSerializer(serializers.ModelSerializer):
+    """Serializer para consultas médicas"""
+    
+    paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
+    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
+    
+    class Meta:
+        model = Consulta
+        fields = [
+            'id',
+            'paciente',
+            'paciente_nombre',
+            'paciente_cedula',
+            # Datos de la consulta
+            'fecha_consulta',
+            'motivo_consulta',     'enfermedad_actual',
+            'diagnostico',
+            'plan_tratamiento',
+            'observaciones',
+            # Metadata (heredados de BaseModel)
+            'activo',
+            'fecha_creacion',
+            'fecha_modificacion',
+            'creado_por',
+            'actualizado_por',
+        ]
+        read_only_fields = [
+            'id',
+            'fecha_creacion',
+            'fecha_modificacion',
+            'creado_por',
+            'actualizado_por',
+            'paciente_nombre',
+            'paciente_cedula',
+        ]
+    
+    def to_representation(self, instance):
+        """Personalizar representación para el frontend"""
+        data = super().to_representation(instance)
+        
+        # Convertir fechas a ISO string
+        if data.get('fecha_consulta'):
+            data['fecha_consulta'] = instance.fecha_consulta.isoformat()
+        if data.get('fecha_creacion'):
+            data['fecha_creacion'] = instance.fecha_creacion.isoformat()
+        if data.get('fecha_modificacion') and instance.fecha_modificacion:
+            data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
+        
+        return data
+    
+    def validate_paciente(self, value):
+        """Validar que el paciente exista y esté activo"""
+        if not value.activo:
+            raise serializers.ValidationError(
+                "No se pueden crear consultas para un paciente inactivo"
+            )
+        return value
+    
+ 
