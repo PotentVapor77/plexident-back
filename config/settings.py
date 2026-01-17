@@ -55,12 +55,14 @@ INSTALLED_APPS = [
     'api.users.apps.UsersConfig',
     'api.odontogram.apps.OdontogramConfig',
     'api.patients.apps.PatientsConfig',
-    'api.appointment.apps.AppointmentConfig'
+    'api.appointment.apps.AppointmentConfig',
+    'api.clinical_records.apps.ClinicalRecordsConfig',
+    
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',  # ✅ ANTES de CommonMiddleware
+    'corsheaders.middleware.CorsMiddleware',  
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'authentication.middleware.CSRFExemptMiddleware',
