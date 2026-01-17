@@ -11,6 +11,7 @@ import uuid
 
 from api.appointment.models import EstadoCita
 from api.appointment.services.appointment_service import CitaService
+from api.odontogram.services.diagnostico_text_service import construir_texto_procedimiento_desde_diagnosticos
 
 User = get_user_model()
 
@@ -140,11 +141,14 @@ class PlanTratamientoService:
         odontologo_id: int,
         fecha_programada=None,
         autocompletar_diagnosticos: bool = True,
-        procedimientos: List[Dict] = None,
-        prescripciones: List[Dict] = None,
+        procedimientos: List[Dict] | None = None,
+        prescripciones: List[Dict] | None = None,
         notas: str = "",
         cita_id: Optional[str] = None,
+        diagnosticos_complicaciones: Optional[List[Dict[str, Any]]] = None,
+        estado: str = "planificada",
     ) -> SesionTratamiento:
+        
         try:
             plan = PlanTratamiento.objects.get(id=plan_tratamiento_id)
             odontologo = User.objects.get(id=odontologo_id)
@@ -163,37 +167,66 @@ class PlanTratamientoService:
                 raise ValidationError("La cita no pertenece al mismo paciente del plan")
             if cita.sesiones.exists():
                 raise ValidationError("La cita ya está vinculada a otra sesión")
-            # Opcional: sincronizar fecha_programada con la fecha de la cita
+
             if not fecha_programada:
                 fecha_programada = cita.fecha
+        print(">>> diagnosticos_complicaciones recibido:", diagnosticos_complicaciones)
+        # 1) Empezar con lo que viene del front (solo seleccionados)
+        diagnosticos_finales: List[Dict[str, Any]] = diagnosticos_complicaciones or []
+        print(">>> diagnosticos_finales que se guardan:", diagnosticos_finales)
 
+        # 2) Solo si está activado autocompletar y NO vino nada desde el front
+        #if autocompletar_diagnosticos and not diagnosticos_finales:
+         #   diagnosticos_data = self.obtener_diagnosticos_ultimo_odontograma(
+          #      str(plan.paciente.id)
+           # )
+            #diagnosticos_finales = diagnosticos_data["diagnosticos"]
+        procedimientos = list(procedimientos or [])
+        
+        if autocompletar_diagnosticos and diagnosticos_finales:
+            # Del JSON del front: cada item trae 'diagnostico_key'
+            keys_catalogo = [
+                item.get("diagnostico_key")
+                for item in diagnosticos_finales
+                if item.get("diagnostico_key")
+            ]
+
+            texto_sugerido = construir_texto_procedimiento_desde_diagnosticos(
+                keys_catalogo,
+                modo="key",
+            )
+
+            if texto_sugerido:
+                procedimientos.append(
+                    {
+                        "descripcion": texto_sugerido,
+                        "autogenerado": True,
+                    }
+                )
+        
+        
+        
+        
         # Calcular número de sesión
         ultima_sesion = SesionTratamiento.objects.filter(
             plan_tratamiento=plan
-        ).order_by('-numero_sesion').first()
+        ).order_by("-numero_sesion").first()
         numero_sesion = (ultima_sesion.numero_sesion + 1) if ultima_sesion else 1
 
-        # Autocompletar diagnósticos
-        diagnosticos_complicaciones = []
-        if autocompletar_diagnosticos:
-            diagnosticos_data = self.obtener_diagnosticos_ultimo_odontograma(
-                str(plan.paciente.id)
-            )
-            diagnosticos_complicaciones = diagnosticos_data['diagnosticos']
-
+        # Crear sesión con la lista final ya decidida
         sesion = SesionTratamiento.objects.create(
             plan_tratamiento=plan,
             numero_sesion=numero_sesion,
             fecha_programada=fecha_programada,
-            diagnosticos_complicaciones=diagnosticos_complicaciones,
-            procedimientos=procedimientos or [],
+            diagnosticos_complicaciones=diagnosticos_finales,
+            procedimientos=procedimientos,
             prescripciones=prescripciones or [],
             notas=notas,
             odontologo=odontologo,
             cita=cita,
+            estado=estado,
         )
 
-        # Opcional: si quieres cambiar estado de cita al crear sesión
         if cita and cita.estado == EstadoCita.PROGRAMADA:
             CitaService.cambiar_estado_cita(cita.id, EstadoCita.EN_ATENCION)
 
@@ -225,37 +258,148 @@ class PlanTratamientoService:
         ).select_related('plan_tratamiento', 'odontologo').order_by('fecha_programada')
         
         
-    def obtenerdiagnosticosultimassesion(self, plan_id: str) -> dict:
+    @staticmethod
+    def obtener_diagnosticos_nuevos_version(paciente_id: str, version_id: str) -> Dict[str, Any]:
         """
-        Obtiene los diagnósticos agregados en la última sesión guardada
+        Obtiene solo los diagnósticos agregados en una versión específica,
+        excluyendo los que ya existían en versiones anteriores.
         """
-        plan = PlanTratamiento.objects.get(id=plan_id)
-        
-        ultimasesion = SesionTratamiento.objects.filter(
-            plantratamiento=plan,
-            activo=True
-        ).order_by('-numerosesion').first()
-        
-        if not ultimasesion or not ultimasesion.diagnosticoscomplicaciones:
+        try:
+            # Obtener el snapshot de la versión actual
+            snapshot_actual = HistorialOdontograma.objects.filter(
+                diente__paciente_id=paciente_id,
+                version_id=version_id,
+                tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO
+            ).first()
+
+            if not snapshot_actual:
+                return {
+                    'version_odontograma': None,
+                    'fecha_odontograma': None,
+                    'total_diagnosticos': 0,
+                    'diagnosticos': []
+                }
+
+            # Obtener el snapshot anterior (si existe)
+            snapshot_anterior = HistorialOdontograma.objects.filter(
+                diente__paciente_id=paciente_id,
+                tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO,
+                fecha__lt=snapshot_actual.fecha
+            ).order_by('-fecha').first()
+
+            # IDs de diagnósticos anteriores
+            diagnosticos_anteriores_ids = set()
+            if snapshot_anterior:
+                odontograma_anterior = snapshot_anterior.datos_nuevos
+                for codigo_fdi, superficies in odontograma_anterior.items():
+                    for superficie_nombre, diags_list in superficies.items():
+                        for diag in diags_list:
+                            diag_id = diag.get('id')
+                            if diag_id:
+                                diagnosticos_anteriores_ids.add(diag_id)
+
+            # Extraer solo diagnósticos nuevos del snapshot actual
+            odontograma_actual = snapshot_actual.datos_nuevos
+            diagnosticos_nuevos = []
+            
+            for codigo_fdi, superficies in odontograma_actual.items():
+                for superficie_nombre, diags_list in superficies.items():
+                    for diag in diags_list:
+                        diag_id = diag.get('id')
+                        # Solo agregar si NO estaba en la versión anterior
+                        if diag_id and diag_id not in diagnosticos_anteriores_ids:
+                            diagnosticos_nuevos.append({
+                                'id': diag_id,
+                                'diente': codigo_fdi,
+                                'superficie': superficie_nombre,
+                                'diagnostico_key': diag.get('key') or diag.get('procedimientoId'),
+                                'diagnostico_nombre': diag.get('nombre'),
+                                'siglas': diag.get('siglas'),
+                                'color_hex': diag.get('colorHex'),
+                                'prioridad': diag.get('prioridad'),
+                                'categoria': diag.get('categoria_nombre'),
+                                'descripcion': diag.get('descripcion', ''),
+                                'estado_tratamiento': diag.get('estadotratamiento', 'diagnosticado'),
+                                'atributos_clinicos': diag.get('secondaryOptions', {}),
+                            })
+
             return {
-                'diagnosticos': [],
-                'sesion_numero': None,
-                'total': 0
+                'version_odontograma': str(snapshot_actual.version_id),
+                'fecha_odontograma': snapshot_actual.fecha.isoformat(),
+                'total_diagnosticos': len(diagnosticos_nuevos),
+                'diagnosticos': diagnosticos_nuevos
             }
-        diagnosticos_ids = [
-            d.get('id') for d in ultimasesion.diagnosticoscomplicaciones
-        ]
-        
-        todos_disponibles = self.obtenerdiagnosticosultimoodontograma(plan.paciente.id)
-        
-        # Filtra solo los que están en la última sesión
-        diagnosticos_filtrados = [
-            d for d in todos_disponibles.get('diagnosticos', [])
-            if d.get('id') in diagnosticos_ids
-        ]
-        
-        return {
-            'diagnosticos': diagnosticos_filtrados,
-            'sesion_numero': ultimasesion.numerosesion,
-            'total': len(diagnosticos_filtrados)
-        }
+
+        except Exception as e:
+            raise ValidationError(f"Error obteniendo diagnósticos nuevos: {str(e)}")
+
+
+    # Modificar el método existente para incluir flag de diagnósticos nuevos
+    @staticmethod
+    def obtener_diagnosticos_ultimo_odontograma(paciente_id: str) -> Dict[str, Any]:
+        """
+        Obtiene los diagnósticos del último odontograma guardado del paciente.
+        Incluye flag 'es_nuevo' para identificar diagnósticos de la última versión.
+        """
+        try:
+            # Obtener el último snapshot completo
+            ultimo_historial = HistorialOdontograma.objects.filter(
+                diente__paciente_id=paciente_id,
+                tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO
+            ).order_by('-fecha').first()
+
+            if not ultimo_historial:
+                return PlanTratamientoService._obtener_diagnosticos_actuales(paciente_id)
+
+            # Obtener snapshot anterior para marcar nuevos
+            snapshot_anterior = HistorialOdontograma.objects.filter(
+                diente__paciente_id=paciente_id,
+                tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO,
+                fecha__lt=ultimo_historial.fecha
+            ).order_by('-fecha').first()
+
+            diagnosticos_anteriores_ids = set()
+            if snapshot_anterior:
+                odontograma_anterior = snapshot_anterior.datos_nuevos
+                for codigo_fdi, superficies in odontograma_anterior.items():
+                    for superficie_nombre, diags_list in superficies.items():
+                        for diag in diags_list:
+                            diag_id = diag.get('id')
+                            if diag_id:
+                                diagnosticos_anteriores_ids.add(diag_id)
+
+            # Extraer diagnósticos del snapshot actual con flag de nuevos
+            odontograma_data = ultimo_historial.datos_nuevos
+            diagnosticos = []
+            
+            for codigo_fdi, superficies in odontograma_data.items():
+                for superficie_nombre, diags_list in superficies.items():
+                    for diag in diags_list:
+                        diag_id = diag.get('id')
+                        es_nuevo = diag_id not in diagnosticos_anteriores_ids if diag_id else True
+                        
+                        diagnosticos.append({
+                            'id': diag_id,
+                            'diente': codigo_fdi,
+                            'superficie': superficie_nombre,
+                            'diagnostico_key': diag.get('key') or diag.get('procedimientoId'),
+                            'diagnostico_nombre': diag.get('nombre'),
+                            'siglas': diag.get('siglas'),
+                            'color_hex': diag.get('colorHex'),
+                            'prioridad': diag.get('prioridad'),
+                            'categoria': diag.get('categoria_nombre'),
+                            'descripcion': diag.get('descripcion', ''),
+                            'estado_tratamiento': diag.get('estadotratamiento', 'diagnosticado'),
+                            'atributos_clinicos': diag.get('secondaryOptions', {}),
+                            'es_nuevo': es_nuevo  # ← NUEVO FLAG
+                        })
+
+            return {
+                'version_odontograma': str(ultimo_historial.version_id),
+                'fecha_odontograma': ultimo_historial.fecha.isoformat(),
+                'total_diagnosticos': len(diagnosticos),
+                'diagnosticos': diagnosticos
+            }
+
+        except Exception as e:
+            raise ValidationError(f"Error obteniendo diagnósticos: {str(e)}")

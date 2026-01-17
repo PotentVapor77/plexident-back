@@ -210,7 +210,7 @@ class AntecedentesPersonalesSerializer(serializers.ModelSerializer):
 
 
 # ============================================================================
-# ✅ SERIALIZER COMPLETO PARA ANTECEDENTES FAMILIARES
+# SERIALIZER COMPLETO PARA ANTECEDENTES FAMILIARES
 # ============================================================================
 
 class AntecedentesFamiliaresSerializer(serializers.ModelSerializer):
