@@ -26,7 +26,6 @@ from api.patients.models.anamnesis_general import AnamnesisGeneral
 
 
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -116,8 +115,6 @@ class PacienteViewSet(viewsets.ModelViewSet):
         return Response({'id': str(instance.id)})
 
 
-
-
 class AntecedentesPersonalesViewSet(viewsets.ModelViewSet):
     """ViewSet para antecedentes personales"""
     serializer_class = AntecedentesPersonalesSerializer
@@ -159,13 +156,16 @@ class AntecedentesPersonalesViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Verificar duplicados
-        paciente_id = serializer.validated_data.get('paciente')
-        if AntecedentesPersonales.objects.filter(paciente=paciente_id, activo=True).exists():
-            raise ValidationError({'detail': 'Este paciente ya tiene antecedentes personales registrados'})
+        # 🚨 ELIMINADO: Verificación de duplicados para permitir múltiples registros
+        # paciente_id = serializer.validated_data.get('paciente')
+        # if AntecedentesPersonales.objects.filter(paciente=paciente_id, activo=True).exists():
+        #     raise ValidationError({'detail': 'Este paciente ya tiene antecedentes personales registrados'})
         
         self.perform_create(serializer)
+        
+        paciente_id = serializer.validated_data.get('paciente').id
         logger.info(f"Antecedentes creados para paciente {paciente_id} por {request.user.username}")
+        
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
@@ -197,20 +197,31 @@ class AntecedentesPersonalesViewSet(viewsets.ModelViewSet):
     def by_paciente(self, request, paciente_id=None):
         """Obtener antecedentes por ID de paciente"""
         try:
-            antecedentes = AntecedentesPersonales.objects.get(
+            # Obtener el último antecedente activo
+            antecedentes = AntecedentesPersonales.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            )
+            ).order_by('-fecha_creacion').first()
+            
+            if not antecedentes:
+                raise AntecedentesPersonales.DoesNotExist
+            
             serializer = self.get_serializer(antecedentes)
             return Response(serializer.data)
         except AntecedentesPersonales.DoesNotExist:
             raise ValidationError({'detail': 'No se encontraron antecedentes para este paciente'})
 
+    @action(detail=False, methods=['get'], url_path='all-by-paciente/(?P<paciente_id>[^/.]+)')
+    def all_by_paciente(self, request, paciente_id=None):
+        """Obtener TODOS los antecedentes por ID de paciente"""
+        antecedentes = AntecedentesPersonales.objects.filter(
+            paciente_id=paciente_id,
+            activo=True
+        ).order_by('-fecha_creacion')
+        
+        serializer = self.get_serializer(antecedentes, many=True)
+        return Response(serializer.data)
 
-
-# ============================================================================
-# ✅ NUEVO: VIEWSET ANTECEDENTES FAMILIARES
-# ============================================================================
 
 class AntecedentesFamiliaresViewSet(viewsets.ModelViewSet):
     """ViewSet para antecedentes familiares"""
@@ -255,13 +266,16 @@ class AntecedentesFamiliaresViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Verificar duplicados
-        paciente_id = serializer.validated_data.get('paciente')
-        if AntecedentesFamiliares.objects.filter(paciente=paciente_id, activo=True).exists():
-            raise ValidationError({'detail': 'Este paciente ya tiene antecedentes familiares registrados'})
+        # 🚨 ELIMINADO: Verificación de duplicados para permitir múltiples registros
+        # paciente_id = serializer.validated_data.get('paciente')
+        # if AntecedentesFamiliares.objects.filter(paciente=paciente_id, activo=True).exists():
+        #     raise ValidationError({'detail': 'Este paciente ya tiene antecedentes familiares registrados'})
         
         self.perform_create(serializer)
+        
+        paciente_id = serializer.validated_data.get('paciente').id
         logger.info(f"Antecedentes familiares creados para paciente {paciente_id} por {request.user.username}")
+        
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -297,21 +311,31 @@ class AntecedentesFamiliaresViewSet(viewsets.ModelViewSet):
     def by_paciente(self, request, paciente_id=None):
         """Obtener antecedentes familiares por ID de paciente"""
         try:
-            antecedentes = AntecedentesFamiliares.objects.get(
+            # Obtener el último antecedente activo
+            antecedentes = AntecedentesFamiliares.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            )
+            ).order_by('-fecha_creacion').first()
+            
+            if not antecedentes:
+                raise AntecedentesFamiliares.DoesNotExist
+            
             serializer = self.get_serializer(antecedentes)
             return Response(serializer.data)
         except AntecedentesFamiliares.DoesNotExist:
             raise ValidationError({'detail': 'No se encontraron antecedentes familiares para este paciente'})
+
+    @action(detail=False, methods=['get'], url_path='all-by-paciente/(?P<paciente_id>[^/.]+)')
+    def all_by_paciente(self, request, paciente_id=None):
+        """Obtener TODOS los antecedentes familiares por ID de paciente"""
+        antecedentes = AntecedentesFamiliares.objects.filter(
+            paciente_id=paciente_id,
+            activo=True
+        ).order_by('-fecha_creacion')
         
+        serializer = self.get_serializer(antecedentes, many=True)
+        return Response(serializer.data)
 
-
-
-# ============================================================================
-# ✅ NUEVO: VIEWSET CONSTANTES VITALES
-# ============================================================================
 
 class ConstantesVitalesViewSet(viewsets.ModelViewSet):
     """ViewSet para constantes vitales"""
@@ -354,13 +378,16 @@ class ConstantesVitalesViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Verificar duplicados
-        paciente_id = serializer.validated_data.get('paciente')
-        if ConstantesVitales.objects.filter(paciente=paciente_id, activo=True).exists():
-            raise ValidationError({'detail': 'Este paciente ya tiene constantes vitales registradas'})
+        # 🚨 ELIMINADO: Verificación de duplicados para permitir múltiples registros
+        # paciente_id = serializer.validated_data.get('paciente')
+        # if ConstantesVitales.objects.filter(paciente=paciente_id, activo=True).exists():
+        #     raise ValidationError({'detail': 'Este paciente ya tiene constantes vitales registradas'})
         
         self.perform_create(serializer)
+        
+        paciente_id = serializer.validated_data.get('paciente').id
         logger.info(f"Constantes vitales creadas para paciente {paciente_id} por {request.user.username}")
+        
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
@@ -392,16 +419,30 @@ class ConstantesVitalesViewSet(viewsets.ModelViewSet):
     def by_paciente(self, request, paciente_id=None):
         """Obtener constantes vitales por ID de paciente"""
         try:
-            constantes = ConstantesVitales.objects.get(
+            # Obtener la última constante vital activa
+            constantes = ConstantesVitales.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            )
+            ).order_by('-fecha_creacion').first()
+            
+            if not constantes:
+                raise ConstantesVitales.DoesNotExist
+            
             serializer = self.get_serializer(constantes)
             return Response(serializer.data)
         except ConstantesVitales.DoesNotExist:
             raise ValidationError({'detail': 'No se encontraron constantes vitales para este paciente'})
 
-
+    @action(detail=False, methods=['get'], url_path='all-by-paciente/(?P<paciente_id>[^/.]+)')
+    def all_by_paciente(self, request, paciente_id=None):
+        """Obtener TODAS las constantes vitales por ID de paciente"""
+        constantes = ConstantesVitales.objects.filter(
+            paciente_id=paciente_id,
+            activo=True
+        ).order_by('-fecha_creacion')
+        
+        serializer = self.get_serializer(constantes, many=True)
+        return Response(serializer.data)
 
 
 class ExamenEstomatognaticoViewSet(viewsets.ModelViewSet):
@@ -445,13 +486,16 @@ class ExamenEstomatognaticoViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Verificar duplicados
-        paciente_id = serializer.validated_data.get('paciente')
-        if ExamenEstomatognatico.objects.filter(paciente=paciente_id, activo=True).exists():
-            raise ValidationError({'detail': 'Este paciente ya tiene examen estomatognático registrado'})
+        # 🚨 ELIMINADO: Verificación de duplicados para permitir múltiples registros
+        # paciente_id = serializer.validated_data.get('paciente')
+        # if ExamenEstomatognatico.objects.filter(paciente=paciente_id, activo=True).exists():
+        #     raise ValidationError({'detail': 'Este paciente ya tiene examen estomatognático registrado'})
         
         self.perform_create(serializer)
+        
+        paciente_id = serializer.validated_data.get('paciente').id
         logger.info(f"Examen estomatognático creado para paciente {paciente_id} por {request.user.username}")
+        
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
@@ -483,14 +527,30 @@ class ExamenEstomatognaticoViewSet(viewsets.ModelViewSet):
     def by_paciente(self, request, paciente_id=None):
         """Obtener examen estomatognático por ID de paciente"""
         try:
-            examen = ExamenEstomatognatico.objects.get(
+            # Obtener el último examen activo
+            examen = ExamenEstomatognatico.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            )
+            ).order_by('-fecha_creacion').first()
+            
+            if not examen:
+                raise ExamenEstomatognatico.DoesNotExist
+            
             serializer = self.get_serializer(examen)
             return Response(serializer.data)
         except ExamenEstomatognatico.DoesNotExist:
             raise ValidationError({'detail': 'No se encontró examen estomatognático para este paciente'})
+
+    @action(detail=False, methods=['get'], url_path='all-by-paciente/(?P<paciente_id>[^/.]+)')
+    def all_by_paciente(self, request, paciente_id=None):
+        """Obtener TODOS los exámenes por ID de paciente"""
+        examenes = ExamenEstomatognatico.objects.filter(
+            paciente_id=paciente_id,
+            activo=True
+        ).order_by('-fecha_creacion')
+        
+        serializer = self.get_serializer(examenes, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
     def resumen_patologias(self, request, pk=None):
@@ -504,11 +564,7 @@ class ExamenEstomatognaticoViewSet(viewsets.ModelViewSet):
             'total_regiones_anormales': len(instance.regiones_con_patologia)
         }
         return Response(data)
-    
 
-# ============================================================================
-# ✅ NUEVO: VIEWSET ANAMNESIS GENERAL
-# ============================================================================
 
 class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
     """ViewSet para anamnesis general"""
@@ -519,7 +575,25 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
     pagination_class = PacientePagination
     
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['paciente', 'activo', 'tiene_alergias', 'problemas_coagulacion', 'problemas_anestesicos', 'toma_medicamentos']
+    filterset_fields = [
+        'paciente', 
+        'activo', 
+        'problemas_coagulacion', 
+        'alergia_antibiotico',
+        'alergia_anestesia',
+        'vih_sida',
+        'diabetes',
+        'hipertension',
+        'enfermedad_cardiaca'
+    ]
+    search_fields = [
+        'paciente__nombres',
+        'paciente__apellidos',
+        'paciente__cedula_pasaporte',
+        'observaciones',
+        'alergia_antibiotico_otro',
+        'alergia_anestesia_otro'
+    ]
     ordering_fields = ['fecha_creacion', 'fecha_modificacion']
     ordering = ['-fecha_creacion']
 
@@ -542,6 +616,7 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
                 Q(paciente__nombres__icontains=search)
                 | Q(paciente__apellidos__icontains=search)
                 | Q(paciente__cedula_pasaporte__icontains=search)
+                | Q(observaciones__icontains=search)
             )
         
         return qs
@@ -551,14 +626,23 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Verificar duplicados
-        paciente_id = serializer.validated_data.get('paciente')
-        if AnamnesisGeneral.objects.filter(paciente=paciente_id, activo=True).exists():
-            raise ValidationError({'detail': 'Este paciente ya tiene anamnesis general registrada'})
+        # ✅ MANTENIDO: Validación de duplicados (solo una anamnesis activa por paciente)
+        paciente_id = serializer.validated_data.get('paciente').id
+        if AnamnesisGeneral.objects.filter(paciente_id=paciente_id, activo=True).exists():
+            raise ValidationError({
+                'detail': 'Este paciente ya tiene una anamnesis general registrada'
+            })
         
         self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        
         logger.info(f"Anamnesis general creada para paciente {paciente_id} por {request.user.username}")
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(
+            serializer.data, 
+            status=status.HTTP_201_CREATED, 
+            headers=headers
+        )
 
     def update(self, request, *args, **kwargs):
         """Actualizar anamnesis general"""
@@ -568,13 +652,10 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         self.perform_update(serializer)
+        
         logger.info(f"Anamnesis general {instance.id} actualizada por {request.user.username}")
+        
         return Response(serializer.data)
-
-    def partial_update(self, request, *args, **kwargs):
-        """Actualización parcial (PATCH)"""
-        kwargs['partial'] = True
-        return self.update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         """Eliminación lógica"""
@@ -583,7 +664,11 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
         instance.save()
         
         logger.info(f"Anamnesis general {instance.id} desactivada por {request.user.username}")
-        return Response({'id': str(instance.id)})
+        
+        return Response(
+            {'id': str(instance.id), 'message': 'Anamnesis desactivada correctamente'},
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=False, methods=['get'], url_path='by-paciente/(?P<paciente_id>[^/.]+)')
     def by_paciente(self, request, paciente_id=None):
@@ -596,60 +681,34 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(anamnesis)
             return Response(serializer.data)
         except AnamnesisGeneral.DoesNotExist:
-            raise ValidationError({'detail': 'No se encontró anamnesis general para este paciente'})
+            raise ValidationError({
+                'detail': 'No se encontró anamnesis general activa para este paciente'
+            })
 
     @action(detail=True, methods=['get'])
-    def resumen_riesgos(self, request, pk=None):
-        """Resumen de riesgos médicos del paciente"""
+    def resumen(self, request, pk=None):
+        """Resumen de condiciones médicas del paciente"""
         instance = self.get_object()
+        
         data = {
-            'tiene_alergias': instance.tiene_alergias,
-            'problemas_coagulacion': instance.problemas_coagulacion,
-            'problemas_anestesicos': instance.problemas_anestesicos,
-            'toma_medicamentos': instance.toma_medicamentos,
-            'nivel_riesgo': self._calcular_nivel_riesgo(instance),
-            'observaciones': self._generar_observaciones_riesgo(instance)
+            'resumen_condiciones': instance.resumen_condiciones,
+            'alergias': {
+                'antibioticos': instance.get_alergia_antibiotico_display_completo(),
+                'anestesia': instance.get_alergia_anestesia_display_completo(),
+            },
+            'condiciones_criticas': {
+                'problemas_coagulacion': instance.problemas_coagulacion == 'SI',
+                'enfermedad_cardiaca': instance.enfermedad_cardiaca != 'NO'
+            },
+            'enfermedades_cronicas': {
+                'diabetes': instance.diabetes != 'NO',
+                'hipertension': instance.hipertension != 'NO',
+                'asma': instance.asma != 'NO'
+            }
         }
+        
         return Response(data)
     
-    def _calcular_nivel_riesgo(self, instance):
-        """Calcular nivel de riesgo basado en condiciones médicas"""
-        riesgo = 0
-        if instance.tiene_alergias:
-            riesgo += 1
-        if instance.problemas_coagulacion:
-            riesgo += 2
-        if instance.problemas_anestesicos:
-            riesgo += 2
-        if instance.toma_medicamentos:
-            riesgo += 1
-        
-        if riesgo == 0:
-            return 'BAJO'
-        elif riesgo <= 2:
-            return 'MEDIO'
-        else:
-            return 'ALTO'
-    
-    def _generar_observaciones_riesgo(self, instance):
-        """Generar observaciones basadas en riesgos detectados"""
-        observaciones = []
-        
-        if instance.tiene_alergias:
-            observaciones.append('⚠️ Paciente con alergias registradas')
-        if instance.problemas_coagulacion:
-            observaciones.append('🚨 ATENCIÓN: Problemas de coagulación')
-        if instance.problemas_anestesicos:
-            observaciones.append('🚨 ATENCIÓN: Problemas con anestésicos locales')
-        if instance.toma_medicamentos:
-            observaciones.append('💊 Paciente en medicación actual')
-        
-        if not observaciones:
-            observaciones.append('✅ Sin riesgos aparentes')
-        
-        return observaciones
-    
-
 
 class ConsultaViewSet(viewsets.ModelViewSet):
     """ViewSet para consultas médicas"""
@@ -661,7 +720,7 @@ class ConsultaViewSet(viewsets.ModelViewSet):
     pagination_class = PacientePagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['paciente', 'activo']
-    search_fields = ['motivo_consulta', 'enfermedad_actual', 'diagnostico', 'paciente__nombres', 'paciente__apellidos']
+    search_fields = ['motivo_consulta', 'enfermedad_actual', 'paciente__nombres', 'paciente__apellidos']
     ordering_fields = ['fecha_consulta', 'fecha_creacion', 'fecha_modificacion']
     ordering = ['-fecha_consulta']
     
@@ -688,7 +747,6 @@ class ConsultaViewSet(viewsets.ModelViewSet):
             qs = qs.filter(
                 Q(motivo_consulta__icontains=search) |
                 Q(enfermedad_actual__icontains=search) |
-                Q(diagnostico__icontains=search) |
                 Q(paciente__nombres__icontains=search) |
                 Q(paciente__apellidos__icontains=search) |
                 Q(paciente__cedula_pasaporte__icontains=search)
@@ -702,7 +760,7 @@ class ConsultaViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         
-        paciente_id = serializer.validated_data.get('paciente')
+        paciente_id = serializer.validated_data.get('paciente').id
         logger.info(f"Consulta creada para paciente {paciente_id} por {request.user.username}")
         
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -741,3 +799,17 @@ class ConsultaViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(consultas, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='last-by-paciente/(?P<paciente_id>.+)')
+    def last_by_paciente(self, request, paciente_id=None):
+        """Obtener la última consulta de un paciente"""
+        consulta = Consulta.objects.filter(
+            paciente_id=paciente_id,
+            activo=True
+        ).order_by('-fecha_consulta').first()
+        
+        if consulta:
+            serializer = self.get_serializer(consulta)
+            return Response(serializer.data)
+        else:
+            raise ValidationError({'detail': 'No se encontraron consultas para este paciente'})

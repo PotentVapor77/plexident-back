@@ -8,7 +8,7 @@ from .paciente import Paciente
 class ConstantesVitales(BaseModel):
     """Constantes vitales del paciente (Sección F)"""
     
-    paciente = models.OneToOneField(
+    paciente = models.ForeignKey(
         Paciente,
         on_delete=models.CASCADE,
         related_name='constantes_vitales',

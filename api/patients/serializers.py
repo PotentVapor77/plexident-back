@@ -9,8 +9,6 @@ from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
 from api.patients.models.anamnesis_general import AnamnesisGeneral
 from api.patients.models.consulta import Consulta
 
-#from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
-
 
 class PacienteSerializer(serializers.ModelSerializer):
     """Serializer para lectura y escritura de pacientes"""
@@ -209,10 +207,6 @@ class AntecedentesPersonalesSerializer(serializers.ModelSerializer):
         return attrs
 
 
-# ============================================================================
-# SERIALIZER COMPLETO PARA ANTECEDENTES FAMILIARES
-# ============================================================================
-
 class AntecedentesFamiliaresSerializer(serializers.ModelSerializer):
     """Serializer para antecedentes familiares de pacientes"""
     
@@ -250,12 +244,12 @@ class AntecedentesFamiliaresSerializer(serializers.ModelSerializer):
                 "No se pueden crear antecedentes para un paciente inactivo"
             )
         
-        # Validar duplicados en creación
-        if not self.instance:  # Solo en creación
-            if AntecedentesFamiliares.objects.filter(paciente=value, activo=True).exists():
-                raise serializers.ValidationError(
-                    "Ya existe un registro de antecedentes familiares activo para este paciente"
-                )
+        # 🚨 ELIMINADO: Validación de duplicados para permitir múltiples registros
+        # if not self.instance:  # Solo en creación
+        #     if AntecedentesFamiliares.objects.filter(paciente=value, activo=True).exists():
+        #         raise serializers.ValidationError(
+        #             "Ya existe un registro de antecedentes familiares activo para este paciente"
+        #         )
         
         return value
 
@@ -366,10 +360,6 @@ class AntecedentesFamiliaresSerializer(serializers.ModelSerializer):
         return attrs
 
 
-# ============================================================================
-# ✅ SERIALIZER CONSTANTES VITALES
-# ============================================================================
-
 class ConstantesVitalesSerializer(serializers.ModelSerializer):
     """Serializer para constantes vitales del paciente"""
     
@@ -426,16 +416,14 @@ class ConstantesVitalesSerializer(serializers.ModelSerializer):
         if not value.activo:
             raise serializers.ValidationError("No se pueden crear constantes vitales para un paciente inactivo")
         
-        # Validar duplicados en creación
-        if not self.instance:
-            if ConstantesVitales.objects.filter(paciente=value, activo=True).exists():
-                raise serializers.ValidationError(
-                    "Ya existe un registro de constantes vitales activo para este paciente"
-                )
+        # 🚨 ELIMINADO: Validación de duplicados para permitir múltiples registros
+        # if not self.instance:
+        #     if ConstantesVitales.objects.filter(paciente=value, activo=True).exists():
+        #         raise serializers.ValidationError(
+        #             "Ya existe un registro de constantes vitales activo para este paciente"
+        #         )
         
         return value
-    
-
 
 
 class ExamenEstomatognaticoSerializer(serializers.ModelSerializer):
@@ -478,12 +466,12 @@ class ExamenEstomatognaticoSerializer(serializers.ModelSerializer):
         if not value.activo:
             raise serializers.ValidationError("No se pueden crear exámenes para un paciente inactivo")
         
-        # Validar duplicados en creación
-        if not self.instance:
-            if ExamenEstomatognatico.objects.filter(paciente=value, activo=True).exists():
-                raise serializers.ValidationError(
-                    "Ya existe un examen estomatognático activo para este paciente"
-                )
+        # 🚨 ELIMINADO: Validación de duplicados para permitir múltiples registros
+        # if not self.instance:
+        #     if ExamenEstomatognatico.objects.filter(paciente=value, activo=True).exists():
+        #         raise serializers.ValidationError(
+        #             "Ya existe un examen estomatognático activo para este paciente"
+        #         )
         
         return value
 
@@ -532,7 +520,6 @@ class ExamenEstomatognaticoSerializer(serializers.ModelSerializer):
                 )
         
         return attrs
-    
 
 
 class AnamnesisGeneralSerializer(serializers.ModelSerializer):
@@ -544,58 +531,108 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
             'id',
             'paciente',
             'paciente_nombre',
-
-            # Alergias
-            'tiene_alergias',
-            'alergias_detalle',
-            # Antecedentes
-            'antecedentes_personales',
-            'antecedentes_familiares',
-            # Problemas de coagulación
+            
+            # Alergias y problemas de coagulación
+            'alergia_antibiotico',
+            'alergia_antibiotico_otro',
+            'alergia_anestesia',
+            'alergia_anestesia_otro',
             'problemas_coagulacion',
-            'problemas_coagulacion_detalle',
-            # Problemas con anestésicos
-            'problemas_anestesicos',
-            'problemas_anestesicos_detalle',
-            # Medicamentos
-            'toma_medicamentos',
-            'medicamentos_actuales',
-            # Hábitos y otros
+            
+            # Enfermedades y condiciones
+            'vih_sida',
+            'vih_sida_otro',
+            'tuberculosis',
+            'tuberculosis_otro',
+            'asma',
+            'asma_otro',
+            'diabetes',
+            'diabetes_otro',
+            'hipertension',
+            'hipertension_otro',
+            'enfermedad_cardiaca',
+            'enfermedad_cardiaca_otra',
+            
+            # Antecedentes familiares
+            'cardiopatia_familiar',
+            'cardiopatia_familiar_otro',
+            'hipertension_familiar',
+            'hipertension_familiar_otro',
+            'diabetes_familiar',
+            'diabetes_familiar_otro',
+            'cancer_familiar',
+            'cancer_familiar_otro',
+            'enfermedad_mental_familiar',
+            'enfermedad_mental_familiar_otro',
+            
+            # Hábitos y observaciones
             'habitos',
-            'otros',
+            'observaciones',
+            
             # Metadata
             'activo',
             'fecha_creacion',
-            'fecha_modificacion',  # ✅ CORREGIDO
+            'fecha_modificacion',
             'creado_por',
             'actualizado_por',
         ]
-        read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion', 'creado_por', 'actualizado_por']  # ✅ CORREGIDO
+        read_only_fields = [
+            'id', 
+            'fecha_creacion', 
+            'fecha_modificacion', 
+            'creado_por', 
+            'actualizado_por'
+        ]
     
     def validate(self, data):
-        """Validaciones personalizadas"""
-        if data.get('tiene_alergias') and not data.get('alergias_detalle'):
-            raise serializers.ValidationError({
-                'alergias_detalle': 'Debe especificar las alergias'
-            })
+        """Validaciones personalizadas basadas en el modelo"""
+        # Validar campos "Otro" que requieren especificación
+        campos_otro_validacion = [
+            ('alergia_antibiotico', 'alergia_antibiotico_otro', 'OTRO'),
+            ('alergia_anestesia', 'alergia_anestesia_otro', 'OTRO'),
+            ('vih_sida', 'vih_sida_otro', 'OTRO'),
+            ('tuberculosis', 'tuberculosis_otro', 'OTRO'),
+            ('asma', 'asma_otro', 'OTRO'),
+            ('diabetes', 'diabetes_otro', 'OTRO'),
+            ('hipertension', 'hipertension_otro', 'OTRO'),
+            ('enfermedad_cardiaca', 'enfermedad_cardiaca_otra', 'OTRA'),
+            ('cardiopatia_familiar', 'cardiopatia_familiar_otro', 'OTRO'),
+            ('hipertension_familiar', 'hipertension_familiar_otro', 'OTRO'),
+            ('diabetes_familiar', 'diabetes_familiar_otro', 'OTRO'),
+            ('cancer_familiar', 'cancer_familiar_otro', 'OTRO'),
+            ('enfermedad_mental_familiar', 'enfermedad_mental_familiar_otro', 'OTRO'),
+        ]
         
-        if data.get('problemas_coagulacion') and not data.get('problemas_coagulacion_detalle'):
-            raise serializers.ValidationError({
-                'problemas_coagulacion_detalle': 'Debe detallar los problemas de coagulación'
-            })
-        
-        if data.get('problemas_anestesicos') and not data.get('problemas_anestesicos_detalle'):
-            raise serializers.ValidationError({
-                'problemas_anestesicos_detalle': 'Debe detallar los problemas con anestésicos'
-            })
-        
-        if data.get('toma_medicamentos') and not data.get('medicamentos_actuales'):
-            raise serializers.ValidationError({
-                'medicamentos_actuales': 'Debe especificar los medicamentos actuales'
-            })
+        for campo_select, campo_otro, valor_otro in campos_otro_validacion:
+            valor_select = data.get(campo_select)
+            valor_otro_field = data.get(campo_otro)
+            
+            # Si estamos actualizando y el campo no está en data, usar el valor actual
+            if self.instance and valor_select is None:
+                valor_select = getattr(self.instance, campo_select)
+            if self.instance and valor_otro_field is None:
+                valor_otro_field = getattr(self.instance, campo_otro)
+            
+            if valor_select == valor_otro and not valor_otro_field:
+                # Obtener nombre display del campo
+                field = self.Meta.model._meta.get_field(campo_select)
+                nombre_display = dict(field.choices).get(valor_select, valor_select)
+                raise serializers.ValidationError({
+                    campo_otro: f'Debe especificar cuando selecciona "{nombre_display}"'
+                })
         
         return data
     
+    def create(self, validated_data):
+        """Crear anamnesis general"""
+        validated_data['creado_por'] = self.context['request'].user
+        validated_data['actualizado_por'] = self.context['request'].user
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        """Actualizar anamnesis general"""
+        validated_data['actualizado_por'] = self.context['request'].user
+        return super().update(instance, validated_data)
 
 
 class ConsultaSerializer(serializers.ModelSerializer):
@@ -614,8 +651,7 @@ class ConsultaSerializer(serializers.ModelSerializer):
             # Datos de la consulta
             'fecha_consulta',
             'motivo_consulta',     'enfermedad_actual',
-            'diagnostico',
-            'plan_tratamiento',
+  
             'observaciones',
             # Metadata (heredados de BaseModel)
             'activo',
@@ -655,5 +691,3 @@ class ConsultaSerializer(serializers.ModelSerializer):
                 "No se pueden crear consultas para un paciente inactivo"
             )
         return value
-    
- 

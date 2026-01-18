@@ -8,7 +8,7 @@ from .paciente import Paciente
 class ExamenEstomatognatico(BaseModel):
     """Examen del sistema estomatognático (Sección G)"""
     
-    paciente = models.OneToOneField(
+    paciente = models.ForeignKey(
         Paciente,
         on_delete=models.CASCADE,
         related_name='examen_estomatognatico',
