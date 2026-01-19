@@ -399,6 +399,7 @@ LOGGING = {
             'backupCount': 5,
             'formatter': 'verbose',
             'encoding': 'utf-8',
+            'delay': True,
         },
         'error_file': {
             'level': 'ERROR',

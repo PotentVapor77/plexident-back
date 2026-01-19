@@ -15,5 +15,4 @@ __all__ = [
     'ConstantesVitales',
     #'ExamenEstomatognatico',
     'AnamnesisGeneral',
-    'Consulta'
 ]

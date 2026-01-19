@@ -5,7 +5,6 @@ from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 
 from api.patients.models.anamnesis_general import AnamnesisGeneral
-from api.patients.models.consulta import Consulta
 
 from .models.examen_estomatognatico import ExamenEstomatognatico
 
@@ -215,10 +214,6 @@ class AntecedentesFamiliaresAdmin(admin.ModelAdmin):
     search_fields = ['paciente__nombres', 'paciente__apellidos']
 
 
-@admin.register(ConstantesVitales)
-class ConstantesVitalesAdmin(admin.ModelAdmin):
-    list_display = ['paciente', 'temperatura', 'pulso', 'presion_arterial']
-    search_fields = ['paciente__nombres', 'paciente__apellidos']
 
 
 @admin.register(ExamenEstomatognatico)
@@ -357,14 +352,77 @@ class ExamenEstomatognaticoAdmin(admin.ModelAdmin):
 
 
 # ============================================================================
-# ✅ NUEVO: ADMIN ANAMNESIS GENERAL
+# ✅ NUEVO: CONSULTA ADMIN
 # ============================================================================
+@admin.register(ConstantesVitales)
+class ConstantesVitalesAdmin(admin.ModelAdmin):
+    list_display = [
+        'paciente', 
+        'fecha_consulta',
+        'temperatura', 
+        'pulso', 
+        'presion_arterial',
+        'activo'
+    ]
+    
+    list_filter = [
+        'fecha_consulta',
+        'activo',
+    ]
+    
+    search_fields = [
+        'paciente__nombres', 
+        'paciente__apellidos',
+        'motivo_consulta',
+        'enfermedad_actual'
+    ]
+    
+    readonly_fields = [
+        'fecha_creacion', 
+        'fecha_modificacion',
+        'creado_por', 
+        'actualizado_por'
+    ]
+    
+    fieldsets = (
+        ('Información del Paciente', {
+            'fields': ('paciente', 'fecha_consulta', 'activo')
+        }),
+        ('Motivo y Enfermedad', {
+            'fields': ('motivo_consulta', 'enfermedad_actual'),
+            'classes': ('wide',)
+        }),
+        ('Constantes Vitales', {
+            'fields': (
+                ('temperatura', 'pulso'),
+                ('frecuencia_respiratoria', 'presion_arterial')
+            )
+        }),
+        ('Observaciones', {
+            'fields': ('observaciones',),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': (
+                'creado_por',
+                'actualizado_por',
+                'fecha_creacion',
+                'fecha_modificacion'
+            ),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    date_hierarchy = 'fecha_consulta'
+    ordering = ['-fecha_consulta']
+
 
 @admin.register(AnamnesisGeneral)
 class AnamnesisGeneralAdmin(admin.ModelAdmin):
     list_display = [
         'paciente',
         'get_alergias_display',
+        'get_hemorragias_display',  # ✅ CAMBIADO
         'get_condiciones_criticas_display',
         'activo',
         'fecha_creacion'
@@ -378,17 +436,20 @@ class AnamnesisGeneralAdmin(admin.ModelAdmin):
         'paciente__cedula_pasaporte',
         'observaciones',
         'alergia_antibiotico_otro',
-        'alergia_anestesia_otro'
+        'alergia_anestesia_otro',
+        'hemorragias_detalle',  # ✅ AÑADIDO
+        'otro_antecedente_personal',  # ✅ AÑADIDO
+        'otro_antecedente_familiar'  # ✅ AÑADIDO
     ]
     
     list_filter = [
         'activo',
-        'problemas_coagulacion',
+        'hemorragias',  # ✅ CAMBIADO
         'alergia_antibiotico',
         'alergia_anestesia',
         'vih_sida',
         'diabetes',
-        'hipertension',
+        'hipertension_arterial',  # ✅ CAMBIADO
         'enfermedad_cardiaca',
         'fecha_creacion'
     ]
@@ -412,30 +473,43 @@ class AnamnesisGeneralAdmin(admin.ModelAdmin):
             'fields': (
                 ('alergia_antibiotico', 'alergia_antibiotico_otro'),
                 ('alergia_anestesia', 'alergia_anestesia_otro'),
-                'tiene_alergias'
+            )
+        }),
+        
+        ('Hemorragias / Problemas de Coagulación', {  # ✅ CAMBIADO
+            'fields': (
+                'hemorragias',
+                'hemorragias_detalle'
             )
         }),
         
         ('Antecedentes Personales', {
             'fields': (
-                'problemas_coagulacion',
                 ('vih_sida', 'vih_sida_otro'),
                 ('tuberculosis', 'tuberculosis_otro'),
                 ('asma', 'asma_otro'),
                 ('diabetes', 'diabetes_otro'),
-                ('hipertension', 'hipertension_otro'),
-                ('enfermedad_cardiaca', 'enfermedad_cardiaca_otra'),
+                ('hipertension_arterial', 'hipertension_arterial_otro'),  # ✅ CAMBIADO
+                ('enfermedad_cardiaca', 'enfermedad_cardiaca_otro'),  # ✅ CAMBIADO
+                'otro_antecedente_personal'  # ✅ AÑADIDO
             ),
+            'classes': ('wide',)
         }),
         
         ('Antecedentes Familiares', {
             'fields': (
                 ('cardiopatia_familiar', 'cardiopatia_familiar_otro'),
                 ('hipertension_familiar', 'hipertension_familiar_otro'),
-                ('diabetes_familiar', 'diabetes_familiar_otro'),
+                ('enfermedad_cerebrovascular_familiar', 'enfermedad_cerebrovascular_familiar_otro'),
+                ('endocrino_metabolico_familiar', 'endocrino_metabolico_familiar_otro'),
                 ('cancer_familiar', 'cancer_familiar_otro'),
-                ('enfermedad_mental_familiar', 'enfermedad_mental_familiar_otro')
-            )
+                ('tuberculosis_familiar', 'tuberculosis_familiar_otro'),
+                ('enfermedad_mental_familiar', 'enfermedad_mental_familiar_otro'),
+                ('enfermedad_infecciosa_familiar', 'enfermedad_infecciosa_familiar_otro'),
+                ('malformacion_familiar', 'malformacion_familiar_otro'),
+                'otro_antecedente_familiar'  # ✅ AÑADIDO
+            ),
+            'classes': ('wide',)
         }),
         
         ('Hábitos y Observaciones', {
@@ -465,30 +539,57 @@ class AnamnesisGeneralAdmin(admin.ModelAdmin):
         """Muestra alergias en lista"""
         alergias = []
         if obj.alergia_antibiotico != 'NO':
-            alergias.append('Antibióticos')
+            texto = f"Antibióticos: {obj.get_alergia_antibiotico_display()}"
+            if obj.alergia_antibiotico == 'OTRO' and obj.alergia_antibiotico_otro:
+                texto += f" ({obj.alergia_antibiotico_otro})"
+            alergias.append(texto)
+        
         if obj.alergia_anestesia != 'NO':
-            alergias.append('Anestesia')
-        if obj.tiene_alergias:
-            alergias.append('Otras')
-        return ', '.join(alergias) if alergias else 'Sin alergias'
+            texto = f"Anestesia: {obj.get_alergia_anestesia_display()}"
+            if obj.alergia_anestesia == 'OTRO' and obj.alergia_anestesia_otro:
+                texto += f" ({obj.alergia_anestesia_otro})"
+            alergias.append(texto)
+        
+        return format_html('<br>'.join(alergias)) if alergias else 'Sin alergias'
     get_alergias_display.short_description = 'Alergias'
+    
+    def get_hemorragias_display(self, obj):  # ✅ NUEVO MÉTODO
+        """Muestra información de hemorragias"""
+        if obj.hemorragias == 'SI':
+            if obj.hemorragias_detalle:
+                return format_html(
+                    '<span style="color: red; font-weight: bold;">⚠️ HEMORRAGIAS</span><br>'
+                    '<small>{}</small>', 
+                    obj.hemorragias_detalle[:50] + '...' if len(obj.hemorragias_detalle) > 50 else obj.hemorragias_detalle
+                )
+            return format_html('<span style="color: red; font-weight: bold;">⚠️ HEMORRAGIAS</span>')
+        return 'Sin problemas'
+    get_hemorragias_display.short_description = 'Hemorragias'
     
     def get_condiciones_criticas_display(self, obj):
         """Muestra condiciones críticas en lista"""
         condiciones = []
-        if obj.problemas_coagulacion == 'SI':
-            condiciones.append('Coagulación')
+        if obj.hemorragias == 'SI':  # ✅ CAMBIADO
+            condiciones.append('Hemorragias')
         if obj.enfermedad_cardiaca != 'NO':
             condiciones.append('Cardíaca')
+        if obj.vih_sida not in ['NEGATIVO', 'NO_SABE']:
+            condiciones.append('VIH/SIDA')
+        
         if condiciones:
-            return format_html('<span style="color: red; font-weight: bold;">{}</span>', ', '.join(condiciones))
+            return format_html(
+                '<span style="color: red; font-weight: bold;">{}</span>', 
+                ', '.join(condiciones)
+            )
         return 'Sin críticas'
     get_condiciones_criticas_display.short_description = 'Condiciones Críticas'
     
     def resumen_condiciones_display(self, obj):
         """Muestra resumen de condiciones en admin"""
-        return format_html('<div style="background-color: #f5f5f5; padding: 10px; border-radius: 5px;">{}</div>', 
-                          obj.resumen_condiciones)
+        return format_html(
+            '<div style="background-color: #f5f5f5; padding: 10px; border-radius: 5px;">{}</div>', 
+            obj.resumen_condiciones
+        )
     resumen_condiciones_display.short_description = 'Resumen de Condiciones'
     
     def get_queryset(self, request):
@@ -518,130 +619,4 @@ class AnamnesisGeneralAdmin(admin.ModelAdmin):
             request,
             f'{updated} anamnesis marcadas como inactivas',
             level='success'
-        )
-
-# ============================================================================
-# ✅ NUEVO: CONSULTA ADMIN
-# ============================================================================
-
-@admin.register(Consulta)
-class ConsultaAdmin(admin.ModelAdmin):
-    list_display = [
-        'get_paciente_nombre',
-        'fecha_consulta',
-        'get_motivo_corto',
-        'tiene_diagnostico',
-        'activo',
-        'fecha_creacion'
-    ]
-    
-    search_fields = [
-        'paciente__nombres',
-        'paciente__apellidos',
-        'paciente__cedula_pasaporte',
-        'motivo_consulta',
-        'enfermedad_actual',
-    ]
-    
-    list_filter = [
-        'activo',
-        'fecha_consulta',
-        'fecha_creacion',
-    ]
-    
-    raw_id_fields = ['paciente']
-    
-    readonly_fields = [
-        'fecha_creacion',
-        'fecha_modificacion',
-        'creado_por',
-        'actualizado_por'
-    ]
-    
-    date_hierarchy = 'fecha_consulta'
-    
-    fieldsets = (
-        ('Información del Paciente', {
-            'fields': ('paciente', 'fecha_consulta', 'activo'),
-            'description': '📅 Registro de consulta médica'
-        }),
-        ('Motivo de Consulta', {
-            'fields': ('motivo_consulta', 'enfermedad_actual'),
-            'description': 'Razón de la visita y descripción detallada de la enfermedad actual'
-        }),
-        ('Observaciones', {
-            'fields': ('observaciones',),
-            'classes': ('collapse',)
-        }),
-        ('Metadata', {
-            'fields': (
-                'fecha_creacion',
-                'fecha_modificacion',
-                'creado_por',
-                'actualizado_por'
-            ),
-            'classes': ('collapse',)
-        }),
-    )
-    
-    def get_queryset(self, request):
-        """Optimizar consultas con select_related"""
-        qs = super().get_queryset(request)
-        return qs.select_related('paciente', 'creado_por', 'actualizado_por')
-    
-    def save_model(self, request, obj, form, change):
-        """Asignar usuario que crea/modifica"""
-        if not change:
-            obj.creado_por = request.user
-        obj.actualizado_por = request.user
-        super().save_model(request, obj, form, change)
-    
-    # ================ MÉTODOS PERSONALIZADOS ================
-    
-    def get_paciente_nombre(self, obj):
-        """Mostrar nombre completo del paciente"""
-        return obj.paciente.nombre_completo if obj.paciente else '-'
-    get_paciente_nombre.short_description = 'Paciente'
-    get_paciente_nombre.admin_order_field = 'paciente__apellidos'
-    
-    def get_motivo_corto(self, obj):
-        """Mostrar motivo resumido"""
-        if len(obj.motivo_consulta) > 50:
-            return f"{obj.motivo_consulta[:50]}..."
-        return obj.motivo_consulta
-    get_motivo_corto.short_description = 'Motivo'
-    
-    def tiene_diagnostico(self, obj):
-        """Indicar si tiene diagnóstico"""
-        if obj.diagnostico:
-            return format_html(
-                '<span style="color: green;">✓ Sí</span>'
-            )
-        return format_html(
-            '<span style="color: orange;">⊗ Pendiente</span>'
-        )
-    tiene_diagnostico.short_description = 'Diagnóstico'
-    
-    # ================ ACCIONES PERSONALIZADAS ================
-    
-    actions = ['exportar_consultas', 'marcar_con_seguimiento']
-    
-    @admin.action(description='📄 Exportar consultas seleccionadas')
-    def exportar_consultas(self, request, queryset):
-        """Exportar consultas a CSV"""
-        count = queryset.count()
-        self.message_user(
-            request,
-            f'{count} consultas preparadas para exportación',
-            level='success'
-        )
-    
-    @admin.action(description='🔔 Marcar para seguimiento')
-    def marcar_con_seguimiento(self, request, queryset):
-        """Marcar consultas que requieren seguimiento"""
-        count = queryset.count()
-        self.message_user(
-            request,
-            f'{count} consultas marcadas para seguimiento',
-            level='info'
         )

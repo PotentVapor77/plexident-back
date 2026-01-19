@@ -7,7 +7,6 @@ from api.patients.models.antecedentes_familiares import AntecedentesFamiliares
 from api.patients.models.constantes_vitales import ConstantesVitales
 from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
 from api.patients.models.anamnesis_general import AnamnesisGeneral
-from api.patients.models.consulta import Consulta
 
 
 class PacienteSerializer(serializers.ModelSerializer):
@@ -110,61 +109,6 @@ class PacienteSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ConstantesVitalesSerializer(serializers.ModelSerializer):
-    """Serializer para constantes vitales"""
-    
-    class Meta:
-        model = ConstantesVitales
-        fields = "__all__"
-        read_only_fields = [
-            "id", "creado_por", "actualizado_por",
-            "fecha_creacion", "fecha_modificacion",
-        ]
-
-    def validate_temperatura(self, value):
-        """Validar rango de temperatura corporal"""
-        if value and (value < 35 or value > 42):
-            raise serializers.ValidationError("La temperatura debe estar entre 35°C y 42°C")
-        return value
-
-    def validate_presion_arterial_sistolica(self, value):
-        """Validar presión sistólica"""
-        if value and (value < 50 or value > 250):
-            raise serializers.ValidationError("La presión sistólica debe estar entre 50 y 250 mmHg")
-        return value
-
-    def validate_presion_arterial_diastolica(self, value):
-        """Validar presión diastólica"""
-        if value and (value < 30 or value > 150):
-            raise serializers.ValidationError("La presión diastólica debe estar entre 30 y 150 mmHg")
-        return value
-
-    def validate_frecuencia_cardiaca(self, value):
-        """Validar frecuencia cardíaca"""
-        if value and (value < 30 or value > 220):
-            raise serializers.ValidationError("La frecuencia cardíaca debe estar entre 30 y 220 lpm")
-        return value
-
-    def validate_frecuencia_respiratoria(self, value):
-        """Validar frecuencia respiratoria"""
-        if value and (value < 8 or value > 60):
-            raise serializers.ValidationError("La frecuencia respiratoria debe estar entre 8 y 60 rpm")
-        return value
-
-    def validate(self, attrs):
-        """Validación de presión arterial completa"""
-        sistolica = attrs.get('presion_arterial_sistolica')
-        diastolica = attrs.get('presion_arterial_diastolica')
-        
-        # Si ambas están presentes, validar que sistólica > diastólica
-        if sistolica and diastolica:
-            if sistolica <= diastolica:
-                raise serializers.ValidationError(
-                    "La presión sistólica debe ser mayor que la diastólica"
-                )
-        
-        return attrs
-
 
 class AntecedentesPersonalesSerializer(serializers.ModelSerializer):
     """Serializer para antecedentes personales de pacientes"""
@@ -243,13 +187,6 @@ class AntecedentesFamiliaresSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "No se pueden crear antecedentes para un paciente inactivo"
             )
-        
-        # 🚨 ELIMINADO: Validación de duplicados para permitir múltiples registros
-        # if not self.instance:  # Solo en creación
-        #     if AntecedentesFamiliares.objects.filter(paciente=value, activo=True).exists():
-        #         raise serializers.ValidationError(
-        #             "Ya existe un registro de antecedentes familiares activo para este paciente"
-        #         )
         
         return value
 
@@ -359,73 +296,6 @@ class AntecedentesFamiliaresSerializer(serializers.ModelSerializer):
         
         return attrs
 
-
-class ConstantesVitalesSerializer(serializers.ModelSerializer):
-    """Serializer para constantes vitales del paciente"""
-    
-    paciente_nombre = serializers.CharField(source='paciente.get_full_name', read_only=True)
-    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
-    
-    class Meta:
-        model = ConstantesVitales
-        fields = "__all__"
-        read_only_fields = [
-            "id", "creado_por", "actualizado_por",
-            "fecha_creacion", "fecha_modificacion",
-            "paciente_nombre", "paciente_cedula"
-        ]
-
-    def validate_temperatura(self, value):
-        """Validar rango de temperatura corporal"""
-        if value and (value < 35 or value > 42):
-            raise serializers.ValidationError("La temperatura debe estar entre 35°C y 42°C")
-        return value
-
-    def validate_pulso(self, value):
-        """Validar pulso"""
-        if value and (value < 30 or value > 220):
-            raise serializers.ValidationError("El pulso debe estar entre 30 y 220 lpm")
-        return value
-
-    def validate_frecuencia_respiratoria(self, value):
-        """Validar frecuencia respiratoria"""
-        if value and (value < 8 or value > 60):
-            raise serializers.ValidationError("La frecuencia respiratoria debe estar entre 8 y 60 rpm")
-        return value
-
-    def validate_presion_arterial(self, value):
-        """Validar formato de presión arterial"""
-        if value:
-            import re
-            if not re.match(r'^\d{2,3}/\d{2,3}$', value):
-                raise serializers.ValidationError("Formato inválido. Use formato: 120/80")
-            
-            # Validar que sistólica > diastólica
-            sistolica, diastolica = map(int, value.split('/'))
-            if sistolica <= diastolica:
-                raise serializers.ValidationError("La presión sistólica debe ser mayor que la diastólica")
-            if sistolica < 50 or sistolica > 250:
-                raise serializers.ValidationError("La presión sistólica debe estar entre 50 y 250 mmHg")
-            if diastolica < 30 or diastolica > 150:
-                raise serializers.ValidationError("La presión diastólica debe estar entre 30 y 150 mmHg")
-        
-        return value
-
-    def validate_paciente(self, value):
-        """Validar que el paciente exista y esté activo"""
-        if not value.activo:
-            raise serializers.ValidationError("No se pueden crear constantes vitales para un paciente inactivo")
-        
-        # 🚨 ELIMINADO: Validación de duplicados para permitir múltiples registros
-        # if not self.instance:
-        #     if ConstantesVitales.objects.filter(paciente=value, activo=True).exists():
-        #         raise serializers.ValidationError(
-        #             "Ya existe un registro de constantes vitales activo para este paciente"
-        #         )
-        
-        return value
-
-
 class ExamenEstomatognaticoSerializer(serializers.ModelSerializer):
     """Serializer para examen estomatognático"""
     
@@ -522,8 +392,83 @@ class ExamenEstomatognaticoSerializer(serializers.ModelSerializer):
         return attrs
 
 
+
+class ConstantesVitalesSerializer(serializers.ModelSerializer):
+    """Serializer para constantes vitales"""
+    
+    paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
+    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
+    
+    class Meta:
+        model = ConstantesVitales
+        fields = "__all__"
+        read_only_fields = [
+            "id", "creado_por", "actualizado_por",
+            "fecha_creacion", "fecha_modificacion",
+            "paciente_nombre", "paciente_cedula"
+        ]
+    
+    def to_representation(self, instance):
+        """Personalizar representación para el frontend"""
+        data = super().to_representation(instance)
+        
+        # Convertir fechas a ISO string
+        if data.get('fecha_consulta'):
+            data['fecha_consulta'] = instance.fecha_consulta.isoformat()
+        if data.get('fecha_creacion'):
+            data['fecha_creacion'] = instance.fecha_creacion.isoformat()
+        if data.get('fecha_modificacion') and instance.fecha_modificacion:
+            data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
+        
+        return data
+
+    def validate_temperatura(self, value):
+        """Validar rango de temperatura corporal"""
+        if value and (value < 35 or value > 42):
+            raise serializers.ValidationError("La temperatura debe estar entre 35°C y 42°C")
+        return value
+
+    def validate_pulso(self, value):
+        """Validar pulso"""
+        if value and (value < 30 or value > 220):
+            raise serializers.ValidationError("El pulso debe estar entre 30 y 220 lpm")
+        return value
+
+    def validate_frecuencia_respiratoria(self, value):
+        """Validar frecuencia respiratoria"""
+        if value and (value < 8 or value > 60):
+            raise serializers.ValidationError("La frecuencia respiratoria debe estar entre 8 y 60 rpm")
+        return value
+
+    def validate_presion_arterial(self, value):
+        """Validar formato de presión arterial"""
+        if value:
+            import re
+            if not re.match(r'^\d{2,3}/\d{2,3}$', value):
+                raise serializers.ValidationError("Formato inválido. Use formato: 120/80")
+            
+            # Validar que sistólica > diastólica
+            sistolica, diastolica = map(int, value.split('/'))
+            if sistolica <= diastolica:
+                raise serializers.ValidationError("La presión sistólica debe ser mayor que la diastólica")
+            if sistolica < 50 or sistolica > 250:
+                raise serializers.ValidationError("La presión sistólica debe estar entre 50 y 250 mmHg")
+            if diastolica < 30 or diastolica > 150:
+                raise serializers.ValidationError("La presión diastólica debe estar entre 30 y 150 mmHg")
+        
+        return value
+
+    def validate_paciente(self, value):
+        """Validar que el paciente exista y esté activo"""
+        if not value.activo:
+            raise serializers.ValidationError("No se pueden crear constantes vitales para un paciente inactivo")
+        
+        return value
+    
+
 class AnamnesisGeneralSerializer(serializers.ModelSerializer):
     paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
+    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
     
     class Meta:
         model = AnamnesisGeneral
@@ -531,15 +476,16 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
             'id',
             'paciente',
             'paciente_nombre',
+            'paciente_cedula',
             
-            # Alergias y problemas de coagulación
+            # ========== ANTECEDENTES PERSONALES ==========
             'alergia_antibiotico',
             'alergia_antibiotico_otro',
             'alergia_anestesia',
             'alergia_anestesia_otro',
-            'problemas_coagulacion',
+            'hemorragias',  # ✅ CAMBIADO
+            'hemorragias_detalle',  # ✅ NUEVO
             
-            # Enfermedades y condiciones
             'vih_sida',
             'vih_sida_otro',
             'tuberculosis',
@@ -548,28 +494,38 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
             'asma_otro',
             'diabetes',
             'diabetes_otro',
-            'hipertension',
-            'hipertension_otro',
+            'hipertension_arterial',  # ✅ CAMBIADO
+            'hipertension_arterial_otro',  # ✅ CAMBIADO
             'enfermedad_cardiaca',
-            'enfermedad_cardiaca_otra',
+            'enfermedad_cardiaca_otro',  # ✅ CAMBIADO
+            'otro_antecedente_personal',  # ✅ NUEVO
             
-            # Antecedentes familiares
+            # ========== ANTECEDENTES FAMILIARES ==========
             'cardiopatia_familiar',
             'cardiopatia_familiar_otro',
             'hipertension_familiar',
             'hipertension_familiar_otro',
-            'diabetes_familiar',
-            'diabetes_familiar_otro',
+            'enfermedad_cerebrovascular_familiar',  # ✅ NUEVO
+            'enfermedad_cerebrovascular_familiar_otro',  # ✅ NUEVO
+            'endocrino_metabolico_familiar',  # ✅ NUEVO
+            'endocrino_metabolico_familiar_otro',  # ✅ NUEVO
             'cancer_familiar',
             'cancer_familiar_otro',
+            'tuberculosis_familiar',  # ✅ NUEVO
+            'tuberculosis_familiar_otro',  # ✅ NUEVO
             'enfermedad_mental_familiar',
             'enfermedad_mental_familiar_otro',
+            'enfermedad_infecciosa_familiar',  # ✅ NUEVO
+            'enfermedad_infecciosa_familiar_otro',  # ✅ NUEVO
+            'malformacion_familiar',  # ✅ NUEVO
+            'malformacion_familiar_otro',  # ✅ NUEVO
+            'otro_antecedente_familiar',  # ✅ NUEVO
             
-            # Hábitos y observaciones
+            # ========== HÁBITOS Y OBSERVACIONES ==========
             'habitos',
             'observaciones',
             
-            # Metadata
+            # ========== METADATA ==========
             'activo',
             'fecha_creacion',
             'fecha_modificacion',
@@ -581,8 +537,26 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
             'fecha_creacion', 
             'fecha_modificacion', 
             'creado_por', 
-            'actualizado_por'
+            'actualizado_por',
+            'paciente_nombre',
+            'paciente_cedula'
         ]
+    
+    def to_representation(self, instance):
+        """Personalizar representación para el frontend"""
+        data = super().to_representation(instance)
+        
+        # Convertir fechas a ISO string
+        if data.get('fecha_creacion'):
+            data['fecha_creacion'] = instance.fecha_creacion.isoformat()
+        if data.get('fecha_modificacion') and instance.fecha_modificacion:
+            data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
+        
+        # Agregar propiedades del modelo
+        data['tiene_condiciones_importantes'] = instance.tiene_condiciones_importantes
+        data['resumen_condiciones'] = instance.resumen_condiciones
+        
+        return data
     
     def validate(self, data):
         """Validaciones personalizadas basadas en el modelo"""
@@ -594,13 +568,17 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
             ('tuberculosis', 'tuberculosis_otro', 'OTRO'),
             ('asma', 'asma_otro', 'OTRO'),
             ('diabetes', 'diabetes_otro', 'OTRO'),
-            ('hipertension', 'hipertension_otro', 'OTRO'),
-            ('enfermedad_cardiaca', 'enfermedad_cardiaca_otra', 'OTRA'),
+            ('hipertension_arterial', 'hipertension_arterial_otro', 'OTRO'),  # ✅ CAMBIADO
+            ('enfermedad_cardiaca', 'enfermedad_cardiaca_otro', 'OTRO'),  # ✅ CAMBIADO
             ('cardiopatia_familiar', 'cardiopatia_familiar_otro', 'OTRO'),
             ('hipertension_familiar', 'hipertension_familiar_otro', 'OTRO'),
-            ('diabetes_familiar', 'diabetes_familiar_otro', 'OTRO'),
+            ('enfermedad_cerebrovascular_familiar', 'enfermedad_cerebrovascular_familiar_otro', 'OTRO'),
+            ('endocrino_metabolico_familiar', 'endocrino_metabolico_familiar_otro', 'OTRO'),
             ('cancer_familiar', 'cancer_familiar_otro', 'OTRO'),
+            ('tuberculosis_familiar', 'tuberculosis_familiar_otro', 'OTRO'),
             ('enfermedad_mental_familiar', 'enfermedad_mental_familiar_otro', 'OTRO'),
+            ('enfermedad_infecciosa_familiar', 'enfermedad_infecciosa_familiar_otro', 'OTRO'),
+            ('malformacion_familiar', 'malformacion_familiar_otro', 'OTRO'),
         ]
         
         for campo_select, campo_otro, valor_otro in campos_otro_validacion:
@@ -633,61 +611,3 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
         """Actualizar anamnesis general"""
         validated_data['actualizado_por'] = self.context['request'].user
         return super().update(instance, validated_data)
-
-
-class ConsultaSerializer(serializers.ModelSerializer):
-    """Serializer para consultas médicas"""
-    
-    paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
-    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
-    
-    class Meta:
-        model = Consulta
-        fields = [
-            'id',
-            'paciente',
-            'paciente_nombre',
-            'paciente_cedula',
-            # Datos de la consulta
-            'fecha_consulta',
-            'motivo_consulta',     'enfermedad_actual',
-  
-            'observaciones',
-            # Metadata (heredados de BaseModel)
-            'activo',
-            'fecha_creacion',
-            'fecha_modificacion',
-            'creado_por',
-            'actualizado_por',
-        ]
-        read_only_fields = [
-            'id',
-            'fecha_creacion',
-            'fecha_modificacion',
-            'creado_por',
-            'actualizado_por',
-            'paciente_nombre',
-            'paciente_cedula',
-        ]
-    
-    def to_representation(self, instance):
-        """Personalizar representación para el frontend"""
-        data = super().to_representation(instance)
-        
-        # Convertir fechas a ISO string
-        if data.get('fecha_consulta'):
-            data['fecha_consulta'] = instance.fecha_consulta.isoformat()
-        if data.get('fecha_creacion'):
-            data['fecha_creacion'] = instance.fecha_creacion.isoformat()
-        if data.get('fecha_modificacion') and instance.fecha_modificacion:
-            data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
-        
-        return data
-    
-    def validate_paciente(self, value):
-        """Validar que el paciente exista y esté activo"""
-        if not value.activo:
-            raise serializers.ValidationError(
-                "No se pueden crear consultas para un paciente inactivo"
-            )
-        return value
