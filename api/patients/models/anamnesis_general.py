@@ -7,9 +7,7 @@ from .paciente import Paciente
 
 # ================== CONSTANTES ==================
 
-# Sección D: ANTECEDENTES PATOLÓGICOS PERSONALES - Opciones
-
-# 1. ALERGIA A ANTIBIÓTICOS - Top 5 + Otro
+# ALERGIA ANTIBIÓTICO
 ALERGIA_ANTIBIOTICO_CHOICES = [
     ('NO', 'No'),
     ('PENICILINA', 'Penicilina'),
@@ -20,7 +18,7 @@ ALERGIA_ANTIBIOTICO_CHOICES = [
     ('OTRO', 'Otro'),
 ]
 
-# 2. ALERGIA A ANESTESIA - Top 5 + Otro
+# ALERGIA ANESTESIA
 ALERGIA_ANESTESIA_CHOICES = [
     ('NO', 'No'),
     ('LIDOCAINA', 'Lidocaína'),
@@ -31,13 +29,13 @@ ALERGIA_ANESTESIA_CHOICES = [
     ('OTRO', 'Otro'),
 ]
 
-# 3. HEMORRAGIAS - Simple: Sí o No
+# HEMORRAGIAS
 HEMORRAGIAS_CHOICES = [
     ('NO', 'No'),
     ('SI', 'Sí'),
 ]
 
-# 4. VIH / SIDA - Top 5 + Otro
+# VIH / SIDA
 VIH_SIDA_CHOICES = [
     ('NEGATIVO', 'Negativo'),
     ('POSITIVO_TRATADO', 'Positivo - En tratamiento'),
@@ -48,7 +46,7 @@ VIH_SIDA_CHOICES = [
     ('OTRO', 'Otro'),
 ]
 
-# 5. TUBERCULOSIS - Top 5 + Otro
+# TUBERCULOSIS
 TUBERCULOSIS_CHOICES = [
     ('NO', 'No'),
     ('TRATADA_CURADA', 'Tratada y curada'),
@@ -59,7 +57,7 @@ TUBERCULOSIS_CHOICES = [
     ('OTRO', 'Otro'),
 ]
 
-# 6. ASMA - Top 5 + Otro
+# ASMA
 ASMA_CHOICES = [
     ('NO', 'No'),
     ('LEVE_INTERMITENTE', 'Leve Intermitente'),
@@ -70,7 +68,7 @@ ASMA_CHOICES = [
     ('OTRO', 'Otro'),
 ]
 
-# 7. DIABETES - Top 5 + Otro
+# DIABETES
 DIABETES_CHOICES = [
     ('NO', 'No'),
     ('TIPO_1', 'Tipo 1 (Insulinodependiente)'),
@@ -81,8 +79,8 @@ DIABETES_CHOICES = [
     ('OTRO', 'Otro'),
 ]
 
-# 8. HIPERTENSIÓN - Top 5 + Otro
-HIPERTENSION_CHOICES = [
+# HIPERTENSIÓN ARTERIAL
+HIPERTENSION_ARTERIAL_CHOICES = [
     ('NO', 'No'),
     ('CONTROLADA', 'Controlada con medicación'),
     ('LIMITROFE', 'Límite/Borderline'),
@@ -92,18 +90,24 @@ HIPERTENSION_CHOICES = [
     ('OTRO', 'Otro'),
 ]
 
-# 9. ENFERMEDAD CARDÍACA - Top 5 + Otro
-ENFERMEDAD_CARDIACA_CHOICES = [
+# ENFERMEDAD CARDIACA
+ENF_CARDIACA_CHOICES = [
     ('NO', 'No'),
-    ('HIPERTENSION', 'Hipertensión arterial'),
+    ('CARDIOPATIA_ISQUEMICA', 'Cardiopatía isquémica'),
     ('INSUFICIENCIA_CARDIACA', 'Insuficiencia cardíaca'),
     ('ARRITMIA', 'Arritmias'),
-    ('CARDIOPATIA_ISQUEMICA', 'Cardiopatía isquémica'),
     ('VALVULOPATIA', 'Valvulopatía'),
-    ('OTRA', 'Otra'),
+    ('CARDIOMIOPATIA', 'Cardiomiopatía'),
+    ('OTRO', 'Otro'),
 ]
 
-# 10. ANTECEDENTES FAMILIARES - Top 5 + Ninguno
+# ENFERMEDADES GENERALES
+ENFERMEDAD_GENERAL_CHOICES = [
+    ('NO', 'No'),
+    ('SI', 'Sí'),
+]
+
+# ANTECEDENTES FAMILIARES BASE
 FAMILIAR_BASE_CHOICES = [
     ('NO', 'Ninguno'),
     ('PADRE', 'Padre'),
@@ -111,13 +115,74 @@ FAMILIAR_BASE_CHOICES = [
     ('ABUELOS', 'Abuelos'),
     ('HERMANOS', 'Hermanos'),
     ('TIO', 'Tíos'),
-    ('OTRO', 'Otro familiar'),
+    ('OTRO', 'Otro'),
+]
+
+# ENFERMEDAD CEREBROVASCULAR
+ENF_CEREBROVASCULAR_CHOICES = [
+    ('NO', 'No'),
+    ('ACCIDENTE_CEREBROVASCULAR', 'Accidente cerebrovascular'),
+    ('ICTUS', 'Ictus'),
+    ('ANEURISMA', 'Aneurisma cerebral'),
+    ('DEMENCIA_VASCULAR', 'Demencia vascular'),
+    ('OTRO', 'Otro'),
+]
+
+# ENDÓCRINO METABÓLICO
+ENDOCRINO_METABOLICO_CHOICES = [
+    ('NO', 'No'),
+    ('TIROIDES', 'Enfermedad tiroidea'),
+    ('OBESIDAD', 'Obesidad'),
+    ('DISLIPIDEMIA', 'Dislipidemia'),
+    ('SINDROME_METABOLICO', 'Síndrome metabólico'),
+    ('OTRO', 'Otro'),
+]
+
+# CÁNCER
+CANCER_CHOICES = [
+    ('NO', 'No'),
+    ('PULMON', 'Cáncer de pulmón'),
+    ('MAMA', 'Cáncer de mama'),
+    ('COLON', 'Cáncer de colon'),
+    ('PROSTATA', 'Cáncer de próstata'),
+    ('LEUCEMIA', 'Leucemia'),
+    ('OTRO', 'Otro'),
+]
+
+# ENFERMEDAD MENTAL
+ENF_MENTAL_CHOICES = [
+    ('NO', 'No'),
+    ('DEPRESION', 'Depresión'),
+    ('ESQUIZOFRENIA', 'Esquizofrenia'),
+    ('TRASTORNO_BIPOLAR', 'Trastorno bipolar'),
+    ('ANSIEDAD', 'Trastorno de ansiedad'),
+    ('DEMENCIA', 'Demencia'),
+    ('OTRO', 'Otro'),
+]
+
+# ENFERMEDAD INFECCIOSA
+ENF_INFECCIOSA_CHOICES = [
+    ('NO', 'No'),
+    ('HEPATITIS', 'Hepatitis'),
+    ('COVID', 'COVID-19 grave'),
+    ('NEUMONIA', 'Neumonía recurrente'),
+    ('INFECCION_URINARIA', 'Infección urinaria recurrente'),
+    ('OTRO', 'Otro'),
+]
+
+# MAL FORMACIÓN
+MALFORMACION_CHOICES = [
+    ('NO', 'No'),
+    ('CARDIACA', 'Malformación cardíaca'),
+    ('NEURAL', 'Malformación del tubo neural'),
+    ('ESQUELETICA', 'Malformación esquelética'),
+    ('FACIAL', 'Malformación facial'),
+    ('OTRO', 'Otro'),
 ]
 
 class AnamnesisGeneral(BaseModel):
     """
     Anamnesis general del paciente según ficha clínica odontológica.
-    Incluye información clínica complementaria a los datos personales.
     """
     
     # ✅ Relación uno a uno con Paciente
@@ -130,7 +195,7 @@ class AnamnesisGeneral(BaseModel):
     
     # ================== SECCIÓN D: ANTECEDENTES PATOLÓGICOS PERSONALES ==================
     
-    # 1. ALERGIAS A ANTIBIÓTICOS - Top 5 + Otro
+    # 1. ALERGIA ANTIBIÓTICO
     alergia_antibiotico = models.CharField(
         max_length=20,
         choices=ALERGIA_ANTIBIOTICO_CHOICES,
@@ -140,12 +205,10 @@ class AnamnesisGeneral(BaseModel):
     alergia_antibiotico_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro antibiótico",
-        help_text="Si seleccionó 'Otro', especificar cuál"
+        verbose_name="Especificar otro antibiótico"
     )
     
-    
-    # 2. ALERGIAS A ANESTESIA - Top 5 + Otro
+    # 2. ALERGIA ANESTESIA
     alergia_anestesia = models.CharField(
         max_length=20,
         choices=ALERGIA_ANESTESIA_CHOICES,
@@ -155,20 +218,23 @@ class AnamnesisGeneral(BaseModel):
     alergia_anestesia_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo de anestesia",
-        help_text="Si seleccionó 'Otro', especificar cuál"
+        verbose_name="Especificar otro tipo de anestesia"
     )
     
-  
-    # 4. HEMORRAGIAS / PROBLEMAS DE COAGULACIÓN
-    problemas_coagulacion = models.CharField(
+    # 3. HEMORRAGIAS
+    hemorragias = models.CharField(
         max_length=2,
         choices=HEMORRAGIAS_CHOICES,
         default='NO',
-        verbose_name="¿Problemas de coagulación?"
+        verbose_name="Hemorragias"
+    )
+    hemorragias_detalle = models.TextField(
+        blank=True,
+        verbose_name="Detalle de hemorragias",
+        help_text="Especificar tipo, frecuencia, tratamientos anticoagulantes, etc."
     )
     
-    # 5. VIH / SIDA - Top 5 + Otro
+    # 4. VIH / SIDA
     vih_sida = models.CharField(
         max_length=25,
         choices=VIH_SIDA_CHOICES,
@@ -178,11 +244,10 @@ class AnamnesisGeneral(BaseModel):
     vih_sida_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro estado VIH/SIDA",
-        help_text="Si seleccionó 'Otro', especificar cuál"
+        verbose_name="Especificar otro estado VIH/SIDA"
     )
     
-    # 6. TUBERCULOSIS - Top 5 + Otro
+    # 5. TUBERCULOSIS
     tuberculosis = models.CharField(
         max_length=25,
         choices=TUBERCULOSIS_CHOICES,
@@ -192,11 +257,10 @@ class AnamnesisGeneral(BaseModel):
     tuberculosis_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro estado tuberculosis",
-        help_text="Si seleccionó 'Otro', especificar cuál"
+        verbose_name="Especificar otro estado tuberculosis"
     )
     
-    # 7. ASMA - Top 5 + Otro
+    # 6. ASMA
     asma = models.CharField(
         max_length=25,
         choices=ASMA_CHOICES,
@@ -206,11 +270,10 @@ class AnamnesisGeneral(BaseModel):
     asma_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo de asma",
-        help_text="Si seleccionó 'Otro', especificar cuál"
+        verbose_name="Especificar otro tipo de asma"
     )
     
-    # 8. DIABETES - Top 5 + Otro
+    # 7. DIABETES
     diabetes = models.CharField(
         max_length=20,
         choices=DIABETES_CHOICES,
@@ -220,43 +283,45 @@ class AnamnesisGeneral(BaseModel):
     diabetes_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo de diabetes",
-        help_text="Si seleccionó 'Otro', especificar cuál"
+        verbose_name="Especificar otro tipo de diabetes"
     )
     
-    # 9. HIPERTENSIÓN - Top 5 + Otro
-    hipertension = models.CharField(
+    # 8. HIPERTENSIÓN ARTERIAL
+    hipertension_arterial = models.CharField(
         max_length=20,
-        choices=HIPERTENSION_CHOICES,
+        choices=HIPERTENSION_ARTERIAL_CHOICES,
         default='NO',
-        verbose_name="Hipertensión"
+        verbose_name="Hipertensión arterial"
     )
-    hipertension_otro = models.CharField(
+    hipertension_arterial_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo de hipertensión",
-        help_text="Si seleccionó 'Otro', especificar cuál"
+        verbose_name="Especificar otro tipo de hipertensión"
     )
     
-    # 10. ENFERMEDAD CARDÍACA - Top 5 + Otro
+    # 9. ENF. CARDIACA
     enfermedad_cardiaca = models.CharField(
         max_length=25,
-        choices=ENFERMEDAD_CARDIACA_CHOICES,
+        choices=ENF_CARDIACA_CHOICES,
         default='NO',
         verbose_name="Enfermedad cardíaca"
     )
-    enfermedad_cardiaca_otra = models.CharField(
+    enfermedad_cardiaca_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otra enfermedad cardíaca",
-        help_text="Si seleccionó 'Otra', especificar cuál"
+        verbose_name="Especificar otra enfermedad cardíaca"
     )
     
-
+    # 10. OTRO (Antecedentes personales adicionales)
+    otro_antecedente_personal = models.TextField(
+        blank=True,
+        verbose_name="Otros antecedentes personales",
+        help_text="Otras enfermedades o condiciones no listadas anteriormente"
+    )
     
     # ================== SECCIÓN E: ANTECEDENTES PATOLÓGICOS FAMILIARES ==================
     
-    # 1. CARDIOPATÍA FAMILIAR - Top 5 + Ninguno
+    # 1. CARDIOPATÍA
     cardiopatia_familiar = models.CharField(
         max_length=20,
         choices=FAMILIAR_BASE_CHOICES,
@@ -266,79 +331,132 @@ class AnamnesisGeneral(BaseModel):
     cardiopatia_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro familiar",
-        help_text="Si seleccionó 'Otro familiar', especificar cuál"
+        verbose_name="Especificar otro familiar"
     )
     
-    # 2. HIPERTENSIÓN FAMILIAR - Top 5 + Ninguno
+    # 2. HIPERTENSIÓN ARTERIAL
     hipertension_familiar = models.CharField(
         max_length=20,
         choices=FAMILIAR_BASE_CHOICES,
         default='NO',
-        verbose_name="Hipertensión en familiares"
+        verbose_name="Hipertensión arterial en familiares"
     )
     hipertension_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro familiar",
-        help_text="Si seleccionó 'Otro familiar', especificar cuál"
+        verbose_name="Especificar otro familiar"
     )
     
-    # 3. DIABETES FAMILIAR - Top 5 + Ninguno
-    diabetes_familiar = models.CharField(
-        max_length=20,
-        choices=FAMILIAR_BASE_CHOICES,
+    # 3. ENF. C. VASCULAR
+    enfermedad_cerebrovascular_familiar = models.CharField(
+        max_length=25,
+        choices=ENF_CEREBROVASCULAR_CHOICES,
         default='NO',
-        verbose_name="Diabetes en familiares"
+        verbose_name="Enfermedad cerebrovascular en familiares"
     )
-    diabetes_familiar_otro = models.CharField(
+    enfermedad_cerebrovascular_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro familiar",
-        help_text="Si seleccionó 'Otro familiar', especificar cuál"
+        verbose_name="Especificar otro tipo"
     )
     
-    # 4. CÁNCER FAMILIAR - Top 5 + Ninguno
+    # 4. ENDÓCRINO METABÓLICO
+    endocrino_metabolico_familiar = models.CharField(
+        max_length=25,
+        choices=ENDOCRINO_METABOLICO_CHOICES,
+        default='NO',
+        verbose_name="Enfermedades endocrino-metabólicas en familiares"
+    )
+    endocrino_metabolico_familiar_otro = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Especificar otro tipo"
+    )
+    
+    # 5. CÁNCER
     cancer_familiar = models.CharField(
         max_length=20,
-        choices=FAMILIAR_BASE_CHOICES,
+        choices=CANCER_CHOICES,
         default='NO',
         verbose_name="Cáncer en familiares"
     )
     cancer_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro familiar",
-        help_text="Si seleccionó 'Otro familiar', especificar cuál"
+        verbose_name="Especificar otro tipo de cáncer"
     )
     
-    # 5. ENFERMEDADES MENTALES FAMILIARES - Top 5 + Ninguno
-    enfermedad_mental_familiar = models.CharField(
+    # 6. TUBERCULOSIS
+    tuberculosis_familiar = models.CharField(
         max_length=20,
         choices=FAMILIAR_BASE_CHOICES,
         default='NO',
-        verbose_name="Enfermedades mentales en familiares"
+        verbose_name="Tuberculosis en familiares"
+    )
+    tuberculosis_familiar_otro = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Especificar otro familiar"
+    )
+    
+    # 7. ENF. MENTAL
+    enfermedad_mental_familiar = models.CharField(
+        max_length=25,
+        choices=ENF_MENTAL_CHOICES,
+        default='NO',
+        verbose_name="Enfermedad mental en familiares"
     )
     enfermedad_mental_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro familiar",
-        help_text="Si seleccionó 'Otro familiar', especificar cuál"
+        verbose_name="Especificar otro tipo"
+    )
+    
+    # 8. ENF. INFECCIOSA
+    enfermedad_infecciosa_familiar = models.CharField(
+        max_length=25,
+        choices=ENF_INFECCIOSA_CHOICES,
+        default='NO',
+        verbose_name="Enfermedad infecciosa en familiares"
+    )
+    enfermedad_infecciosa_familiar_otro = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Especificar otro tipo"
+    )
+    
+    # 9. MAL FORMACIÓN
+    malformacion_familiar = models.CharField(
+        max_length=25,
+        choices=MALFORMACION_CHOICES,
+        default='NO',
+        verbose_name="Malformación en familiares"
+    )
+    malformacion_familiar_otro = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Especificar otro tipo"
+    )
+    
+    # 10. OTRO (Antecedentes familiares adicionales)
+    otro_antecedente_familiar = models.TextField(
+        blank=True,
+        verbose_name="Otros antecedentes familiares",
+        help_text="Otras enfermedades familiares no listadas anteriormente"
     )
     
     # ================== HÁBITOS ==================
-    habitos = models.CharField(
-        max_length=255,
+    habitos = models.TextField(
         blank=True,
         verbose_name="Hábitos",
-        help_text="Tabaco, alcohol, drogas, bruxismo, etc."
+        help_text="Tabaco, alcohol, drogas, bruxismo, higiene bucal, etc."
     )
     
     # ================== OBSERVACIONES GENERALES ==================
     observaciones = models.TextField(
         blank=True,
         verbose_name="Observaciones generales",
-        help_text="Cualquier información adicional relevante"
+        help_text="Cualquier información adicional relevante para la historia clínica"
     )
     
     class Meta:
@@ -364,13 +482,17 @@ class AnamnesisGeneral(BaseModel):
             ('tuberculosis', 'tuberculosis_otro', 'OTRO'),
             ('asma', 'asma_otro', 'OTRO'),
             ('diabetes', 'diabetes_otro', 'OTRO'),
-            ('hipertension', 'hipertension_otro', 'OTRO'),
-            ('enfermedad_cardiaca', 'enfermedad_cardiaca_otra', 'OTRA'),
+            ('hipertension_arterial', 'hipertension_arterial_otro', 'OTRO'),
+            ('enfermedad_cardiaca', 'enfermedad_cardiaca_otro', 'OTRO'),
             ('cardiopatia_familiar', 'cardiopatia_familiar_otro', 'OTRO'),
             ('hipertension_familiar', 'hipertension_familiar_otro', 'OTRO'),
-            ('diabetes_familiar', 'diabetes_familiar_otro', 'OTRO'),
+            ('enfermedad_cerebrovascular_familiar', 'enfermedad_cerebrovascular_familiar_otro', 'OTRO'),
+            ('endocrino_metabolico_familiar', 'endocrino_metabolico_familiar_otro', 'OTRO'),
             ('cancer_familiar', 'cancer_familiar_otro', 'OTRO'),
+            ('tuberculosis_familiar', 'tuberculosis_familiar_otro', 'OTRO'),
             ('enfermedad_mental_familiar', 'enfermedad_mental_familiar_otro', 'OTRO'),
+            ('enfermedad_infecciosa_familiar', 'enfermedad_infecciosa_familiar_otro', 'OTRO'),
+            ('malformacion_familiar', 'malformacion_familiar_otro', 'OTRO'),
         ]
         
         for campo_select, campo_otro, valor_otro in campos_otro:
@@ -378,82 +500,57 @@ class AnamnesisGeneral(BaseModel):
             valor_otro_field = getattr(self, campo_otro)
             
             if valor_select == valor_otro and not valor_otro_field:
-                nombre_display = getattr(self, f'get_{campo_select}_display')()
+                nombre_display = dict(self._meta.get_field(campo_select).choices).get(valor_select, valor_select)
                 errors[campo_otro] = f'Debe especificar cuando selecciona "{nombre_display}"'
         
         if errors:
             raise ValidationError(errors)
     
-    # Métodos helper para obtener texto completo
-    def get_display_completo(self, campo_select, campo_otro, valor_otro='OTRO'):
-        """Obtiene el texto completo para campos con opción 'Otro'"""
-        valor = getattr(self, campo_select)
-        if valor == valor_otro:
-            otro_texto = getattr(self, campo_otro, '')
-            return f"Otro: {otro_texto}" if otro_texto else "Otro (no especificado)"
-        return self._get_choice_display(campo_select, valor)
-    
-    def _get_choice_display(self, field_name, value):
-        """Helper para obtener display de choices"""
-        field = self._meta.get_field(field_name)
-        return dict(field.choices).get(value, value)
-    
-    # Métodos específicos para cada campo
-    def get_alergia_antibiotico_display_completo(self):
-        return self.get_display_completo('alergia_antibiotico', 'alergia_antibiotico_otro')
-    
-    def get_alergia_anestesia_display_completo(self):
-        return self.get_display_completo('alergia_anestesia', 'alergia_anestesia_otro')
-    
-    def get_vih_sida_display_completo(self):
-        return self.get_display_completo('vih_sida', 'vih_sida_otro')
-    
-    def get_tuberculosis_display_completo(self):
-        return self.get_display_completo('tuberculosis', 'tuberculosis_otro')
-    
-    def get_asma_display_completo(self):
-        return self.get_display_completo('asma', 'asma_otro')
-    
-    def get_diabetes_display_completo(self):
-        return self.get_display_completo('diabetes', 'diabetes_otro')
-    
-    def get_hipertension_display_completo(self):
-        return self.get_display_completo('hipertension', 'hipertension_otro')
-    
-    def get_enfermedad_cardiaca_display_completo(self):
-        return self.get_display_completo('enfermedad_cardiaca', 'enfermedad_cardiaca_otra', 'OTRA')
+    @property
+    def tiene_condiciones_importantes(self):
+        """Verifica si tiene condiciones importantes para odontología"""
+        condiciones = [
+            self.alergia_antibiotico != 'NO',
+            self.alergia_anestesia != 'NO',
+            self.hemorragias == 'SI',
+            self.vih_sida not in ['NEGATIVO', 'NO_SABE'],
+            self.tuberculosis not in ['NO', 'VACUNA_BCG'],
+            self.diabetes != 'NO',
+            self.hipertension_arterial != 'NO',
+            self.enfermedad_cardiaca != 'NO',
+        ]
+        return any(condiciones)
     
     @property
     def resumen_condiciones(self):
-        """Resumen de condiciones importantes"""
+        """Resumen de condiciones importantes para alertas"""
         condiciones = []
         
         if self.alergia_antibiotico != 'NO':
-            condiciones.append(f"Alergia antibióticos: {self.get_alergia_antibiotico_display_completo()}")
+            condiciones.append("Alergia a antibióticos")
         
         if self.alergia_anestesia != 'NO':
-            condiciones.append(f"Alergia anestesia: {self.get_alergia_anestesia_display_completo()}")
+            condiciones.append("Alergia a anestesia")
         
-        if self.problemas_coagulacion == 'SI':
-            condiciones.append("Problemas coagulación")
+        if self.hemorragias == 'SI':
+            condiciones.append("Hemorragias/Coagulación")
         
         if self.vih_sida not in ['NEGATIVO', 'NO_SABE']:
-            condiciones.append(f"VIH/SIDA: {self.get_vih_sida_display_completo()}")
+            condiciones.append("VIH/SIDA")
         
         if self.tuberculosis not in ['NO', 'VACUNA_BCG']:
-            condiciones.append(f"Tuberculosis: {self.get_tuberculosis_display_completo()}")
+            condiciones.append("Tuberculosis")
         
         if self.diabetes != 'NO':
-            condiciones.append(f"Diabetes: {self.get_diabetes_display_completo()}")
+            condiciones.append("Diabetes")
         
-        if self.hipertension != 'NO':
-            condiciones.append(f"Hipertensión: {self.get_hipertension_display_completo()}")
+        if self.hipertension_arterial != 'NO':
+            condiciones.append("Hipertensión")
         
         if self.enfermedad_cardiaca != 'NO':
-            condiciones.append(f"Enfermedad cardíaca: {self.get_enfermedad_cardiaca_display_completo()}")
+            condiciones.append("Enfermedad cardíaca")
         
-        
-        return "; ".join(condiciones) if condiciones else "Sin condiciones de riesgo"
+        return ", ".join(condiciones) if condiciones else "Sin condiciones de riesgo"
     
     def save(self, *args, **kwargs):
         """Método save con validaciones automáticas"""

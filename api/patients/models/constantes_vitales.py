@@ -1,12 +1,13 @@
-# patients/models/constantes_vitales.py
+# api/patients/models/constantes_vitales.py
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from .base import BaseModel
 from .paciente import Paciente
 
 
 class ConstantesVitales(BaseModel):
-    """Constantes vitales del paciente (Sección F)"""
+    """Constantes vitales del paciente"""
     
     paciente = models.ForeignKey(
         Paciente,
@@ -15,6 +16,28 @@ class ConstantesVitales(BaseModel):
         verbose_name="Paciente"
     )
     
+    #  Campos de consulta
+    fecha_consulta = models.DateField(
+        default=timezone.now,
+        help_text="Fecha de la consulta"
+    )
+    
+    motivo_consulta = models.TextField(
+        help_text="Motivo o razón de la visita",
+        blank=True
+    )
+    
+    enfermedad_actual = models.TextField(
+        help_text="Descripción detallada: síntomas, cronología, localización, intensidad",
+        blank=True
+    )
+    
+    observaciones = models.TextField(
+        blank=True,
+        help_text="Observaciones adicionales"
+    )
+    
+    # Campos originales de constantes vitales
     temperatura = models.DecimalField(
         max_digits=4, 
         decimal_places=1, 
@@ -49,7 +72,11 @@ class ConstantesVitales(BaseModel):
     class Meta:
         verbose_name = "Constantes Vitales"
         verbose_name_plural = "Constantes Vitales"
-        ordering = ['paciente__apellidos', 'paciente__nombres']
+        ordering = ['-fecha_consulta', 'paciente__apellidos']
+        indexes = [
+            models.Index(fields=['paciente', '-fecha_consulta']),
+            models.Index(fields=['activo']),
+        ]
     
     def clean(self):
         """Validaciones del formulario"""
