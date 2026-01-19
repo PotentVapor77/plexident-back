@@ -49,7 +49,7 @@ class ClinicalRecordViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return ClinicalRecordCreateSerializer
         elif self.action in ['update', 'partial_update']:
-            return ClinicalRecordUpdateSerializer
+            return ClinicalRecordDetailSerializer
         elif self.action == 'retrieve':
             return ClinicalRecordDetailSerializer
         return ClinicalRecordSerializer
@@ -238,6 +238,8 @@ class ClinicalRecordViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Error cargando datos iniciales: {str(e)}")
             return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        
 
 
 

@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from api.clinical_records.repositories import ClinicalRecordRepository
 from api.clinical_records.models import ClinicalRecord
 from api.patients.models.paciente import Paciente
+from api.patients.models.consulta import Consulta
 
 
 class ClinicalRecordService:
@@ -19,16 +20,17 @@ class ClinicalRecordService:
         
         # Obtener últimos datos guardados
         ultimos_datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
+        ultima_consulta = Consulta.objects.filter(paciente_id=paciente_id, activo=True).first()
         
         # Pre-cargar datos del paciente en el historial
         if not data.get('motivo_consulta'):
-            data['motivo_consulta'] = paciente.motivo_consulta or ''
+            data['motivo_consulta'] = ultima_consulta.motivo_consulta or ''
         
         if not data.get('embarazada'):
             data['embarazada'] = paciente.embarazada
         
         if not data.get('enfermedad_actual'):
-            data['enfermedad_actual'] = paciente.enfermedad_actual or ''
+            data['enfermedad_actual'] = ultima_consulta.enfermedad_actual or ''
         
         # Asignar referencias a últimos datos si no se proporcionan
         if not data.get('antecedentes_personales') and ultimos_datos['antecedentes_personales']:
@@ -108,13 +110,54 @@ class ClinicalRecordService:
     @staticmethod
     def cargar_datos_iniciales_paciente(paciente_id):
         """
-        Carga los últimos datos guardados de un paciente.
-        Se usa en el frontend para pre-llenar el formulario.
+        Carga los últimos datos guardados de un paciente con datos completos
+        para permitir la edición durante la creación del historial.
         """
+        from api.patients.serializers import (
+            AntecedentesPersonalesSerializer,
+            AntecedentesFamiliaresSerializer,
+            ConstantesVitalesSerializer,
+            ExamenEstomatognaticoSerializer
+        )
+        
         paciente = Paciente.objects.get(id=paciente_id)
         ultimos_datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
+        ultima_consulta = Consulta.objects.filter(paciente_id=paciente_id, activo=True).first()
+        
+        def format_date(obj):
+            if obj and hasattr(obj, 'fecha_creacion'):
+                return obj.fecha_creacion.isoformat()
+            if obj and hasattr(obj, 'fecha_consulta'):
+                return obj.fecha_consulta.isoformat()
+            return None
+        
+        # Serializar los datos completos de cada sección
+        antecedentes_personales_data = None
+        if ultimos_datos['antecedentes_personales']:
+            antecedentes_personales_data = AntecedentesPersonalesSerializer(
+                ultimos_datos['antecedentes_personales']
+            ).data
+        
+        antecedentes_familiares_data = None
+        if ultimos_datos['antecedentes_familiares']:
+            antecedentes_familiares_data = AntecedentesFamiliaresSerializer(
+                ultimos_datos['antecedentes_familiares']
+            ).data
+        
+        constantes_vitales_data = None
+        if ultimos_datos['constantes_vitales']:
+            constantes_vitales_data = ConstantesVitalesSerializer(
+                ultimos_datos['constantes_vitales']
+            ).data
+        
+        examen_estomatognatico_data = None
+        if ultimos_datos['examen_estomatognatico']:
+            examen_estomatognatico_data = ExamenEstomatognaticoSerializer(
+                ultimos_datos['examen_estomatognatico']
+            ).data
         
         return {
+            # Información del paciente
             'paciente': {
                 'id': str(paciente.id),
                 'nombre_completo': paciente.nombre_completo,
@@ -122,11 +165,38 @@ class ClinicalRecordService:
                 'sexo': paciente.sexo,
                 'edad': paciente.edad,
             },
-            'motivo_consulta': paciente.motivo_consulta or '',
+            
+            # Datos de texto editables
+            'motivo_consulta': ultima_consulta.motivo_consulta if ultima_consulta else '',
+            'motivo_consulta_fecha': format_date(ultima_consulta),
+            
             'embarazada': paciente.embarazada,
-            'enfermedad_actual': paciente.enfermedad_actual or '',
-            'antecedentes_personales_id': str(ultimos_datos['antecedentes_personales'].id) if ultimos_datos['antecedentes_personales'] else None,
-            'antecedentes_familiares_id': str(ultimos_datos['antecedentes_familiares'].id) if ultimos_datos['antecedentes_familiares'] else None,
-            'constantes_vitales_id': str(ultimos_datos['constantes_vitales'].id) if ultimos_datos['constantes_vitales'] else None,
-            'examen_estomatognatico_id': str(ultimos_datos['examen_estomatognatico'].id) if ultimos_datos['examen_estomatognatico'] else None,
+            
+            'enfermedad_actual': ultima_consulta.enfermedad_actual if ultima_consulta else '',
+            'enfermedad_actual_fecha': format_date(ultima_consulta),
+            
+            # Datos completos de cada sección con metadata
+            'antecedentes_personales': {
+                'id': str(ultimos_datos['antecedentes_personales'].id) if ultimos_datos['antecedentes_personales'] else None,
+                'fecha': format_date(ultimos_datos['antecedentes_personales']),
+                'data': antecedentes_personales_data
+            },
+            
+            'antecedentes_familiares': {
+                'id': str(ultimos_datos['antecedentes_familiares'].id) if ultimos_datos['antecedentes_familiares'] else None,
+                'fecha': format_date(ultimos_datos['antecedentes_familiares']),
+                'data': antecedentes_familiares_data
+            },
+            
+            'constantes_vitales': {
+                'id': str(ultimos_datos['constantes_vitales'].id) if ultimos_datos['constantes_vitales'] else None,
+                'fecha': format_date(ultimos_datos['constantes_vitales']),
+                'data': constantes_vitales_data
+            },
+            
+            'examen_estomatognatico': {
+                'id': str(ultimos_datos['examen_estomatognatico'].id) if ultimos_datos['examen_estomatognatico'] else None,
+                'fecha': format_date(ultimos_datos['examen_estomatognatico']),
+                'data': examen_estomatognatico_data
+            }
         }

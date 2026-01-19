@@ -15,7 +15,42 @@ from api.patients.serializers import (
 from api.users.models import Usuario
 
 
+# ===== WRITABLE NESTED SERIALIZERS =====
+class WritableAntecedentesPersonalesSerializer(AntecedentesPersonalesSerializer):
+    """Serializer writable para antecedentes personales anidados"""
+    id = serializers.UUIDField(required=False)
+    
+    class Meta(AntecedentesPersonalesSerializer.Meta):
+        read_only_fields = ('fecha_creacion', 'fecha_modificacion', 'creado_por', 'actualizado_por')
+
+
+class WritableAntecedentesFamiliaresSerializer(AntecedentesFamiliaresSerializer):
+    """Serializer writable para antecedentes familiares anidados"""
+    id = serializers.UUIDField(required=False)
+    
+    class Meta(AntecedentesFamiliaresSerializer.Meta):
+        read_only_fields = ('fecha_creacion', 'fecha_modificacion', 'creado_por', 'actualizado_por')
+
+
+class WritableConstantesVitalesSerializer(ConstantesVitalesSerializer):
+    """Serializer writable para constantes vitales anidadas"""
+    id = serializers.UUIDField(required=False)
+    
+    class Meta(ConstantesVitalesSerializer.Meta):
+        read_only_fields = ('fecha_creacion', 'fecha_modificacion', 'creado_por', 'actualizado_por')
+
+
+class WritableExamenEstomatognaticoSerializer(ExamenEstomatognaticoSerializer):
+    """Serializer writable para examen estomatognático anidado"""
+    id = serializers.UUIDField(required=False)
+    
+    class Meta(ExamenEstomatognaticoSerializer.Meta):
+        read_only_fields = ('fecha_creacion', 'fecha_modificacion', 'creado_por', 'actualizado_por')
+
+
+# ===== SERIALIZERS PRINCIPALES (mantener los existentes) =====
 class ClinicalRecordSerializer(serializers.ModelSerializer):
+    """Mantener como está"""
     paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
     paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
     odontologo_nombre = serializers.CharField(source='odontologo_responsable.get_full_name', read_only=True)
@@ -26,33 +61,20 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClinicalRecord
         fields = [
-            'id', 
-            'paciente', 
-            'paciente_nombre',  
-            'paciente_cedula', 
-            'odontologo_responsable',
-            'odontologo_nombre', 
-            'fecha_atencion', 
-            'fecha_creacion',
-            'fecha_cierre',
-            'estado', 
-            'estado_display',
-            'motivo_consulta', 
-            'activo',
-            'puede_editar',
-            'esta_completo'
+            'id', 'paciente', 'paciente_nombre', 'paciente_cedula',
+            'odontologo_responsable', 'odontologo_nombre',
+            'fecha_atencion', 'fecha_creacion', 'fecha_cierre',
+            'estado', 'estado_display', 'motivo_consulta',
+            'activo', 'puede_editar', 'esta_completo'
         ]
         read_only_fields = (
             'id', 'creado_por', 'actualizado_por',
             'fecha_creacion', 'fecha_modificacion',
             'fecha_atencion', 'fecha_cierre'
         )
-    
+
     def to_representation(self, instance):
-        """Formato compatible con frontend"""
         data = super().to_representation(instance)
-        
-        # Convertir fechas a ISO string
         if data.get('fecha_atencion'):
             data['fecha_atencion'] = instance.fecha_atencion.isoformat()
         if data.get('fecha_cierre') and instance.fecha_cierre:
@@ -61,58 +83,53 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
             data['fecha_creacion'] = instance.fecha_creacion.isoformat()
         if data.get('fecha_modificacion') and instance.fecha_modificacion:
             data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
-        
         return data
 
 
 class ClinicalRecordDetailSerializer(serializers.ModelSerializer):
-    """Serializer detallado con todas las secciones expandidas"""
+    """Serializer detallado - AHORA CON NESTED WRITABLE"""
     
-    # Información expandida del paciente
+    # Información expandida del paciente (read only)
     paciente_info = serializers.SerializerMethodField()
-    
-    # Información expandida del odontólogo
     odontologo_info = serializers.SerializerMethodField()
-    
-    # Información de quien creó el registro
     creado_por_info = serializers.SerializerMethodField()
     
-    # Secciones expandidas (mantén las que ya tienes)
-    antecedentes_personales_data = AntecedentesPersonalesSerializer(
-        source='antecedentes_personales', 
-        read_only=True
+    # Secciones expandidas - AHORA WRITABLE
+    antecedentes_personales_data = WritableAntecedentesPersonalesSerializer(
+        source='antecedentes_personales',
+        required=False,
+        allow_null=True
     )
-    antecedentes_familiares_data = AntecedentesFamiliaresSerializer(
-        source='antecedentes_familiares', 
-        read_only=True
+    antecedentes_familiares_data = WritableAntecedentesFamiliaresSerializer(
+        source='antecedentes_familiares',
+        required=False,
+        allow_null=True
     )
-    constantes_vitales_data = ConstantesVitalesSerializer(
-        source='constantes_vitales', 
-        read_only=True
+    constantes_vitales_data = WritableConstantesVitalesSerializer(
+        source='constantes_vitales',
+        required=False,
+        allow_null=True
     )
-    examen_estomatognatico_data = ExamenEstomatognaticoSerializer(
-        source='examen_estomatognatico', 
-        read_only=True
+    examen_estomatognatico_data = WritableExamenEstomatognaticoSerializer(
+        source='examen_estomatognatico',
+        required=False,
+        allow_null=True
     )
     
-    # Campos computados
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
-    
-    # Properties
     puede_editar = serializers.BooleanField(read_only=True)
     esta_completo = serializers.BooleanField(read_only=True)
-    
+
     class Meta:
         model = ClinicalRecord
         fields = '__all__'
         read_only_fields = (
             'id', 'creado_por', 'actualizado_por',
             'fecha_creacion', 'fecha_modificacion',
-            'fecha_atencion', 'fecha_cierre'
+            'fecha_atencion', 'fecha_cierre', 'paciente'
         )
-    
+
     def get_paciente_info(self, obj):
-        """Información del paciente en formato esperado por el frontend"""
         if not obj.paciente:
             return None
         return {
@@ -124,9 +141,8 @@ class ClinicalRecordDetailSerializer(serializers.ModelSerializer):
             'edad': obj.paciente.edad,
             'fecha_nacimiento': obj.paciente.fecha_nacimiento.isoformat() if obj.paciente.fecha_nacimiento else None,
         }
-    
+
     def get_odontologo_info(self, obj):
-        """Información del odontólogo responsable"""
         if not obj.odontologo_responsable:
             return None
         return {
@@ -135,21 +151,106 @@ class ClinicalRecordDetailSerializer(serializers.ModelSerializer):
             'apellidos': obj.odontologo_responsable.apellidos,
             'rol': obj.odontologo_responsable.rol,
         }
-    
+
     def get_creado_por_info(self, obj):
-        """Información de quién creó el historial"""
         if not obj.creado_por:
             return None
         return {
             'nombres': obj.creado_por.nombres,
             'apellidos': obj.creado_por.apellidos,
         }
-    
-    def to_representation(self, instance):
-        """Formato compatible con frontend"""
-        data = super().to_representation(instance)
+
+    def update(self, instance, validated_data):
+        """Manejar actualizaciones de secciones anidadas"""
         
-        # Convertir fechas a ISO string
+        # Extraer datos anidados
+        antecedentes_personales_data = validated_data.pop('antecedentes_personales', None)
+        antecedentes_familiares_data = validated_data.pop('antecedentes_familiares', None)
+        constantes_vitales_data = validated_data.pop('constantes_vitales', None)
+        examen_estomatognatico_data = validated_data.pop('examen_estomatognatico', None)
+        
+        # Actualizar campos directos del Clinical Record
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Actualizar o crear Antecedentes Personales
+        if antecedentes_personales_data is not None:
+            instance.antecedentes_personales = self._update_or_create_nested(
+                AntecedentesPersonales,
+                instance.antecedentes_personales,
+                antecedentes_personales_data,
+                {'paciente': instance.paciente}
+            )
+        
+        # Actualizar o crear Antecedentes Familiares
+        if antecedentes_familiares_data is not None:
+            instance.antecedentes_familiares = self._update_or_create_nested(
+                AntecedentesFamiliares,
+                instance.antecedentes_familiares,
+                antecedentes_familiares_data,
+                {'paciente': instance.paciente}
+            )
+        
+        # Actualizar o crear Constantes Vitales
+        if constantes_vitales_data is not None:
+            instance.constantes_vitales = self._update_or_create_nested(
+                ConstantesVitales,
+                instance.constantes_vitales,
+                constantes_vitales_data,
+                {'paciente': instance.paciente}
+            )
+        
+        # Actualizar o crear Examen Estomatognático
+        if examen_estomatognatico_data is not None:
+            instance.examen_estomatognatico = self._update_or_create_nested(
+                ExamenEstomatognatico,
+                instance.examen_estomatognatico,
+                examen_estomatognatico_data,
+                {'paciente': instance.paciente}
+            )
+        
+        instance.save()
+        return instance
+
+    def _update_or_create_nested(self, model_class, current_instance, data, defaults):
+        """
+        Helper para actualizar o crear instancias anidadas
+        
+        Args:
+            model_class: Modelo a actualizar/crear
+            current_instance: Instancia actual (puede ser None)
+            data: Datos validados del serializer
+            defaults: Campos default (como paciente)
+        """
+        if not data:
+            return current_instance
+        
+        nested_id = data.pop('id', None)
+        
+        # Si viene un ID y existe, actualizar esa instancia
+        if nested_id:
+            try:
+                nested_obj = model_class.objects.get(id=nested_id)
+                for attr, value in data.items():
+                    setattr(nested_obj, attr, value)
+                nested_obj.save()
+                return nested_obj
+            except model_class.DoesNotExist:
+                pass
+        
+        # Si existe una instancia actual y no viene ID, actualizar la actual
+        if current_instance:
+            for attr, value in data.items():
+                setattr(current_instance, attr, value)
+            current_instance.save()
+            return current_instance
+        
+        # Si no existe, crear nueva
+        data.update(defaults)
+        return model_class.objects.create(**data)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
         if data.get('fecha_atencion'):
             data['fecha_atencion'] = instance.fecha_atencion.isoformat()
         if data.get('fecha_cierre') and instance.fecha_cierre:
@@ -158,84 +259,69 @@ class ClinicalRecordDetailSerializer(serializers.ModelSerializer):
             data['fecha_creacion'] = instance.fecha_creacion.isoformat()
         if data.get('fecha_modificacion') and instance.fecha_modificacion:
             data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
-        
         return data
 
 
 class ClinicalRecordCreateSerializer(serializers.ModelSerializer):
-    """Serializer para creación de historiales clínicos"""
-    
+    """Mantener como está para creación simple"""
     class Meta:
         model = ClinicalRecord
         fields = [
-            'paciente',
-            'odontologo_responsable',
-            'motivo_consulta',
-            'embarazada',
-            'enfermedad_actual',
-            'antecedentes_personales',
-            'antecedentes_familiares',
-            'constantes_vitales',
-            'examen_estomatognatico',
-            'estado',
-            'observaciones',
-            'unicodigo',
-            'establecimiento_salud',
+            'paciente', 'odontologo_responsable',
+            'motivo_consulta', 'embarazada', 'enfermedad_actual',
+            'antecedentes_personales', 'antecedentes_familiares',
+            'constantes_vitales', 'examen_estomatognatico',
+            'estado', 'observaciones', 'unicodigo', 'establecimiento_salud',
         ]
-    
+
     def validate_paciente(self, value):
-        """Validar que el paciente esté activo"""
         if not value.activo:
             raise serializers.ValidationError('No se puede crear un historial para un paciente inactivo.')
         return value
-    
+
     def validate_odontologo_responsable(self, value):
-        """Validar que el responsable sea odontólogo"""
         if value.rol != 'Odontologo':
             raise serializers.ValidationError('El responsable debe ser un odontólogo.')
         return value
-    
+
     def validate(self, attrs):
-        """Validaciones a nivel de objeto"""
-        # Validar embarazo según sexo
         paciente = attrs.get('paciente')
         embarazada = attrs.get('embarazada')
-        
         if embarazada == 'SI' and paciente.sexo == 'M':
             raise serializers.ValidationError({
                 'embarazada': 'Un paciente masculino no puede estar embarazado.'
             })
-        
         return attrs
 
 
 class ClinicalRecordUpdateSerializer(serializers.ModelSerializer):
-    """Serializer para actualización de historiales clínicos"""
+    """
+    NUEVO: Serializer simplificado para actualizaciones.
+    Para edición completa con nested data, usar ClinicalRecordDetailSerializer.
+    """
+    
+    # Permitir actualizar solo IDs (comportamiento actual)
+    # Para nested updates, el frontend debe usar el endpoint con DetailSerializer
     
     class Meta:
         model = ClinicalRecord
         fields = [
-            'motivo_consulta',
-            'embarazada',
-            'enfermedad_actual',
-            'antecedentes_personales',
-            'antecedentes_familiares',
-            'constantes_vitales',
-            'examen_estomatognatico',
-            'estado',
-            'observaciones',
+            'motivo_consulta', 'embarazada', 'enfermedad_actual',
+            'antecedentes_personales', 'antecedentes_familiares',
+            'constantes_vitales', 'examen_estomatognatico',
+            'estado', 'observaciones',
+            'unicodigo', 'establecimiento_salud', 'numero_hoja',
+            'institucion_sistema'
         ]
-    
+
     def validate(self, attrs):
-        """No permitir edición si está cerrado"""
         if self.instance and self.instance.estado == 'CERRADO':
             raise serializers.ValidationError('No se puede editar un historial cerrado.')
         return attrs
 
 
 class ClinicalRecordCloseSerializer(serializers.Serializer):
-    """Serializer para cerrar un historial"""
-    
+    """Mantener como está"""
     observaciones_cierre = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -244,8 +330,7 @@ class ClinicalRecordCloseSerializer(serializers.Serializer):
 
 
 class ClinicalRecordReopenSerializer(serializers.Serializer):
-    """Serializer para reabrir un historial cerrado"""
-    
+    """Mantener como está"""
     motivo_reapertura = serializers.CharField(
         required=True,
         help_text='Motivo de la reapertura del historial'
