@@ -124,7 +124,7 @@ class PermisoUsuarioViewSet(viewsets.ModelViewSet):
         permisos = PermisoUsuario.objects.filter(usuario=usuario).order_by("modelo")
         
         if not permisos.exists():
-            modelos = ['usuario', 'paciente', 'agenda', 'odontograma', 'historia_clinica']
+            modelos = ['usuario', 'paciente', 'agenda', 'odontograma', 'historia_clinica', 'clinical_files']
             for modelo in modelos:
                 PermisoUsuario.objects.create(
                     usuario=usuario,

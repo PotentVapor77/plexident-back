@@ -64,6 +64,8 @@ class OdontogramaWriteService:
         version_id = uuid.uuid4()
         now = timezone.now()
         
+        print(f"[DEBUG] VERSION_ID generado: {version_id}")
+        
         # Procesar cada diente
         for codigo_fdi, superficies_dict in odontograma_data.items():
             try:
@@ -303,7 +305,7 @@ class OdontogramaWriteService:
                                     "colorHex": diagnostico_cat.simbolo_color,
                                     "categoria_nombre": diagnostico_cat.categoria.nombre,
                                     "categoria_color_key": diagnostico_cat.categoria.color_key,
-                                    "prioridadKey": diagnostico_cat.categoria.prioridad_key, 
+                                    "prioridadKey": diagnostico_cat.categoria.prioridad_key,
                                     "prioridad": diagnostico_cat.prioridad,
                                     "afectaArea": list(
                                         diagnostico_cat.areas_relacionadas.values_list(
@@ -325,8 +327,7 @@ class OdontogramaWriteService:
                                     nombre_superficie
                                 ].append(diag_data)
 
-                # Crear registro maestro del snapshot
-                HistorialOdontograma.objects.create(
+                snapshot_master = HistorialOdontograma.objects.create(
                     diente=primer_diente,
                     tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO,
                     descripcion=(
@@ -339,13 +340,22 @@ class OdontogramaWriteService:
                     fecha=now,
                     version_id=version_id,
                 )
+                
                 print(
-                    f"[DEBUG] Snapshot completo enriquecido creado: version_id={version_id}"
+                    f"[DEBUG] Snapshot completo enriquecido creado: version_id={version_id}, ID={snapshot_master.version_id}"
                 )
 
+                resultado["snapshot_id"] = str(snapshot_master.id)
+
+        # Configuración final de respuesta
         resultado["version_id"] = str(version_id)
         resultado["tiene_cambios"] = total_cambios > 0
+        
+        if "snapshot_id" not in resultado:
+             resultado["snapshot_id"] = None 
 
+        print(f"[DEBUG] Retornando resultado con version_id: {resultado['version_id']}")
+        
         # Invalidar caché
         cache_key = f"odontograma:completo:{paciente_id}"
         cache.delete(cache_key)

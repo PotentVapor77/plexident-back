@@ -12,6 +12,7 @@ urlpatterns = [
     path("api/users/", include("api.users.urls", namespace="users")),
     path("api/odontogram/", include("api.odontogram.urls")),
     path("api/clinical-records/", include("api.clinical_records.urls")),
+    path('api/clinical-files/', include('api.clinical_files.urls')),
     # Autenticación DRF (opcional, útil para pruebas)
     path("api-auth/", include("rest_framework.urls", namespace="rest_framework")),
 ]

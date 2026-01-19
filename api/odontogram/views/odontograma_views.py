@@ -570,16 +570,64 @@ def guardar_odontograma_completo(request, paciente_id):
     POST /api/odontogram/pacientes/{paciente_id}/guardar-odontograma/
     Guarda el odontograma completo con todos los diagnósticos
     """
-    service = OdontogramaService()
-    odontologo_id = request.data.get('odontologo_id', request.user.id)
-    odontograma_data = request.data.get('odontograma_data', {})
-    
-    resultado = service.guardar_odontograma_completo(
-        paciente_id=paciente_id,
-        odontograma_data=odontograma_data,
-        odontologo_id=odontologo_id
-    )
-    return Response(resultado, status=status.HTTP_200_OK)
+    try:
+        service = OdontogramaService()
+        odontologo_id = request.data.get('odontologo_id', request.user.id)
+        odontograma_data = request.data.get('odontograma_data', {})
+        
+        logger.info(f"[guardar_odontograma_completo] Iniciando guardado para paciente {paciente_id}")
+        logger.info(f"[guardar_odontograma_completo] Odontólogo: {odontologo_id}")
+        logger.info(f"[guardar_odontograma_completo] Dientes a procesar: {len(odontograma_data)}")
+        
+        # Guardar odontograma usando el servicio
+        resultado = service.guardar_odontograma_completo(
+            paciente_id=paciente_id,
+            odontograma_data=odontograma_data,
+            odontologo_id=odontologo_id
+        )
+        snapshot_id = resultado.get('snapshot_id')
+        version_id = resultado.get('version_id')
+        
+        response_data = {
+            'success': True,
+            'status_code': 200,
+            'message': 'Odontograma guardado correctamente',
+            'data': {
+                'paciente_id': resultado.get('paciente_id'),
+                'dientes_procesados': resultado.get('dientes_procesados', []),
+                'diagnosticos_guardados': resultado.get('diagnosticos_guardados', 0),
+                'errores': resultado.get('errores', []),
+                'snapshot_id': snapshot_id, 
+                'version_id': version_id,    
+            }
+        }
+        
+        logger.info(f"[guardar_odontograma_completo] Guardado exitoso")
+        logger.info(f"[guardar_odontograma_completo] Snapshot ID: {snapshot_id}")
+        logger.info(f"[guardar_odontograma_completo] Diagnósticos guardados: {resultado.get('diagnosticos_guardados')}")
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Paciente.DoesNotExist:
+        logger.error(f"[guardar_odontograma_completo] Paciente {paciente_id} no encontrado")
+        return Response({
+            'success': False,
+            'status_code': 404,
+            'message': f'Paciente {paciente_id} no encontrado',
+            'data': None
+        }, status=status.HTTP_404_NOT_FOUND)
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"[guardar_odontograma_completo] Error: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        return Response({
+            'success': False,
+            'status_code': 500,
+            'message': f'Error al guardar odontograma: {str(e)}',
+            'data': None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class IndicadoresSaludBucalPagination(PageNumberPagination):
     """
     Paginación para indicadores de salud bucal.

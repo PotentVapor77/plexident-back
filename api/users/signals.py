@@ -78,6 +78,10 @@ def crear_permisos_default_odontologo(sender, instance, created, **kwargs):
             'modelo': 'superficie',
             'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH']
         },
+        {
+            'modelo': 'clinicalfile',
+            'metodos_permitidos': ['GET', 'POST', 'DELETE']
+        },
     ]
     
     # Crear cada permiso

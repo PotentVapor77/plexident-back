@@ -18,14 +18,27 @@ load_dotenv(BASE_DIR / '.env')
 # SECURITY SETTINGS
 # ============================================================================
 
-# CORREGIDO: Leer desde variable de entorno
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-CHANGE-THIS-IN-PRODUCTION')
 
-# CORREGIDO: Leer desde variable de entorno
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-# CORREGIDO: Lista específica de hosts
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# ============================================================================
+# STORAGE CONFIGURATION
+# ============================================================================
+
+STORAGE_BACKEND = os.getenv('STORAGE_BACKEND', 'minio')
+# Configuración común
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', 'plexident-clinical-files')
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', 'minioadmin')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', 'minioadmin')
+
+if STORAGE_BACKEND == 'minio':
+    # Desarrollo local
+    MINIO_ENDPOINT_URL = os.getenv('MINIO_ENDPOINT_URL', 'http://localhost:9000')
+else:
+    # Producción AWS
+    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
 
 # ============================================================================
 # APPLICATION DEFINITION
@@ -57,6 +70,7 @@ INSTALLED_APPS = [
     'api.patients.apps.PatientsConfig',
     'api.appointment.apps.AppointmentConfig',
     'api.clinical_records.apps.ClinicalRecordsConfig',
+    'api.clinical_files.apps.ClinicalFilesConfig',
     
 ]
 
