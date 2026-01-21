@@ -16,13 +16,11 @@ class ClinicalFile(models.Model):
     # Propiedad y Contexto Clínico
     paciente = models.ForeignKey(Paciente, on_delete=models.PROTECT, related_name='archivos_clinicos')
     # Link opcional a un snapshot específico (inmutabilidad histórica)
-    snapshot = models.ForeignKey(
-        'odontogram.HistorialOdontograma', 
-        on_delete=models.SET_NULL, 
-        null=True, 
+    snapshot_version = models.UUIDField(
+        null=True,
         blank=True,
-        related_name='evidencias_adjuntas',
-        help_text="Vincula el archivo al estado del odontograma en un momento exacto"
+        db_index=True,
+        help_text="version_id del HistorialOdontograma (agrupa todos los cambios del mismo snapshot)"
     )
 
     # Metadatos S3 (Off-Database Storage)
@@ -43,7 +41,7 @@ class ClinicalFile(models.Model):
         db_table = 'clinical_files'
         indexes = [
             models.Index(fields=['paciente', 'created_at']),
-            models.Index(fields=['snapshot']),
+            models.Index(fields=['snapshot_version']),
         ]
 
     @property

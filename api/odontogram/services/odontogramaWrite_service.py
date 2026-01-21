@@ -352,7 +352,7 @@ class OdontogramaWriteService:
         resultado["tiene_cambios"] = total_cambios > 0
         
         if "snapshot_id" not in resultado:
-             resultado["snapshot_id"] = None 
+            resultado["snapshot_id"] = None 
 
         print(f"[DEBUG] Retornando resultado con version_id: {resultado['version_id']}")
         

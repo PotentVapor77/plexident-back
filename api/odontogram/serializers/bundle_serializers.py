@@ -24,7 +24,7 @@ class FHIRBundleSerializer(serializers.Serializer):
     - Diagnósticos/Hallazgos (Condition/Procedure resources)
     
     Un Bundle es un contenedor FHIR que agrupa múltiples recursos.
-    Esto es lo que exportas a sistemas externos.
+    Esto es lo que se exporta a sistemas externos.
     """
     
     resourceType = serializers.CharField(default="Bundle", read_only=True)

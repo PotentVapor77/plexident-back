@@ -3,8 +3,7 @@ from django.core.exceptions import ValidationError
 from api.clinical_records.repositories import ClinicalRecordRepository
 from api.clinical_records.models import ClinicalRecord
 from api.patients.models.paciente import Paciente
-from api.patients.models.consulta import Consulta
-
+from api.patients.models.constantes_vitales import ConstantesVitales
 
 class ClinicalRecordService:
     """Servicio para la lógica de negocio de Historiales Clínicos"""
@@ -20,17 +19,17 @@ class ClinicalRecordService:
         
         # Obtener últimos datos guardados
         ultimos_datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
-        ultima_consulta = Consulta.objects.filter(paciente_id=paciente_id, activo=True).first()
+        ultima_constante_vital = ConstantesVitales.objects.filter(paciente_id=paciente_id,activo=True).first()
         
         # Pre-cargar datos del paciente en el historial
         if not data.get('motivo_consulta'):
-            data['motivo_consulta'] = ultima_consulta.motivo_consulta or ''
+            data['motivo_consulta'] = ultima_constante_vital.motivo_consulta or ''
         
         if not data.get('embarazada'):
             data['embarazada'] = paciente.embarazada
         
         if not data.get('enfermedad_actual'):
-            data['enfermedad_actual'] = ultima_consulta.enfermedad_actual or ''
+            data['enfermedad_actual'] = ultima_constante_vital.enfermedad_actual or ''
         
         # Asignar referencias a últimos datos si no se proporcionan
         if not data.get('antecedentes_personales') and ultimos_datos['antecedentes_personales']:
@@ -122,8 +121,7 @@ class ClinicalRecordService:
         
         paciente = Paciente.objects.get(id=paciente_id)
         ultimos_datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
-        ultima_consulta = Consulta.objects.filter(paciente_id=paciente_id, activo=True).first()
-        
+        ultima_constante_vital = ConstantesVitales.objects.filter(paciente_id=paciente_id,activo=True).first()        
         def format_date(obj):
             if obj and hasattr(obj, 'fecha_creacion'):
                 return obj.fecha_creacion.isoformat()
@@ -167,13 +165,13 @@ class ClinicalRecordService:
             },
             
             # Datos de texto editables
-            'motivo_consulta': ultima_consulta.motivo_consulta if ultima_consulta else '',
-            'motivo_consulta_fecha': format_date(ultima_consulta),
+            'motivo_consulta':  ultima_constante_vital.motivo_consulta if  ultima_constante_vital else '',
+            'motivo_consulta_fecha': format_date( ultima_constante_vital),
             
             'embarazada': paciente.embarazada,
             
-            'enfermedad_actual': ultima_consulta.enfermedad_actual if ultima_consulta else '',
-            'enfermedad_actual_fecha': format_date(ultima_consulta),
+            'enfermedad_actual':  ultima_constante_vital.enfermedad_actual if  ultima_constante_vital else '',
+            'enfermedad_actual_fecha': format_date( ultima_constante_vital),
             
             # Datos completos de cada sección con metadata
             'antecedentes_personales': {

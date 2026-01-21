@@ -59,7 +59,7 @@ class ClinicalFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClinicalFile
         fields = [
-            'id', 'paciente', 'paciente_nombre', 'snapshot',
+            'id', 'paciente', 'paciente_nombre', 'snapshot_version',
             'original_filename', 'mime_type', 'file_size_bytes',
             'category', 'uploaded_by', 'uploaded_by_name',
             'created_at', 'file_url', 'download_url', 'is_dicom'

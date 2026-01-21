@@ -43,6 +43,16 @@ class StorageService:
             config['region'] = getattr(settings, 'AWS_S3_REGION_NAME', 'us-east-1')
             logger.info(f"  Usando AWS S3: {config['bucket_name']}")
             return S3Backend(config)
+        
+    @property
+    def bucket_name(self) -> str:
+        """Retorna el nombre del bucket desde el backend"""
+        return self._backend.bucket
+    
+    @property
+    def backend_type(self) -> str:
+        """Retorna el tipo de backend (útil para debugging)"""
+        return self._backend.__class__.__name__
     
     def generate_upload_url(self, object_key: str, content_type: str, expiration: int = 300):
         """Genera URL prefirmada para subir archivo"""

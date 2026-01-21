@@ -1,9 +1,10 @@
 # api/clinical_files/views.py
+
 """
 ViewSet para gestión de archivos clínicos.
 Implementa patrón Direct-to-S3 con URLs prefirmadas.
 """
-from requests import request
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -14,7 +15,6 @@ import uuid
 import logging
 
 from common.services.storage_service import StorageService
-
 from .models import ClinicalFile
 from .serializers import (
     ClinicalFileSerializer,
@@ -22,7 +22,8 @@ from .serializers import (
     FileUploadInitSerializer,
     FileUploadConfirmSerializer
 )
-from api.odontogram.models import Paciente
+
+from api.odontogram.models import HistorialOdontograma, Paciente
 from api.users.permissions import UserBasedPermission
 
 logger = logging.getLogger(__name__)
@@ -41,16 +42,22 @@ class ClinicalFileViewSet(viewsets.ModelViewSet):
     - GET /clinical-files/by-patient/{paciente_id}/ - Archivos de un paciente
     """
     
-    queryset = ClinicalFile.objects.select_related('paciente', 'uploaded_by', 'snapshot')
+    queryset = ClinicalFile.objects.select_related(
+        'paciente', 
+        'uploaded_by'
+    ).order_by('-created_at')
+    
     permission_classes = [IsAuthenticated]
-    #permission_model_name = 'clinical_files'
     
     def get_serializer_class(self):
-        """Usa serializer ligero para listas"""
+        if self.request.query_params.get('snapshot_id'):
+            return ClinicalFileSerializer
+        if self.action in ['retrieve', 'create', 'update', 'partial_update']:
+            return ClinicalFileSerializer
         if self.action == 'list':
             return ClinicalFileListSerializer
         return ClinicalFileSerializer
-    
+
     def get_queryset(self):
         """Filtrado dinámico por query params"""
         queryset = super().get_queryset()
@@ -60,10 +67,10 @@ class ClinicalFileViewSet(viewsets.ModelViewSet):
         if paciente_id:
             queryset = queryset.filter(paciente_id=paciente_id)
         
-        # Filtro por snapshot (historial)
+        # Filtro por snapshot_version (version_id del HistorialOdontograma)
         snapshot_id = self.request.query_params.get('snapshot_id')
         if snapshot_id:
-            queryset = queryset.filter(snapshot_id=snapshot_id)
+            queryset = queryset.filter(snapshot_version=snapshot_id)
         
         # Filtro por categoría
         category = self.request.query_params.get('category')
@@ -75,8 +82,8 @@ class ClinicalFileViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(original_filename__icontains=search)
         
-        return queryset.order_by('-created_at')
-    
+        return queryset
+
     @action(detail=False, methods=['post'], url_path='init-upload')
     def init_upload(self, request):
         """
@@ -131,8 +138,8 @@ class ClinicalFileViewSet(viewsets.ModelViewSet):
             "s3_key": s3_key,
             "file_uuid": str(file_uuid)
         }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='confirm-upload')
-    
     def confirm_upload(self, request):
         """
         PASO 2: Confirmar que el archivo se subió exitosamente y crear registro en BD
@@ -148,32 +155,44 @@ class ClinicalFileViewSet(viewsets.ModelViewSet):
             "category": "XRAY"
         }
         """
-        logger.info(f"BODY confirm-upload: {request.data}")  
+        logger.info(f"BODY confirm-upload: {request.data}")
+        
         serializer = FileUploadConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        s3_key = serializer.validated_data.get('s3_key') 
+        s3_key = serializer.validated_data.get('s3_key')
+        snapshot_version_id = serializer.validated_data.get('snapshot_id')  # Este es el version_id
+        
         if not s3_key:
-            # reconstruir o, al menos, loguear mejor el error
-            logger.error(f"s3_key faltante en confirm-upload para paciente {serializer.validated_data['paciente_id']}")
+            logger.error(f"s3_key faltante en confirm-upload")
             return Response(
                 {"error": "Falta s3_key en la confirmación de subida."},
-                status=status.HTTP_400_BAD_REQUEST,
-    )
-        # VALIDACIÓN CRÍTICA: Verificar que el archivo realmente existe en S3
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # VALIDACIÓN CRÍTICA: Verificar que el archivo existe en S3
         storage = StorageService()
         if not storage.check_file_exists(s3_key):
-            logger.error(f"Archivo no encontrado en storage: {s3_key}")
+            logger.error(f" Archivo no encontrado en storage: {s3_key}")
             return Response(
                 {"error": "El archivo no se encuentra en el storage. Intente subir nuevamente."},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        if snapshot_version_id:
+            historial_exists = HistorialOdontograma.objects.filter(
+                version_id=snapshot_version_id
+            ).exists()
+            
+            if not historial_exists:
+                logger.warning(f"No se encontró historial con version_id: {snapshot_version_id}")
+                # Permitir guardado sin snapshot (archivos generales del paciente)
+        
         # Crear registro en base de datos
         try:
             clinical_file = ClinicalFile.objects.create(
                 paciente_id=serializer.validated_data['paciente_id'],
-                snapshot_id=serializer.validated_data.get('snapshot_id'),
+                snapshot_version=snapshot_version_id,  
                 bucket_name=storage._backend.bucket,
                 s3_key=s3_key,
                 original_filename=serializer.validated_data['filename'],
@@ -183,20 +202,20 @@ class ClinicalFileViewSet(viewsets.ModelViewSet):
                 uploaded_by=request.user
             )
             
-            logger.info(f"Archivo clínico creado: {clinical_file.id} - {clinical_file.original_filename}")
+            logger.info(f" Archivo clínico creado: {clinical_file.id} - {clinical_file.original_filename}")
             
             return Response(
                 ClinicalFileSerializer(clinical_file).data,
                 status=status.HTTP_201_CREATED
             )
-        
+            
         except Exception as e:
-            logger.error(f"Error creando registro de archivo: {e}")
+            logger.error(f"❌ Error creando registro de archivo: {e}")
             return Response(
-                {"error": "Error al registrar el archivo en la base de datos."},
+                {"error": f"Error al registrar el archivo: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
+
     def destroy(self, request, *args, **kwargs):
         """Eliminar archivo (BD + Storage)"""
         instance = self.get_object()
@@ -217,7 +236,7 @@ class ClinicalFileViewSet(viewsets.ModelViewSet):
             {"message": "Archivo eliminado exitosamente"},
             status=status.HTTP_204_NO_CONTENT
         )
-    
+
     @action(detail=False, methods=['get'], url_path='by-patient/(?P<paciente_id>[^/.]+)')
     def by_patient(self, request, paciente_id=None):
         """
@@ -227,10 +246,10 @@ class ClinicalFileViewSet(viewsets.ModelViewSet):
         paciente = get_object_or_404(Paciente, id=paciente_id)
         archivos = self.get_queryset().filter(paciente=paciente)
         
-        # Permitir filtro adicional por snapshot
+        # Permitir filtro adicional por snapshot_version
         snapshot_id = request.query_params.get('snapshot_id')
         if snapshot_id:
-            archivos = archivos.filter(snapshot_id=snapshot_id)
+            archivos = archivos.filter(snapshot_version=snapshot_id)
         
         serializer = self.get_serializer(archivos, many=True)
         

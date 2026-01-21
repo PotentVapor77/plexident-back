@@ -33,12 +33,32 @@ AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', 'plexident-clinic
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', 'minioadmin')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', 'minioadmin')
 
-if STORAGE_BACKEND == 'minio':
-    # Desarrollo local
-    MINIO_ENDPOINT_URL = os.getenv('MINIO_ENDPOINT_URL', 'http://localhost:9000')
-else:
-    # Producción AWS
+if STORAGE_BACKEND == 's3':
+    # AWS S3 Configuration (Producción)
     AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
+    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+    AWS_DEFAULT_ACL = 'private'
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',
+    }
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_QUERYSTRING_AUTH = True
+    AWS_QUERYSTRING_EXPIRE = 3600  # 1 hora
+    # Configurar backend de almacenamiento
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    
+elif STORAGE_BACKEND == 'minio':
+    # MinIO Configuration (Desarrollo local)
+    MINIO_ENDPOINT_URL = os.getenv('MINIO_ENDPOINT_URL', 'http://localhost:9000')
+    AWS_S3_ENDPOINT_URL = MINIO_ENDPOINT_URL
+    AWS_S3_USE_SSL = False
+    AWS_S3_REGION_NAME = 'us-east-1'  # MinIO requiere una región aunque sea fake
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+
+else:
+    # Fallback a sistema de archivos local
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 # ============================================================================
 # APPLICATION DEFINITION
@@ -71,6 +91,8 @@ INSTALLED_APPS = [
     'api.appointment.apps.AppointmentConfig',
     'api.clinical_records.apps.ClinicalRecordsConfig',
     'api.clinical_files.apps.ClinicalFilesConfig',
+    # AWS S3 Storage
+    'storages',
     
 ]
 
@@ -500,4 +522,9 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 # CONFIGURACIÓN DE RECORDATORIOS
 RECORDATORIO_TIPO_DEFAULT = "EMAIL" 
 RECORDATORIO_HORAS_ANTES = 24
-RECORDATORIO_ENVIAR_A = "AMBOS"  # PACIENTE, ODONTOLOGO o AMBOS
+RECORDATORIO_ENVIAR_A = "AMBOS"  
+
+# ============================================================================
+# S3 AWS CONFIGURATION
+# ============================================================================
+
