@@ -105,7 +105,7 @@ class OdontogramaReadService:
         }
 
         # 6. Guardar en caché por 5 minutos
-        cache.set(cache_key, result, timeout=300)
+        cache.set(cache_key, result, timeout=60)
 
         return result
 

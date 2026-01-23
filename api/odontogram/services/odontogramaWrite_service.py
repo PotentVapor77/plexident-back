@@ -13,6 +13,7 @@ from api.odontogram.models import (
     HistorialOdontograma,
     Diagnostico,
 )
+from api.odontogram.services.context_service import OperacionContexto
 
 User = get_user_model()
 
@@ -45,8 +46,9 @@ class OdontogramaWriteService:
         - Si viene un ID que es UUID válido -> intenta editar por ID.
         - Si no hay ID o el ID no es UUID válido -> usa equivalencia por attrs.
         - Si no existe ni por ID ni por attrs -> crea diagnóstico nuevo.
+        - Crea snapshot SOLO si hay cambios reales (diagnósticos nuevos o modificados).
         """
-
+        OperacionContexto.iniciar_operacion(paciente_id, 'guardado_odontograma')
         try:
             paciente = Paciente.objects.get(id=paciente_id)
             odontologo = User.objects.get(id=odontologo_id)
@@ -65,6 +67,7 @@ class OdontogramaWriteService:
         now = timezone.now()
         
         print(f"[DEBUG] VERSION_ID generado: {version_id}")
+        print(f"[CONTEXTO] Operación activa: {OperacionContexto.esta_en_operacion(paciente_id)}")
         
         # Procesar cada diente
         for codigo_fdi, superficies_dict in odontograma_data.items():
@@ -82,8 +85,6 @@ class OdontogramaWriteService:
                             diente=diente,
                             nombre=nombre_superficie,
                         )
-
-                        print("DEBUG diagnosticos_list:", diagnosticos_list)
 
                         # Procesar cada diagnóstico
                         for diag_data in diagnosticos_list:
@@ -268,6 +269,7 @@ class OdontogramaWriteService:
             resultado["diagnosticos_guardados"] + resultado["diagnosticos_modificados"]
         )
 
+        # SOLO crear snapshot si hay cambios reales
         if total_cambios > 0 and resultado["dientes_procesados"]:
             primer_diente = Diente.objects.filter(
                 paciente=paciente, codigo_fdi=resultado["dientes_procesados"][0]
@@ -342,22 +344,29 @@ class OdontogramaWriteService:
                 )
                 
                 print(
-                    f"[DEBUG] Snapshot completo enriquecido creado: version_id={version_id}, ID={snapshot_master.version_id}"
+                    f"[DEBUG] Snapshot creado (cambios reales): version_id={version_id}"
                 )
 
                 resultado["snapshot_id"] = str(snapshot_master.id)
+            else:
+                resultado["snapshot_id"] = None
+        else:
+            resultado["snapshot_id"] = None
+            print(f"[DEBUG] Sin cambios reales (total_cambios={total_cambios}), NO se crea snapshot")
 
         # Configuración final de respuesta
         resultado["version_id"] = str(version_id)
         resultado["tiene_cambios"] = total_cambios > 0
         
-        if "snapshot_id" not in resultado:
-            resultado["snapshot_id"] = None 
+        print(f"[DEBUG] Resultado final: total_cambios={total_cambios}, tiene_cambios={resultado['tiene_cambios']}")
 
-        print(f"[DEBUG] Retornando resultado con version_id: {resultado['version_id']}")
+        # Invalidar caché SOLO si hubo cambios
+        if total_cambios > 0:
+            cache_key = f"odontograma:completo:{paciente_id}"
+            cache.delete(cache_key)
+            print(f"[DEBUG] Caché invalidada (hubo cambios)")
+        else:
+            print(f"[DEBUG] Caché NO invalidada (sin cambios)")
         
-        # Invalidar caché
-        cache_key = f"odontograma:completo:{paciente_id}"
-        cache.delete(cache_key)
-
+        OperacionContexto.finalizar_operacion(paciente_id, 'guardado_odontograma')
         return resultado

@@ -14,6 +14,8 @@ from api.odontogram.models import (
 )
 from django.db.models import Prefetch
 
+from api.odontogram.services.context_service import OperacionContexto
+
 User = get_user_model()
 
 
@@ -68,7 +70,6 @@ class OdontogramaDiagnosticoService:
     def eliminar_diagnostico(self, diagnostico_id: str, odontologo_id: int) -> bool:
         """
         Elimina un diagnóstico (soft delete) y registra en historial
-        SOLO con snapshot completo del estado resultante
         """
         try:
             diagnostico = DiagnosticoDental.objects.get(id=diagnostico_id)
@@ -87,12 +88,32 @@ class OdontogramaDiagnosticoService:
         diagnostico.activo = False
         diagnostico.save()
 
-        # 2. Generar version_id único
+        # 2. SIEMPRE crear registro simple de eliminación (SIN snapshot)
+        print(f"[CONTEXTO] Eliminación individual - solo registro simple para paciente {paciente_id}")
+        HistorialOdontograma.objects.create(
+            diente=diente,
+            tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_ELIMINADO,
+            descripcion=f"Diagnóstico '{diagnostico_nombre}' eliminado de {superficie_nombre}",
+            odontologo=odontologo,
+            datos_anteriores={
+                'diagnostico_id': str(diagnostico.id),
+                'diagnostico_nombre': diagnostico_nombre,
+                'superficie': superficie_nombre,
+                'superficie_id': diagnostico.superficie.nombre,
+            },
+            fecha=timezone.now(),
+        )
+
+        # 3. Invalidar caché (SIN snapshot)
+        cache_key = f"odontograma:completo:{paciente_id}"
+        cache.delete(cache_key)
+
+        return True
+        # 3. Si NO hay operación activa, crear snapshot completo
+        print(f"[CONTEXTO] No hay operación activa, creando snapshot completo")
+        
         version_id = uuid.uuid4()
         now = timezone.now()
-
-        # 3. NO crear registro individual de DIAGNOSTICO_ELIMINADO
-        # Ir directo al snapshot completo
 
         # 4. Obtener estado completo actualizado del odontograma
         odontograma_snapshot = {}
@@ -106,7 +127,7 @@ class OdontogramaDiagnosticoService:
                         Prefetch(
                             "diagnosticos",
                             queryset=DiagnosticoDental.objects.filter(
-                                activo=True  # Solo los activos
+                                activo=True
                             )
                             .select_related(
                                 "diagnostico_catalogo",
@@ -158,7 +179,7 @@ class OdontogramaDiagnosticoService:
                         )
                         total_diagnosticos += 1
 
-        # 5. Crear UN ÚNICO snapshot completo
+        # 5. Crear snapshot completo
         primer_diente = dientes.first()
         if primer_diente:
             HistorialOdontograma.objects.create(
@@ -180,6 +201,7 @@ class OdontogramaDiagnosticoService:
         cache.delete(cache_key)
 
         return True
+
 
 
     @transaction.atomic

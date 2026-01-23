@@ -31,6 +31,7 @@ from api.odontogram.models import (
     HistorialOdontograma,
 )
 from api.odontogram.services.odontogram_services import IndiceCariesService
+from api.odontogram.services.context_service import OperacionContexto
 
 
 logger = logging.getLogger(__name__)
@@ -487,12 +488,25 @@ def crear_snapshot_indices_despues_snapshot_completo(sender, instance, created, 
         return
 
     paciente_id = str(instance.diente.paciente_id)
+    
+    # Verificar si estamos en medio de una operación de guardado
+    if OperacionContexto.esta_en_operacion(paciente_id):
+        print(f"[SIGNAL] Operación activa detectada, omitiendo creación de índices CPO")
+        return
+    
     version_id = instance.version_id
     logger.info(
         f"[CPO] post_save SNAPSHOT_COMPLETO paciente={instance.diente.paciente_id} "
         f"version={instance.version_id}"
     )
-    IndiceCariesService.crear_snapshot_indices(
-        paciente_id=paciente_id,
-        version_id=version_id,
-    )
+    
+    try:
+        IndiceCariesService.crear_snapshot_indices(
+            paciente_id=paciente_id,
+            version_id=version_id,
+        )
+    except Exception as e:
+        logger.error(f"[SIGNAL] Error creando snapshot de índices: {str(e)}")
+    
+    
+    
