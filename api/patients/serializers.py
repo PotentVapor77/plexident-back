@@ -470,6 +470,14 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
     paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
     paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
     
+    # ✅ Campos calculados
+    tiene_condiciones_importantes = serializers.BooleanField(read_only=True)
+    resumen_condiciones = serializers.CharField(read_only=True)
+    tiene_pedido_examenes_pendiente = serializers.BooleanField(read_only=True)
+    tiene_informe_examenes_completado = serializers.BooleanField(read_only=True)
+    resumen_examenes_complementarios = serializers.CharField(read_only=True)
+    estado_examenes = serializers.CharField(read_only=True)
+    
     class Meta:
         model = AnamnesisGeneral
         fields = [
@@ -483,8 +491,8 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
             'alergia_antibiotico_otro',
             'alergia_anestesia',
             'alergia_anestesia_otro',
-            'hemorragias',  # ✅ CAMBIADO
-            'hemorragias_detalle',  # ✅ NUEVO
+            'hemorragias',
+            'hemorragias_detalle',
             
             'vih_sida',
             'vih_sida_otro',
@@ -494,36 +502,50 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
             'asma_otro',
             'diabetes',
             'diabetes_otro',
-            'hipertension_arterial',  # ✅ CAMBIADO
-            'hipertension_arterial_otro',  # ✅ CAMBIADO
+            'hipertension_arterial',
+            'hipertension_arterial_otro',
             'enfermedad_cardiaca',
-            'enfermedad_cardiaca_otro',  # ✅ CAMBIADO
-            'otro_antecedente_personal',  # ✅ NUEVO
+            'enfermedad_cardiaca_otro',
+            'otro_antecedente_personal',
             
             # ========== ANTECEDENTES FAMILIARES ==========
             'cardiopatia_familiar',
             'cardiopatia_familiar_otro',
             'hipertension_familiar',
             'hipertension_familiar_otro',
-            'enfermedad_cerebrovascular_familiar',  # ✅ NUEVO
-            'enfermedad_cerebrovascular_familiar_otro',  # ✅ NUEVO
-            'endocrino_metabolico_familiar',  # ✅ NUEVO
-            'endocrino_metabolico_familiar_otro',  # ✅ NUEVO
+            'enfermedad_cerebrovascular_familiar',
+            'enfermedad_cerebrovascular_familiar_otro',
+            'endocrino_metabolico_familiar',
+            'endocrino_metabolico_familiar_otro',
             'cancer_familiar',
             'cancer_familiar_otro',
-            'tuberculosis_familiar',  # ✅ NUEVO
-            'tuberculosis_familiar_otro',  # ✅ NUEVO
+            'tuberculosis_familiar',
+            'tuberculosis_familiar_otro',
             'enfermedad_mental_familiar',
             'enfermedad_mental_familiar_otro',
-            'enfermedad_infecciosa_familiar',  # ✅ NUEVO
-            'enfermedad_infecciosa_familiar_otro',  # ✅ NUEVO
-            'malformacion_familiar',  # ✅ NUEVO
-            'malformacion_familiar_otro',  # ✅ NUEVO
-            'otro_antecedente_familiar',  # ✅ NUEVO
+            'enfermedad_infecciosa_familiar',
+            'enfermedad_infecciosa_familiar_otro',
+            'malformacion_familiar',
+            'malformacion_familiar_otro',
+            'otro_antecedente_familiar',
             
             # ========== HÁBITOS Y OBSERVACIONES ==========
             'habitos',
             'observaciones',
+            
+            # ========== EXÁMENES COMPLEMENTARIOS ==========
+            'pedido_examenes_complementarios',
+            'pedido_examenes_complementarios_detalle',
+            'informe_examenes',
+            'informe_examenes_detalle',
+            
+            # ========== CAMPOS CALCULADOS ==========
+            'tiene_condiciones_importantes',
+            'resumen_condiciones',
+            'tiene_pedido_examenes_pendiente',
+            'tiene_informe_examenes_completado',
+            'resumen_examenes_complementarios',
+            'estado_examenes',
             
             # ========== METADATA ==========
             'activo',
@@ -539,7 +561,13 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
             'creado_por', 
             'actualizado_por',
             'paciente_nombre',
-            'paciente_cedula'
+            'paciente_cedula',
+            'tiene_condiciones_importantes',
+            'resumen_condiciones',
+            'tiene_pedido_examenes_pendiente',
+            'tiene_informe_examenes_completado',
+            'resumen_examenes_complementarios',
+            'estado_examenes',
         ]
     
     def to_representation(self, instance):
@@ -552,14 +580,12 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
         if data.get('fecha_modificacion') and instance.fecha_modificacion:
             data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
         
-        # Agregar propiedades del modelo
-        data['tiene_condiciones_importantes'] = instance.tiene_condiciones_importantes
-        data['resumen_condiciones'] = instance.resumen_condiciones
-        
         return data
     
     def validate(self, data):
         """Validaciones personalizadas basadas en el modelo"""
+        errors = {}
+        
         # Validar campos "Otro" que requieren especificación
         campos_otro_validacion = [
             ('alergia_antibiotico', 'alergia_antibiotico_otro', 'OTRO'),
@@ -568,8 +594,8 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
             ('tuberculosis', 'tuberculosis_otro', 'OTRO'),
             ('asma', 'asma_otro', 'OTRO'),
             ('diabetes', 'diabetes_otro', 'OTRO'),
-            ('hipertension_arterial', 'hipertension_arterial_otro', 'OTRO'),  # ✅ CAMBIADO
-            ('enfermedad_cardiaca', 'enfermedad_cardiaca_otro', 'OTRO'),  # ✅ CAMBIADO
+            ('hipertension_arterial', 'hipertension_arterial_otro', 'OTRO'),
+            ('enfermedad_cardiaca', 'enfermedad_cardiaca_otro', 'OTRO'),
             ('cardiopatia_familiar', 'cardiopatia_familiar_otro', 'OTRO'),
             ('hipertension_familiar', 'hipertension_familiar_otro', 'OTRO'),
             ('enfermedad_cerebrovascular_familiar', 'enfermedad_cerebrovascular_familiar_otro', 'OTRO'),
@@ -592,12 +618,41 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
                 valor_otro_field = getattr(self.instance, campo_otro)
             
             if valor_select == valor_otro and not valor_otro_field:
-                # Obtener nombre display del campo
                 field = self.Meta.model._meta.get_field(campo_select)
                 nombre_display = dict(field.choices).get(valor_select, valor_select)
-                raise serializers.ValidationError({
-                    campo_otro: f'Debe especificar cuando selecciona "{nombre_display}"'
-                })
+                errors[campo_otro] = f'Debe especificar cuando selecciona "{nombre_display}"'
+        
+        # ✅ VALIDACIÓN para exámenes complementarios
+        pedido_examenes = data.get('pedido_examenes_complementarios')
+        pedido_detalle = data.get('pedido_examenes_complementarios_detalle')
+        
+        if self.instance:
+            if pedido_examenes is None:
+                pedido_examenes = self.instance.pedido_examenes_complementarios
+            if pedido_detalle is None:
+                pedido_detalle = self.instance.pedido_examenes_complementarios_detalle
+        
+        if pedido_examenes == 'SI' and not pedido_detalle:
+            errors['pedido_examenes_complementarios_detalle'] = 'Debe especificar los exámenes solicitados'
+        
+        # ✅ VALIDACIÓN para informe de exámenes
+        informe_tipo = data.get('informe_examenes')
+        informe_detalle = data.get('informe_examenes_detalle')
+        
+        if self.instance:
+            if informe_tipo is None:
+                informe_tipo = self.instance.informe_examenes
+            if informe_detalle is None:
+                informe_detalle = self.instance.informe_examenes_detalle
+        
+        if informe_tipo == 'OTROS' and not informe_detalle:
+            errors['informe_examenes_detalle'] = 'Debe especificar el tipo de examen cuando selecciona "Otros"'
+        
+        if informe_tipo != 'NINGUNO' and not informe_detalle:
+            errors['informe_examenes_detalle'] = 'Debe detallar los resultados del examen'
+        
+        if errors:
+            raise serializers.ValidationError(errors)
         
         return data
     

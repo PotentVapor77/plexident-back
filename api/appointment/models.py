@@ -280,3 +280,69 @@ class RecordatorioCita(models.Model):
     
     def __str__(self):
         return f"Recordatorio {self.tipo_recordatorio} - Cita {self.cita.id}"
+    
+
+class HistorialCita(models.Model):
+    """
+    RF-05.11: Registra automáticamente cambios en citas
+    (fecha anterior, fecha nueva, usuario que modificó, timestamp)
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cita = models.ForeignKey(
+        Cita,
+        on_delete=models.CASCADE,
+        related_name='historial_cambios',
+        verbose_name='Cita'
+    )
+    
+    fecha_cambio = models.DateTimeField(auto_now_add=True, verbose_name='Fecha del cambio')
+    usuario = models.ForeignKey(
+        'users.Usuario',
+        on_delete=models.PROTECT,
+        related_name='cambios_citas_realizados',
+        verbose_name='Usuario que modificó'
+    )
+    
+    accion = models.CharField(
+        max_length=50,
+        choices=[
+            ('CREACION', 'Creación'),
+            ('MODIFICACION', 'Modificación'),
+            ('REPROGRAMACION', 'Reprogramación'),
+            ('CANCELACION', 'Cancelación'),
+            ('CAMBIO_ESTADO', 'Cambio de estado'),
+        ],
+        verbose_name='Tipo de acción'
+    )
+    
+    # Datos anteriores (JSON para flexibilidad)
+    datos_anteriores = models.JSONField(
+        null=True, 
+        blank=True,
+        verbose_name='Datos anteriores'
+    )
+    
+    # Datos nuevos
+    datos_nuevos = models.JSONField(
+        null=True, 
+        blank=True,
+        verbose_name='Datos nuevos'
+    )
+    
+    descripcion = models.TextField(
+        blank=True,
+        verbose_name='Descripción del cambio'
+    )
+    
+    class Meta:
+        db_table = 'historial_citas'
+        verbose_name = 'Historial de Cita'
+        verbose_name_plural = 'Historial de Citas'
+        ordering = ['-fecha_cambio']
+        indexes = [
+            models.Index(fields=['cita', '-fecha_cambio']),
+            models.Index(fields=['-fecha_cambio']),
+        ]
+    
+    def __str__(self):
+        return f"{self.accion} - Cita {self.cita.id} - {self.fecha_cambio}"

@@ -130,6 +130,87 @@ class CitaViewSet(viewsets.ModelViewSet):
         logger.info(f"Cita {instance.id} eliminada por {request.user.username}")
         return Response({'id': str(instance.id)}, status=status.HTTP_200_OK)
     
+    @action(detail=False, methods=['get'], url_path='del-dia')
+    def citas_del_dia(self, request):
+        """
+        RF-05.16: Dashboard de citas del día actual al ingresar al módulo,
+        con lista cronológica de pacientes programados
+        GET /api/appointments/citas/del-dia/
+        GET /api/appointments/citas/del-dia/?odontologo=uuid
+        """
+        from datetime import date
+        
+        hoy = date.today()
+        odontologo_id = request.query_params.get('odontologo')
+        
+        # Filtro base: solo citas del día activas
+        citas_query = Cita.objects.filter(
+            fecha=hoy,
+            activo=True
+        ).exclude(
+            estado__in=[EstadoCita.CANCELADA, EstadoCita.REPROGRAMADA]
+        ).select_related('paciente', 'odontologo').order_by('hora_inicio')
+        
+        # Filtro opcional por odontólogo
+        if odontologo_id:
+            citas_query = citas_query.filter(odontologo_id=odontologo_id)
+        
+        serializer = self.get_serializer(citas_query, many=True)
+        
+        # Estadísticas del día
+        total = citas_query.count()
+        completadas = citas_query.filter(estado=EstadoCita.ASISTIDA).count()
+        pendientes = citas_query.filter(
+            estado__in=[EstadoCita.PROGRAMADA, EstadoCita.CONFIRMADA]
+        ).count()
+        en_proceso = citas_query.filter(estado=EstadoCita.EN_ATENCION).count()
+        no_asistieron = citas_query.filter(estado=EstadoCita.NO_ASISTIDA).count()
+        
+        # Siguiente cita (la más próxima pendiente)
+        from django.utils import timezone
+        ahora = timezone.localtime(timezone.now()).time()
+        siguiente_cita = citas_query.filter(
+            hora_inicio__gte=ahora,
+            estado__in=[EstadoCita.PROGRAMADA, EstadoCita.CONFIRMADA]
+        ).first()
+        
+        return Response({
+            'fecha': hoy.strftime('%Y-%m-%d'),
+            'fecha_display': hoy.strftime('%d de %B de %Y'),
+            'total_citas': total,
+            'citas': serializer.data,
+            'estadisticas': {
+                'total': total,
+                'completadas': completadas,
+                'pendientes': pendientes,
+                'en_proceso': en_proceso,
+                'no_asistieron': no_asistieron,
+                'tasa_asistencia': round((completadas / total * 100), 2) if total > 0 else 0
+            },
+            'siguiente_cita': CitaSerializer(siguiente_cita).data if siguiente_cita else None
+        })
+        
+
+    @action(detail=True, methods=['get'], url_path='historial')
+    def historial(self, request, pk=None):
+        """
+        RF-05.11: Obtiene el historial de cambios de una cita
+        GET /api/appointments/citas/{id}/historial/
+        """
+        from .models import HistorialCita
+        from .serializers import HistorialCitaSerializer
+        
+        cita = self.get_object()
+        historial = HistorialCita.objects.filter(cita=cita).select_related('usuario')
+        serializer = HistorialCitaSerializer(historial, many=True)
+        
+        return Response({
+            'cita_id': str(cita.id),
+            'paciente': cita.paciente.nombre_completo,
+            'total_cambios': historial.count(),
+            'historial': serializer.data
+        })
+    
     @action(detail=True, methods=['post'], url_path='cancelar')
     def cancelar(self, request, pk=None):
         """Cancelar una cita"""
@@ -249,76 +330,88 @@ class CitaViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='proximas')
     def citas_proximas(self, request):
         """
-        Endpoint para obtener las próximas citas programadas
+        RF-05.17: Genera alertas visuales de citas próximas 
+        (dentro de los siguientes 30 minutos) en el dashboard principal
+        GET /api/appointments/citas/proximas/
+        GET /api/appointments/citas/proximas/?minutos=30
         """
-        try:
-            from datetime import datetime
-            from django.utils import timezone
+        from datetime import datetime, timedelta, date
+        from django.utils import timezone
+        
+        # Parámetro configurable (por defecto 30 minutos)
+        minutos_ventana = int(request.query_params.get('minutos', 30))
+        
+        ahora = timezone.localtime(timezone.now())
+        hoy = date.today()
+        limite_superior = ahora + timedelta(minutes=minutos_ventana)
+        
+        logger.info(f"🔍 Buscando citas próximas. Hora actual: {ahora}, Límite: {limite_superior}")
+        
+        # Buscar citas del día actual pendientes
+        citas = Cita.objects.filter(
+            fecha=hoy,
+            activo=True,
+            estado__in=[EstadoCita.PROGRAMADA, EstadoCita.CONFIRMADA]
+        ).select_related('paciente', 'odontologo').order_by('hora_inicio')
+        
+        citas_proximas = []
+        
+        for cita in citas:
+            fecha_hora_cita = timezone.make_aware(
+                datetime.combine(cita.fecha, cita.hora_inicio)
+            )
             
-            ahora = timezone.localtime(timezone.now())
-            
-            # Obtener próximas citas (futuras desde ahora)
-            citas_futuras = []
-            citas = Cita.objects.filter(
-                activo=True,
-                estado__in=['PROGRAMADA', 'CONFIRMADA']
-            ).select_related('paciente', 'odontologo').order_by('fecha', 'hora_inicio')
-            
-            # Filtrar solo las que son futuras
-            for cita in citas:
-                fecha_hora_cita = timezone.make_aware(
-                    datetime.combine(cita.fecha, cita.hora_inicio)
-                )
-                if fecha_hora_cita > ahora:  # ✅ Solo futuras
-                    citas_futuras.append(cita)
-                    if len(citas_futuras) >= 10:  # ✅ Máximo 10
-                        break
-            
-            logger.info(f"🔍 Hora actual: {ahora}")
-            logger.info(f"🔍 Próximas citas encontradas: {len(citas_futuras)}")
-            
-            # Formatear respuesta
-            resultado = []
-            for cita in citas_futuras:
-                fecha_hora_cita = timezone.make_aware(
-                    datetime.combine(cita.fecha, cita.hora_inicio)
-                )
-                minutos = int((fecha_hora_cita - ahora).total_seconds() / 60)
-                horas = minutos // 60
+            # Solo citas futuras dentro de la ventana de tiempo
+            if ahora <= fecha_hora_cita <= limite_superior:
+                minutos_faltantes = int((fecha_hora_cita - ahora).total_seconds() / 60)
                 
-                resultado.append({
+                # Determinar nivel de alerta
+                if minutos_faltantes <= 5:
+                    nivel_alerta = 'CRITICA'  # Rojo intenso
+                    color_alerta = '#DC2626'
+                elif minutos_faltantes <= 15:
+                    nivel_alerta = 'ALTA'  # Naranja
+                    color_alerta = '#F59E0B'
+                else:
+                    nivel_alerta = 'MEDIA'  # Amarillo
+                    color_alerta = '#EAB308'
+                
+                citas_proximas.append({
                     'id': str(cita.id),
                     'fecha': cita.fecha.strftime('%Y-%m-%d'),
                     'hora_inicio': cita.hora_inicio.strftime('%H:%M'),
                     'hora_fin': cita.hora_fin.strftime('%H:%M'),
-                    'duracion': cita.duracion,
-                    'estado': cita.estado,
-                    'estado_display': cita.get_estado_display(),
-                    'tipo_consulta': cita.tipo_consulta,
-                    'tipo_consulta_display': cita.get_tipo_consulta_display(),
-                    'motivo_consulta': cita.motivo_consulta or '',
-                    'observaciones': cita.observaciones or '',
-                    'minutos_faltantes': minutos,
-                    'paciente_detalle': {
+                    'minutos_faltantes': minutos_faltantes,
+                    'nivel_alerta': nivel_alerta,
+                    'color_alerta': color_alerta,
+                    'paciente': {
                         'id': str(cita.paciente.id),
                         'nombre_completo': cita.paciente.nombre_completo,
-                        'cedula_pasaporte': cita.paciente.cedula_pasaporte,
                         'telefono': cita.paciente.telefono or '',
                         'correo': cita.paciente.correo or '',
                     },
-                    'odontologo_detalle': {
+                    'odontologo': {
                         'id': str(cita.odontologo.id),
                         'nombre_completo': cita.odontologo.get_full_name(),
-                        'correo': cita.odontologo.correo or '',
-                    }
+                    },
+                    'tipo_consulta': cita.tipo_consulta,
+                    'tipo_consulta_display': cita.get_tipo_consulta_display(),
+                    'motivo_consulta': cita.motivo_consulta or '',
+                    'duracion': cita.duracion,
+                    'estado': cita.estado,
+                    'estado_display': cita.get_estado_display(),
                 })
-            
-            return Response(resultado, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"❌ Error en citas_proximas: {str(e)}")
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        
+        logger.info(f"✅ Encontradas {len(citas_proximas)} citas próximas")
+        
+        return Response({
+            'total_alertas': len(citas_proximas),
+            'hora_actual': ahora.strftime('%H:%M'),
+            'fecha_actual': hoy.strftime('%Y-%m-%d'),
+            'ventana_minutos': minutos_ventana,
+            'citas_proximas': citas_proximas,
+            'tiene_alertas_criticas': any(c['nivel_alerta'] == 'CRITICA' for c in citas_proximas)
+        })
 
 
 

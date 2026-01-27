@@ -598,13 +598,15 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
     filterset_fields = [
         'paciente', 
         'activo', 
-        'hemorragias',  # ✅ CAMBIADO: de 'problemas_coagulacion' a 'hemorragias'
+        'hemorragias',
         'alergia_antibiotico',
         'alergia_anestesia',
         'vih_sida',
         'diabetes',
-        'hipertension_arterial',  # ✅ CAMBIADO: de 'hipertension' a 'hipertension_arterial'
-        'enfermedad_cardiaca'
+        'hipertension_arterial',
+        'enfermedad_cardiaca',
+        'pedido_examenes_complementarios',  # ✅ AÑADIDO
+        'informe_examenes',  # ✅ AÑADIDO
     ]
     search_fields = [
         'paciente__nombres',
@@ -613,9 +615,11 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
         'observaciones',
         'alergia_antibiotico_otro',
         'alergia_anestesia_otro',
-        'hemorragias_detalle',  # ✅ AÑADIDO
-        'otro_antecedente_personal',  # ✅ AÑADIDO
-        'otro_antecedente_familiar'  # ✅ AÑADIDO
+        'hemorragias_detalle',
+        'otro_antecedente_personal',
+        'otro_antecedente_familiar',
+        'pedido_examenes_complementarios_detalle',  # ✅ AÑADIDO
+        'informe_examenes_detalle',  # ✅ AÑADIDO
     ]
     ordering_fields = ['fecha_creacion', 'fecha_modificacion']
     ordering = ['-fecha_creacion']
@@ -640,9 +644,11 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
                 | Q(paciente__apellidos__icontains=search)
                 | Q(paciente__cedula_pasaporte__icontains=search)
                 | Q(observaciones__icontains=search)
-                | Q(hemorragias_detalle__icontains=search)  # ✅ AÑADIDO
-                | Q(otro_antecedente_personal__icontains=search)  # ✅ AÑADIDO
-                | Q(otro_antecedente_familiar__icontains=search)  # ✅ AÑADIDO
+                | Q(hemorragias_detalle__icontains=search)
+                | Q(otro_antecedente_personal__icontains=search)
+                | Q(otro_antecedente_familiar__icontains=search)
+                | Q(pedido_examenes_complementarios_detalle__icontains=search)  # ✅ AÑADIDO
+                | Q(informe_examenes_detalle__icontains=search)  # ✅ AÑADIDO
             )
         
         return qs
@@ -652,7 +658,7 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # ✅ MANTENIDO: Validación de duplicados (solo una anamnesis activa por paciente)
+        # Validación de duplicados
         paciente_id = serializer.validated_data.get('paciente').id
         if AnamnesisGeneral.objects.filter(paciente_id=paciente_id, activo=True).exists():
             raise ValidationError({
@@ -719,24 +725,73 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
         data = {
             'resumen_condiciones': instance.resumen_condiciones,
             'alergias': {
-                'antibioticos': instance.get_alergia_antibiotico_display_completo(),
-                'anestesia': instance.get_alergia_anestesia_display_completo(),
+                'antibioticos': instance.get_alergia_antibiotico_display(),
+                'anestesia': instance.get_alergia_anestesia_display(),
             },
             'condiciones_criticas': {
-                'hemorragias': instance.hemorragias == 'SI',  # ✅ CAMBIADO
+                'hemorragias': instance.hemorragias == 'SI',
                 'enfermedad_cardiaca': instance.enfermedad_cardiaca != 'NO'
             },
             'enfermedades_cronicas': {
                 'diabetes': instance.diabetes != 'NO',
-                'hipertension_arterial': instance.hipertension_arterial != 'NO',  # ✅ CAMBIADO
+                'hipertension_arterial': instance.hipertension_arterial != 'NO',
                 'asma': instance.asma != 'NO'
             },
             'antecedentes_familiares': {
                 'tiene_cardiopatia': instance.cardiopatia_familiar != 'NO',
                 'tiene_hipertension': instance.hipertension_familiar != 'NO',
-                'tiene_diabetes': instance.diabetes_familiar != 'NO',
                 'tiene_cancer': instance.cancer_familiar != 'NO'
+            },
+            'examenes': {  # ✅ AÑADIDO
+                'estado': instance.estado_examenes,
+                'tiene_pedido_pendiente': instance.tiene_pedido_examenes_pendiente,
+                'tiene_informe_completado': instance.tiene_informe_examenes_completado,
+                'resumen': instance.resumen_examenes_complementarios
             }
         }
         
         return Response(data)
+    
+    # ✅ NUEVO ENDPOINT: Solicitar exámenes
+    @action(detail=True, methods=['post'])
+    def solicitar_examenes(self, request, pk=None):
+        """Marcar exámenes como solicitados"""
+        instance = self.get_object()
+        detalle = request.data.get('detalle')
+        
+        if not detalle:
+            raise ValidationError({'detalle': 'Debe especificar qué exámenes se solicitan'})
+        
+        instance.marcar_examenes_solicitados(detalle)
+        
+        logger.info(f"Exámenes solicitados para anamnesis {instance.id} por {request.user.username}")
+        
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+    
+    # ✅ NUEVO ENDPOINT: Agregar resultado de examen
+    @action(detail=True, methods=['post'])
+    def agregar_resultado(self, request, pk=None):
+        """Agregar resultados de exámenes"""
+        instance = self.get_object()
+        tipo_examen = request.data.get('tipo_examen')
+        resultado = request.data.get('resultado')
+        
+        if not tipo_examen or not resultado:
+            raise ValidationError({
+                'detail': 'Debe especificar tipo_examen y resultado'
+            })
+        
+        # Validar tipo de examen
+        tipos_validos = dict(AnamnesisGeneral._meta.get_field('informe_examenes').choices).keys()
+        if tipo_examen not in tipos_validos:
+            raise ValidationError({
+                'tipo_examen': f'Tipo de examen inválido. Opciones: {", ".join(tipos_validos)}'
+            })
+        
+        instance.agregar_resultado_examen(tipo_examen, resultado)
+        
+        logger.info(f"Resultado de examen agregado para anamnesis {instance.id} por {request.user.username}")
+        
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
