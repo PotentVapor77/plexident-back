@@ -98,17 +98,17 @@ class ClinicalRecordRepository:
             'antecedentes_personales': AntecedentesPersonales.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            ).first(),
+            ).order_by('-fecha_creacion').first(),
             'antecedentes_familiares': AntecedentesFamiliares.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            ).first(),
+            ).order_by('-fecha_creacion').first(),
             'constantes_vitales': ConstantesVitales.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            ).first(),
+            ).order_by('-fecha_creacion').first(),
             'examen_estomatognatico': ExamenEstomatognatico.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            ).first(),
+            ).order_by('-fecha_creacion').first(),
         }

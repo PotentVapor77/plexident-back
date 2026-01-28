@@ -1,7 +1,8 @@
 key,categoria_key,nombre,siglas,simbolo_color,prioridad,activo,codigo_icd10,codigo_cdt,codigo_fhir,tipo_recurso_fhir,simbolo_formulario_033,superficie_aplicables
-caries,patologia_activa,Caries,C,#FF0000,5,True,K02.9,D0220,80967001,Condition,O_rojo,"[""oclusal"",""vestibular"",""lingual"",""mesial"",""distal""]"
-extraccion_indicada,patologia_activa,Extracción Indicada,Ext,#FF0000,5,True,Z48.0,D7140,385093006,Procedure,X_rojo,"[]"
-perdida_otra_causa,tratamiento_realizado,Perdida ,POC,#0000FF,4,True,K08.8,D7140,80967001,Condition,X_azul,"[]"
+caries,patologia_activa,Caries,C,#FF0000,5,True,K02.9,,80967001,Condition,O_rojo,"[""oclusal"",""vestibular"",""lingual"",""mesial"",""distal""]"
+extraccion_indicada,patologia_activa,Extracción Indicada,Ext,#FF0000,5,True,,,55162003,ServiceRequest,X_rojo,"[]"
+perdida_caries,tratamiento_realizado,Perdida Caries,PC,#0000FF,4,True,K08.1,D7140,80967001,Condition,X_circulo_azul,"[]"
+perdida_otra_causa,tratamiento_realizado,Perdida,POC,#0000FF,4,True,K08.1,D7140,37320007,Condition,X_azul,"[]"
 extraccion_otra_causa,patologia_activa,Extracción,EOC,#FF0000,4,True,K08.1,D7140,80967001,Condition,_rojo,"[]"
 sellante_necesario,patologia_activa,Sellante Necesario,SN,#FF0000,3,True,,D1351,67889009,Procedure,U_rojo,"[""oclusal""]"
 sellante_realizado,tratamiento_realizado,Sellante Realizado,SR,#0000FF,2,True,,D1351,67889009,Procedure,U_azul,"[""oclusal""]"
@@ -19,3 +20,4 @@ protesis_total_indicada,patologia_activa,Prótesis Total Indicada,PTI,#FF0000,4,
 protesis_total_realizada,tratamiento_realizado,Prótesis Total Realizada,PTR,#0000FF,2,True,,D5110,257281008,Procedure,═_azul,"[]"
 diente_sano,preventivo,Diente Sano,Sano,#00AA00,1,True,,,38199008,Observation,check,"[]"
 movilidad_dental,patologia_activa,Movilidad Dental,MD,#EAB308,3,True,K03.1,D0460,109564002,Observation,,[]
+recesion_gingival,patologia_activa,Recesión Gingival,RG,#EAB308,3,True,K03.2,D4341,109983006,Observation,,[]

@@ -183,28 +183,6 @@ class PlanTratamientoService:
             #diagnosticos_finales = diagnosticos_data["diagnosticos"]
         procedimientos = list(procedimientos or [])
         
-        if autocompletar_diagnosticos and diagnosticos_finales:
-            # Del JSON del front: cada item trae 'diagnostico_key'
-            keys_catalogo = [
-                item.get("diagnostico_key")
-                for item in diagnosticos_finales
-                if item.get("diagnostico_key")
-            ]
-
-            texto_sugerido = construir_texto_procedimiento_desde_diagnosticos(
-                keys_catalogo,
-                modo="key",
-            )
-
-            if texto_sugerido:
-                procedimientos.append(
-                    {
-                        "descripcion": texto_sugerido,
-                        "autogenerado": True,
-                    }
-                )
-        
-        
         
         
         # Calcular número de sesión

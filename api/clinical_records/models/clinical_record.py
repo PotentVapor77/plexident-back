@@ -23,6 +23,47 @@ class ClinicalRecord(BaseModel):
         related_name='historiales_clinicos',
         verbose_name='Paciente'
     )
+    # === SECCIÓN A: DATOS AUTOMÁTICOS ===
+    numero_historia_clinica_unica = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=True,
+        null=True,
+        verbose_name='Número de Historia Clínica Única',
+        help_text='Generado automáticamente: HC-{año}{secuencia:05d}'
+    )
+    
+    numero_archivo = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        verbose_name='Número de Archivo',
+        help_text='Generado automáticamente: ARCH-{paciente_id[:8]}'
+    )
+    
+    numero_hoja = models.PositiveIntegerField(
+        default=1,
+        verbose_name='No. Hoja'
+    )
+    
+    institucion_sistema = models.CharField(
+        max_length=100,
+        default='SISTEMA NACIONAL DE SALUD Temporal',
+        verbose_name='Institución del Sistema'
+    )
+    
+    unicodigo = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name='UNICÓDIGO'
+    )
+    
+    establecimiento_salud = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name='Establecimiento de Salud'
+    )
     
     # === REFERENCIAS A SECCIONES EXISTENTES ===
     # Estas referencias cargan los últimos datos guardados
@@ -114,30 +155,7 @@ class ClinicalRecord(BaseModel):
         verbose_name='Observaciones del Profesional'
     )
     
-    # === DATOS HARDCODEADOS (Sección A) ===
-    # Estos se manejan a nivel de configuración o constantes
-    institucion_sistema = models.CharField(
-        max_length=100,
-        default='SISTEMA NACIONAL DE SALUD',
-        verbose_name='Institución del Sistema'
-    )
     
-    unicodigo = models.CharField(
-        max_length=50,
-        blank=True,
-        verbose_name='UNICÓDIGO'
-    )
-    
-    establecimiento_salud = models.CharField(
-        max_length=200,
-        blank=True,
-        verbose_name='Establecimiento de Salud'
-    )
-    
-    numero_hoja = models.PositiveIntegerField(
-        default=1,
-        verbose_name='Número de Hoja'
-    )
 
     class Meta:
         verbose_name = 'Historial Clínico'
@@ -147,10 +165,20 @@ class ClinicalRecord(BaseModel):
             models.Index(fields=['paciente', '-fecha_atencion']),
             models.Index(fields=['estado', 'activo']),
             models.Index(fields=['odontologo_responsable', '-fecha_atencion']),
+            models.Index(fields=['numero_historia_clinica_unica']),
         ]
+        #constraints = [
+            #models.UniqueConstraint(
+              #  fields=['paciente', 'numero_archivo'],
+              #  name='unique_numero_archivo_per_paciente',
+              #  condition=models.Q(activo=True)
+            #),
+        #]
+        
+        
 
     def __str__(self):
-        return f"HC-{self.paciente.nombre_completo} - {self.fecha_atencion.strftime('%Y-%m-%d')}"
+        return f"HC-{self.paciente.nombre_completo} - {self.fecha_atencion.strftime('%Y-%m-%d')} - {self.numero_historia_clinica_unica}"
 
     def clean(self):
         """Validaciones del modelo"""
@@ -217,3 +245,19 @@ class ClinicalRecord(BaseModel):
             self.constantes_vitales,
             self.examen_estomatognatico
         ])
+    constantes_vitales_nuevas = models.BooleanField(
+        default=False,
+        verbose_name='¿Constantes vitales nuevas?'
+    )
+    
+    motivo_consulta_nuevo = models.BooleanField(
+        default=False,
+        verbose_name='¿Motivo de consulta nuevo?'
+    )
+    
+    enfermedad_actual_nueva = models.BooleanField(
+        default=False,
+        verbose_name='¿Enfermedad actual nueva?'
+    )
+    
+    

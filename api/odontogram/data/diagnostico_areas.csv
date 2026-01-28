@@ -10,6 +10,7 @@ corona_realizada,corona
 extraccion_indicada,general
 extraccion_otra_causa,general
 perdida_otra_causa,general
+perdida_caries,general
 ausente,general
 protesis_fija_indicada,general
 protesis_fija_realizada,general
@@ -19,3 +20,4 @@ protesis_total_indicada,general
 protesis_total_realizada,general
 diente_sano,general
 movilidad_dental,general
+recesion_gingival,general

@@ -743,6 +743,14 @@ class IndicadoresSaludBucal(models.Model):
         LEVE = "LEVE", "Leve"
         MODERADA = "MODERADA", "Moderada"
         SEVERA = "SEVERA", "Severa"
+        
+    class NivelGingivitis(models.TextChoices):
+        NINGUNA = "NINGUNA", "No presenta"
+        LEVE = "LEVE", "Leve"
+        MODERADA = "MODERADA", "Moderada"
+        SEVERA = "SEVERA", "Severa"
+        
+    
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     

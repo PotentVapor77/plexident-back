@@ -398,15 +398,14 @@ class ConstantesVitalesSerializer(serializers.ModelSerializer):
     
     paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
     paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
+    fecha_consulta = serializers.DateField(format='%Y-%m-%d')
+    fecha_creacion = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%S', read_only=True)
+    fecha_modificacion = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%S', read_only=True)
     
     class Meta:
         model = ConstantesVitales
-        fields = "__all__"
-        read_only_fields = [
-            "id", "creado_por", "actualizado_por",
-            "fecha_creacion", "fecha_modificacion",
-            "paciente_nombre", "paciente_cedula"
-        ]
+        fields = '__all__'
+        read_only_fields = ('fecha_creacion', 'fecha_modificacion', 'creado_por', 'actualizado_por')
     
     def to_representation(self, instance):
         """Personalizar representación para el frontend"""
