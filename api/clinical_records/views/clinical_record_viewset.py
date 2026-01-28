@@ -22,6 +22,11 @@ from api.clinical_records.services.clinical_record_service import ClinicalRecord
 from api.patients.models.paciente import Paciente
 from api.clinical_records.serializers.form033_snapshot_serializer import Form033SnapshotSerializer
 from api.clinical_records.services.form033_storage_service import Form033StorageService
+from api.clinical_records.repositories.clinical_record_repository import ClinicalRecordRepository
+from api.clinical_records.serializers.medical_history import WritableAntecedentesFamiliaresSerializer, WritableAntecedentesPersonalesSerializer
+from api.clinical_records.serializers.stomatognathic_exam import WritableExamenEstomatognaticoSerializer
+from api.clinical_records.serializers.vital_signs import WritableConstantesVitalesSerializer
+from api.clinical_records.services.vital_signs_service import VitalSignsService
 
 from .base import (
     ClinicalRecordPagination,
@@ -441,3 +446,86 @@ class ClinicalRecordViewSet(
                 {'detail': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+            
+            
+    def _validar_puede_recargar(self, paciente_id):
+        """
+        Busca el historial más reciente y valida que sea BORRADOR.
+        """
+        # Usamos filter().first() para evitar errores si no existe
+        ultimo_historial = ClinicalRecord.objects.filter(
+            paciente__id=paciente_id, # Usamos la relación paciente__id
+            activo=True
+        ).order_by('-fecha_creacion').first()
+        
+        if not ultimo_historial:
+            return None, "No se encontró un historial clínico activo para este paciente."
+        
+        if ultimo_historial.estado != 'BORRADOR':
+            return None, f"El historial debe estar en BORRADOR (Actual: {ultimo_historial.estado})"
+            
+        return ultimo_historial, None
+
+    @action(detail=False, methods=['get'], url_path=r'antecedentes-personales/(?P<paciente_id>[^/]+)/latest')
+    def latest_antecedentes_personales(self, request, paciente_id=None):
+        historial, error = self._validar_puede_recargar(paciente_id)
+        if error:
+            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
+
+        datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
+        instancia = datos.get('antecedentes_personales')
+        if not instancia:
+            return Response({'detail': 'No hay datos previos'}, status=404)
+        
+        return Response(WritableAntecedentesPersonalesSerializer(instancia).data)
+
+    @action(detail=False, methods=['get'], url_path=r'antecedentes-familiares/(?P<paciente_id>[^/]+)/latest')
+    def latest_antecedentes_familiares(self, request, paciente_id=None):
+        historial, error = self._validar_puede_recargar(paciente_id)
+        if error:
+            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
+
+        datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
+        instancia = datos.get('antecedentes_familiares')
+        if not instancia:
+            return Response({'detail': 'No hay datos previos'}, status=404)
+        
+        return Response(WritableAntecedentesFamiliaresSerializer(instancia).data)
+
+    @action(detail=False, methods=['get'], url_path=r'constantes-vitales/(?P<paciente_id>[^/]+)/latest')
+    def latest_constantes_vitales(self, request, paciente_id=None):
+        historial, error = self._validar_puede_recargar(paciente_id)
+        if error:
+            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
+
+        instancia = VitalSignsService.obtener_ultima_constante(paciente_id)
+        if not instancia:
+            return Response({'detail': 'No hay datos previos'}, status=404)
+        
+        return Response(WritableConstantesVitalesSerializer(instancia).data)
+
+    @action(detail=False, methods=['get'], url_path=r'examen-estomatognatico/(?P<paciente_id>[^/]+)/latest')
+    def latest_examen_estomatognatico(self, request, paciente_id=None):
+        historial, error = self._validar_puede_recargar(paciente_id)
+        if error:
+            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
+
+        datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
+        instancia = datos.get('examen_estomatognatico')
+        if not instancia:
+            return Response({'detail': 'No hay datos previos'}, status=404)
+        
+        return Response(WritableExamenEstomatognaticoSerializer(instancia).data)
+
+    @action(detail=False, methods=['get'], url_path=r'odontograma-2d/(?P<paciente_id>[^/]+)/latest')
+    def latest_odontograma(self, request, paciente_id=None):
+        historial, error = self._validar_puede_recargar(paciente_id)
+        if error:
+            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Usar el historial actual para buscar el snapshot previo
+        snapshot = Form033StorageService.obtener_snapshot_por_historial(historial.id)
+        if not snapshot:
+            return Response({'detail': 'No hay odontograma previo'}, status=404)
+            
+        return Response(Form033SnapshotSerializer(snapshot).data)
