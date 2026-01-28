@@ -460,7 +460,7 @@ class HistorialOdontogramaViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class = HistorialOdontogramaSerializer
     permission_classes = [IsAuthenticated, UserBasedPermission]
-    permission_model_name = "historialodontograma"
+    permission_model_name = "odontograma"
     pagination_class = HistorialPagination
     
     def get_queryset(self):

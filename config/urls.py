@@ -7,7 +7,10 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     # Endpoints del sistema
     path("api/patients/", include("api.patients.urls", namespace="patients")),
-    path("api/appointment/", include("api.appointment.urls", namespace="appointment")),
+    path("api/appointment/", include("api.appointment.urls", namespace="appointment"))
+    ,
+    path("api/dashboard/",include('api.dashboard.urls', namespace="dashboard") ),
+
     path("api/auth/", include("authentication.urls")),
     path("api/users/", include("api.users.urls", namespace="users")),
     path("api/odontogram/", include("api.odontogram.urls")),

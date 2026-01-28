@@ -101,12 +101,6 @@ ENF_CARDIACA_CHOICES = [
     ('OTRO', 'Otro'),
 ]
 
-# ENFERMEDADES GENERALES
-ENFERMEDAD_GENERAL_CHOICES = [
-    ('NO', 'No'),
-    ('SI', 'Sí'),
-]
-
 # ANTECEDENTES FAMILIARES BASE
 FAMILIAR_BASE_CHOICES = [
     ('NO', 'Ninguno'),
@@ -118,67 +112,21 @@ FAMILIAR_BASE_CHOICES = [
     ('OTRO', 'Otro'),
 ]
 
-# ENFERMEDAD CEREBROVASCULAR
-ENF_CEREBROVASCULAR_CHOICES = [
-    ('NO', 'No'),
-    ('ACCIDENTE_CEREBROVASCULAR', 'Accidente cerebrovascular'),
-    ('ICTUS', 'Ictus'),
-    ('ANEURISMA', 'Aneurisma cerebral'),
-    ('DEMENCIA_VASCULAR', 'Demencia vascular'),
-    ('OTRO', 'Otro'),
+# ================== CONSTANTES - INFORME DE EXÁMENES ==================
+
+INFORME_EXAMENES_CHOICES = [
+    ('NINGUNO', 'Ninguno'),
+    ('BIOMETRIA', 'Biometría'),
+    ('QUIMICA_SANGUINEA', 'Química sanguínea'),
+    ('RAYOS_X', 'Rayos X'),
+    ('OTROS', 'Otros'),
 ]
 
-# ENDÓCRINO METABÓLICO
-ENDOCRINO_METABOLICO_CHOICES = [
+PEDIDO_EXAMENES_CHOICES = [
     ('NO', 'No'),
-    ('TIROIDES', 'Enfermedad tiroidea'),
-    ('OBESIDAD', 'Obesidad'),
-    ('DISLIPIDEMIA', 'Dislipidemia'),
-    ('SINDROME_METABOLICO', 'Síndrome metabólico'),
-    ('OTRO', 'Otro'),
+    ('SI', 'Sí'),
 ]
 
-# CÁNCER
-CANCER_CHOICES = [
-    ('NO', 'No'),
-    ('PULMON', 'Cáncer de pulmón'),
-    ('MAMA', 'Cáncer de mama'),
-    ('COLON', 'Cáncer de colon'),
-    ('PROSTATA', 'Cáncer de próstata'),
-    ('LEUCEMIA', 'Leucemia'),
-    ('OTRO', 'Otro'),
-]
-
-# ENFERMEDAD MENTAL
-ENF_MENTAL_CHOICES = [
-    ('NO', 'No'),
-    ('DEPRESION', 'Depresión'),
-    ('ESQUIZOFRENIA', 'Esquizofrenia'),
-    ('TRASTORNO_BIPOLAR', 'Trastorno bipolar'),
-    ('ANSIEDAD', 'Trastorno de ansiedad'),
-    ('DEMENCIA', 'Demencia'),
-    ('OTRO', 'Otro'),
-]
-
-# ENFERMEDAD INFECCIOSA
-ENF_INFECCIOSA_CHOICES = [
-    ('NO', 'No'),
-    ('HEPATITIS', 'Hepatitis'),
-    ('COVID', 'COVID-19 grave'),
-    ('NEUMONIA', 'Neumonía recurrente'),
-    ('INFECCION_URINARIA', 'Infección urinaria recurrente'),
-    ('OTRO', 'Otro'),
-]
-
-# MAL FORMACIÓN
-MALFORMACION_CHOICES = [
-    ('NO', 'No'),
-    ('CARDIACA', 'Malformación cardíaca'),
-    ('NEURAL', 'Malformación del tubo neural'),
-    ('ESQUELETICA', 'Malformación esquelética'),
-    ('FACIAL', 'Malformación facial'),
-    ('OTRO', 'Otro'),
-]
 
 class AnamnesisGeneral(BaseModel):
     """
@@ -349,41 +297,41 @@ class AnamnesisGeneral(BaseModel):
     
     # 3. ENF. C. VASCULAR
     enfermedad_cerebrovascular_familiar = models.CharField(
-        max_length=25,
-        choices=ENF_CEREBROVASCULAR_CHOICES,
+        max_length=20,
+        choices=FAMILIAR_BASE_CHOICES,
         default='NO',
         verbose_name="Enfermedad cerebrovascular en familiares"
     )
     enfermedad_cerebrovascular_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo"
+        verbose_name="Especificar otro familiar"
     )
     
     # 4. ENDÓCRINO METABÓLICO
     endocrino_metabolico_familiar = models.CharField(
-        max_length=25,
-        choices=ENDOCRINO_METABOLICO_CHOICES,
+        max_length=20,
+        choices=FAMILIAR_BASE_CHOICES,
         default='NO',
         verbose_name="Enfermedades endocrino-metabólicas en familiares"
     )
     endocrino_metabolico_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo"
+        verbose_name="Especificar otro familiar"
     )
     
     # 5. CÁNCER
     cancer_familiar = models.CharField(
         max_length=20,
-        choices=CANCER_CHOICES,
+        choices=FAMILIAR_BASE_CHOICES,
         default='NO',
         verbose_name="Cáncer en familiares"
     )
     cancer_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo de cáncer"
+        verbose_name="Especificar otro familiar"
     )
     
     # 6. TUBERCULOSIS
@@ -401,41 +349,41 @@ class AnamnesisGeneral(BaseModel):
     
     # 7. ENF. MENTAL
     enfermedad_mental_familiar = models.CharField(
-        max_length=25,
-        choices=ENF_MENTAL_CHOICES,
+        max_length=20,
+        choices=FAMILIAR_BASE_CHOICES,
         default='NO',
         verbose_name="Enfermedad mental en familiares"
     )
     enfermedad_mental_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo"
+        verbose_name="Especificar otro familiar"
     )
     
     # 8. ENF. INFECCIOSA
     enfermedad_infecciosa_familiar = models.CharField(
-        max_length=25,
-        choices=ENF_INFECCIOSA_CHOICES,
+        max_length=20,
+        choices=FAMILIAR_BASE_CHOICES,
         default='NO',
         verbose_name="Enfermedad infecciosa en familiares"
     )
     enfermedad_infecciosa_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo"
+        verbose_name="Especificar otro familiar"
     )
     
     # 9. MAL FORMACIÓN
     malformacion_familiar = models.CharField(
-        max_length=25,
-        choices=MALFORMACION_CHOICES,
+        max_length=20,
+        choices=FAMILIAR_BASE_CHOICES,
         default='NO',
         verbose_name="Malformación en familiares"
     )
     malformacion_familiar_otro = models.CharField(
         max_length=100,
         blank=True,
-        verbose_name="Especificar otro tipo"
+        verbose_name="Especificar otro familiar"
     )
     
     # 10. OTRO (Antecedentes familiares adicionales)
@@ -458,6 +406,34 @@ class AnamnesisGeneral(BaseModel):
         verbose_name="Observaciones generales",
         help_text="Cualquier información adicional relevante para la historia clínica"
     )
+
+    # ================== SECCIÓN L: PEDIDO DE EXÁMENES COMPLEMENTARIOS ==================
+
+    pedido_examenes_complementarios = models.CharField(
+        max_length=2,
+        choices=PEDIDO_EXAMENES_CHOICES,
+        default='NO',
+        verbose_name="Solicitud de exámenes complementarios"
+    )
+
+    pedido_examenes_complementarios_detalle = models.TextField(
+        blank=True,
+        verbose_name="Detalle de exámenes solicitados",
+        help_text="Especificar qué exámenes se solicitan y por qué (ej: radiografía, hemograma, etc.)"
+    )
+
+    informe_examenes = models.CharField(
+        max_length=20,
+        choices=INFORME_EXAMENES_CHOICES,
+        default='NINGUNO',
+        verbose_name="Informe de exámenes realizados"
+    )
+
+    informe_examenes_detalle = models.TextField(
+        blank=True,
+        verbose_name="Resultados de exámenes",
+        help_text="Detallar resultados de los exámenes realizados"
+    )
     
     class Meta:
         verbose_name = "Anamnesis General"
@@ -465,6 +441,8 @@ class AnamnesisGeneral(BaseModel):
         ordering = ['-fecha_modificacion']
         indexes = [
             models.Index(fields=['paciente']),
+            models.Index(fields=['pedido_examenes_complementarios']),
+            models.Index(fields=['informe_examenes']),
         ]
     
     def __str__(self):
@@ -502,6 +480,18 @@ class AnamnesisGeneral(BaseModel):
             if valor_select == valor_otro and not valor_otro_field:
                 nombre_display = dict(self._meta.get_field(campo_select).choices).get(valor_select, valor_select)
                 errors[campo_otro] = f'Debe especificar cuando selecciona "{nombre_display}"'
+        
+        # ✅ VALIDACIÓN para exámenes complementarios
+        if self.pedido_examenes_complementarios == 'SI' and not self.pedido_examenes_complementarios_detalle:
+            errors['pedido_examenes_complementarios_detalle'] = 'Debe especificar los exámenes solicitados'
+        
+        # ✅ VALIDACIÓN para informe de exámenes "OTROS"
+        if self.informe_examenes == 'OTROS' and not self.informe_examenes_detalle:
+            errors['informe_examenes_detalle'] = 'Debe especificar el tipo de examen cuando selecciona "Otros"'
+        
+        # ✅ VALIDACIÓN para informe de exámenes (si se seleccionó algún tipo)
+        if self.informe_examenes != 'NINGUNO' and not self.informe_examenes_detalle:
+            errors['informe_examenes_detalle'] = 'Debe detallar los resultados del examen'
         
         if errors:
             raise ValidationError(errors)
@@ -551,6 +541,80 @@ class AnamnesisGeneral(BaseModel):
             condiciones.append("Enfermedad cardíaca")
         
         return ", ".join(condiciones) if condiciones else "Sin condiciones de riesgo"
+    
+    @property
+    def tiene_pedido_examenes_pendiente(self):
+        """Verifica si hay exámenes complementarios pendientes"""
+        return self.pedido_examenes_complementarios == 'SI'
+    
+    @property
+    def tiene_informe_examenes_completado(self):
+        """Verifica si hay informes de exámenes completados"""
+        return self.informe_examenes != 'NINGUNO' and bool(self.informe_examenes_detalle)
+    
+    @property
+    def exigencias_quirurgicas(self):
+        """Retorna las condiciones que requieren precauciones especiales en cirugía"""
+        exigencias = []
+        
+        if self.alergia_anestesia != 'NO':
+            exigencias.append("Precaución con anestesia")
+        
+        if self.hemorragias == 'SI':
+            exigencias.append("Precaución con hemorragias")
+        
+        if self.diabetes != 'NO':
+            exigencias.append("Control glucémico pre-operatorio")
+        
+        if self.hipertension_arterial != 'NO':
+            exigencias.append("Control de presión arterial")
+        
+        if self.enfermedad_cardiaca != 'NO':
+            exigencias.append("Evaluación cardiológica pre-operatoria")
+        
+        return exigencias
+    
+    @property
+    def resumen_examenes_complementarios(self):
+        """Resumen de la sección de exámenes"""
+        resumen = []
+        
+        if self.tiene_pedido_examenes_pendiente:
+            resumen.append("Exámenes solicitados")
+            if self.pedido_examenes_complementarios_detalle:
+                detalle = self.pedido_examenes_complementarios_detalle[:50]
+                if len(self.pedido_examenes_complementarios_detalle) > 50:
+                    detalle += "..."
+                resumen.append(f"({detalle})")
+        
+        if self.tiene_informe_examenes_completado:
+            tipo_examen = self.get_informe_examenes_display().lower()
+            resumen.append(f"Informe de {tipo_examen} completado")
+        
+        return " - ".join(resumen) if resumen else "Sin exámenes complementarios"
+    
+    @property
+    def estado_examenes(self):
+        """Estado general de los exámenes complementarios"""
+        if self.tiene_informe_examenes_completado:
+            return "completado"
+        elif self.tiene_pedido_examenes_pendiente:
+            return "pendiente"
+        else:
+            return "no_solicitado"
+    
+    def marcar_examenes_solicitados(self, detalle=None):
+        """Método para marcar exámenes como solicitados"""
+        self.pedido_examenes_complementarios = 'SI'
+        if detalle:
+            self.pedido_examenes_complementarios_detalle = detalle
+        self.save()
+    
+    def agregar_resultado_examen(self, tipo_examen, resultado):
+        """Método para agregar resultados de exámenes"""
+        self.informe_examenes = tipo_examen
+        self.informe_examenes_detalle = resultado
+        self.save()
     
     def save(self, *args, **kwargs):
         """Método save con validaciones automáticas"""

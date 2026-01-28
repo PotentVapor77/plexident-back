@@ -1,7 +1,7 @@
 # api/appointment/serializers.py
 
 from rest_framework import serializers
-from .models import Cita, HorarioAtencion, RecordatorioCita, EstadoCita, TipoConsulta
+from .models import Cita, HistorialCita, HorarioAtencion, RecordatorioCita, EstadoCita
 from api.patients.models.paciente import Paciente
 from api.users.models import Usuario
 from django.utils import timezone
@@ -343,3 +343,21 @@ class RecordatorioEstadisticaSerializer(serializers.Serializer):
     por_destinatario = serializers.DictField(read_only=True)
     por_mes = serializers.ListField(read_only=True)
     ultimos_recordatorios = RecordatorioCitaSerializer(many=True, read_only=True)
+
+
+class HistorialCitaSerializer(serializers.ModelSerializer):
+    """Serializer para historial de cambios de citas"""
+    usuario_nombre = serializers.SerializerMethodField()
+    accion_display = serializers.CharField(source='get_accion_display', read_only=True)
+    
+    class Meta:
+        model = HistorialCita
+        fields = [
+            'id', 'cita', 'fecha_cambio', 'usuario', 'usuario_nombre',
+            'accion', 'accion_display', 'datos_anteriores', 'datos_nuevos',
+            'descripcion'
+        ]
+        read_only_fields = ['id', 'fecha_cambio']
+    
+    def get_usuario_nombre(self, obj):
+        return obj.usuario.get_full_name() if obj.usuario else 'Sistema'

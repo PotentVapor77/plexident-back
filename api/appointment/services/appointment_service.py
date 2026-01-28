@@ -48,12 +48,58 @@ class CitaService:
     @transaction.atomic
     def crear_cita(data):
         """Crea una nueva cita con validaciones"""
-        # Calcular hora_fin
-        hora_inicio_dt = datetime.combine(datetime.today(), data['hora_inicio'])
-        hora_fin_dt = hora_inicio_dt + timedelta(minutes=data['duracion'])
-        data['hora_fin'] = hora_fin_dt.time()
         
-        # Verificar disponibilidad
+        # ✅ RF-05.3: Validar horario de atención configurado
+        fecha = data['fecha']
+        hora_inicio = data['hora_inicio']
+        odontologo = data['odontologo']
+        duracion = data['duracion']
+        
+        # Obtener día de la semana (0=Lunes, 6=Domingo)
+        dia_semana = fecha.weekday()
+        
+        # Verificar si existe horario de atención configurado
+        horarios = HorarioAtencionRepository.obtener_por_odontologo_y_dia(
+            odontologo.id, dia_semana
+        )
+        
+        if not horarios.exists():
+            dias_semana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+            raise ValidationError(
+                f"El odontólogo no tiene horarios configurados para el día {dias_semana[dia_semana]}"
+            )
+        
+        # Calcular hora de fin de la cita
+        hora_inicio_dt = datetime.combine(datetime.today(), hora_inicio)
+        hora_fin_dt = hora_inicio_dt + timedelta(minutes=duracion)
+        hora_fin_cita = hora_fin_dt.time()
+        
+        # Validar que la hora esté dentro de los horarios configurados
+        hora_valida = False
+        horario_encontrado = None
+        
+        for horario in horarios:
+            # La cita debe empezar después del inicio y terminar antes del fin
+            if horario.hora_inicio <= hora_inicio and hora_fin_cita <= horario.hora_fin:
+                hora_valida = True
+                horario_encontrado = horario
+                break
+        
+        if not hora_valida:
+            # Mostrar horarios disponibles en el mensaje de error
+            horarios_disponibles = [
+                f"{h.hora_inicio.strftime('%H:%M')} - {h.hora_fin.strftime('%H:%M')}"
+                for h in horarios
+            ]
+            raise ValidationError(
+                f"La hora {hora_inicio.strftime('%H:%M')} está fuera del horario de atención. "
+                f"Horarios disponibles: {', '.join(horarios_disponibles)}"
+            )
+        
+        # Calcular hora_fin
+        data['hora_fin'] = hora_fin_cita
+        
+        # Verificar disponibilidad (código existente)
         disponible, cita_conflicto = CitaRepository.verificar_disponibilidad(
             data['odontologo'].id,
             data['fecha'],
@@ -66,7 +112,7 @@ class CitaService:
                 f"El odontólogo ya tiene una cita de {cita_conflicto.hora_inicio} a {cita_conflicto.hora_fin}"
             )
         
-        # Crear la cita
+        # Crear la cita (código existente)
         cita = CitaRepository.crear(data)
         return cita
     
