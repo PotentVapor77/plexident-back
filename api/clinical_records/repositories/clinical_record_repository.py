@@ -2,6 +2,7 @@ from django.db.models import Q, Prefetch
 from api.clinical_records.models import ClinicalRecord
 
 
+
 class ClinicalRecordRepository:
     """Repositorio para operaciones de acceso a datos de Historiales Clínicos"""
 
@@ -93,6 +94,7 @@ class ClinicalRecordRepository:
         from api.patients.models.antecedentes_familiares import AntecedentesFamiliares
         from api.patients.models.constantes_vitales import ConstantesVitales
         from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
+        from api.odontogram.models import IndicadoresSaludBucal
         
         return {
             'antecedentes_personales': AntecedentesPersonales.objects.filter(
@@ -111,4 +113,9 @@ class ClinicalRecordRepository:
                 paciente_id=paciente_id,
                 activo=True
             ).order_by('-fecha_creacion').first(),
+            'indicadores_salud': IndicadoresSaludBucal.objects.filter(
+            paciente_id=paciente_id,
+            activo=True
+            ).order_by('-fecha', '-id').first(),
+            
         }

@@ -10,7 +10,9 @@ from api.clinical_records.models import ClinicalRecord
 from api.patients.models.paciente import Paciente
 from api.clinical_records.config import INSTITUCION_CONFIG
 from api.clinical_records.services.form033_storage_service import Form033StorageService
+from api.clinical_records.services.indicadores_service import ClinicalRecordIndicadoresService
 
+from typing import Optional, Dict, Any
 from .number_generator_service import NumberGeneratorService
 from .vital_signs_service import VitalSignsService
 from .record_loader_service import RecordLoaderService
@@ -132,12 +134,28 @@ class ClinicalRecordService:
         for seccion in secciones:
             if not data.get(seccion) and ultimos_datos.get(seccion):
                 data[seccion] = ultimos_datos[seccion]
+        if not data.get('indicadores_salud_bucal'):
+            print(f"\n{'='*60}")
+            print(f"BUSCANDO INDICADORES PARA ASOCIAR AL NUEVO HISTORIAL")
+            print(f"Paciente ID: {paciente_id}")
+        indicadores = ClinicalRecordIndicadoresService.obtener_indicadores_paciente(
+            str(paciente_id)
+        )
+        
+        if indicadores:
+            data['indicadores_salud_bucal'] = indicadores
+            print(f" Indicadores encontrados y listos para asociar:")
+            print(f"   - ID: {indicadores.id}")
+            print(f"   - Fecha: {indicadores.fecha}")
+        else:
+            print(f" No hay indicadores previos para este paciente")
+        
+        print(f"{'='*60}\n")
         
         # === LIMPIEZA DE DATOS ===
         # Remover campos que no pertenecen al modelo ClinicalRecord
         motivo_consulta_valor = data.get('motivo_consulta')
         enfermedad_actual_valor = data.get('enfermedad_actual')
-        
         VitalSignsService.limpiar_campos_del_dict(data)
         
         # Restaurar los valores de texto si existen
@@ -457,3 +475,21 @@ class ClinicalRecordService:
             )
         
         return snapshot
+    
+    @staticmethod
+    def obtener_indicadores_historial(historial_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            historial = ClinicalRecordRepository.obtener_por_id(historial_id)
+            
+            indicadores = historial.indicadores_salud_bucal
+            
+            if not indicadores:
+                return None
+            
+            from ..serializers.oral_health_indicators import OralHealthIndicatorsSerializer
+            serializer = OralHealthIndicatorsSerializer(indicadores)
+            return serializer.data
+        except Exception as e:
+            logger.error(f"Error obteniendo indicadores para historial {historial_id}: {str(e)}")
+            return None
+

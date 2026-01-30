@@ -15,6 +15,7 @@ from api.patients.models.constantes_vitales import ConstantesVitales
 from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
 from api.clinical_records.config import INSTITUCION_CONFIG
 from api.clinical_records.serializers.form033_snapshot_serializer import Form033SnapshotSerializer
+from api.clinical_records.serializers.oral_health_indicators import OralHealthIndicatorsSerializer
 
 from .base import DateFormatterMixin
 from .patient_data import PatientInfoMixin
@@ -52,7 +53,7 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
     )
     puede_editar = serializers.BooleanField(read_only=True)
     esta_completo = serializers.BooleanField(read_only=True)
-    
+    indicadores_salud = OralHealthIndicatorsSerializer(read_only=True)
     class Meta:
         model = ClinicalRecord
         fields = [
@@ -71,6 +72,7 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
             'activo',
             'puede_editar',
             'esta_completo',
+            'indicadores_salud',
         ]
         read_only_fields = (
             'id',
@@ -82,38 +84,56 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
             'fecha_cierre',
         )
     
+    
+    
     def to_representation(self, instance):
+        """
+        Consolidación de representaciones para lista.
+        """
         data = super().to_representation(instance)
         
-        # Formatear fechas
-        date_fields = [
-            'fecha_atencion',
-            'fecha_cierre',
-            'fecha_creacion',
-            'fecha_modificacion',
-        ]
+        # 1. Formatear fechas
+        date_fields = ['fecha_atencion', 'fecha_cierre', 'fecha_creacion', 'fecha_modificacion']
         for field in date_fields:
-            if data.get(field):
-                if field == 'fecha_cierre' and instance.fecha_cierre:
-                    data[field] = instance.fecha_cierre.isoformat()
-                elif field == 'fecha_atencion' and instance.fecha_atencion:
-                    data[field] = instance.fecha_atencion.isoformat()
-                elif field == 'fecha_creacion' and instance.fecha_creacion:
-                    data[field] = instance.fecha_creacion.isoformat()
-                elif field == 'fecha_modificacion' and instance.fecha_modificacion:
-                    data[field] = instance.fecha_modificacion.isoformat()
-        
-        # Constantes vitales
+            val = getattr(instance, field, None)
+            if val:
+                data[field] = val.isoformat()
+
+        # 2. Constantes Vitales
         if instance.constantes_vitales:
-            data['constantes_vitales_data'] = WritableConstantesVitalesSerializer(
-                instance.constantes_vitales
+            cv_serializer = WritableConstantesVitalesSerializer(instance.constantes_vitales)
+            data['constantes_vitales_data'] = cv_serializer.data
+            if instance.constantes_vitales.fecha_consulta:
+                data['constantes_vitales_data']['fecha_consulta'] = instance.constantes_vitales.fecha_consulta.isoformat()
+
+        if instance.indicadores_salud_bucal:
+            # Usar los indicadores asociados a este historial
+            data['indicadores_salud_bucal_data'] = OralHealthIndicatorsSerializer(
+                instance.indicadores_salud_bucal
             ).data
-            if 'fecha_consulta' in data['constantes_vitales_data']:
-                if instance.constantes_vitales.fecha_consulta:
-                    data['constantes_vitales_data'][
-                        'fecha_consulta'
-                    ] = instance.constantes_vitales.fecha_consulta.isoformat()
-        
+            print(f"Lista - Usando indicadores FK para historial {instance.id}")
+        else:
+            # Fallback: buscar los últimos del paciente
+            from api.clinical_records.services.indicadores_service import ClinicalRecordIndicadoresService
+            indicadores_latest = ClinicalRecordIndicadoresService.obtener_indicadores_paciente(
+                str(instance.paciente_id)
+            )
+            if indicadores_latest:
+                data['indicadores_salud_bucal_data'] = OralHealthIndicatorsSerializer(
+                    indicadores_latest
+                ).data
+                print(f"Lista - Usando indicadores más recientes para paciente")
+            else:
+                data['indicadores_salud_bucal_data'] = None
+                
+        # 4. Campos institucionales
+        data['institucion_sistema'] = instance.institucion_sistema or "SISTEMA NACIONAL DE SALUD"
+        data['unicodigo'] = instance.unicodigo or ""
+        data['establecimiento_salud'] = instance.establecimiento_salud or ""
+        data['numero_hoja'] = instance.numero_hoja or 1
+        data['numero_historia_clinica_unica'] = instance.numero_historia_clinica_unica or ""
+        data['numero_archivo'] = instance.numero_archivo or ""
+
         return data
 
 
@@ -127,7 +147,8 @@ class ClinicalRecordDetailSerializer(
     
     numero_historia_clinica_unica = serializers.CharField(read_only=True)
     numero_archivo = serializers.CharField(read_only=True)
-    
+    #indicadores_salud_bucal = serializers.SerializerMethodField()
+    tiene_indicadores = serializers.BooleanField(read_only=True)
     # Información expandida (read-only)
     paciente_info = serializers.SerializerMethodField()
     odontologo_info = serializers.SerializerMethodField()
@@ -160,6 +181,7 @@ class ClinicalRecordDetailSerializer(
         source='get_estado_display', 
         read_only=True
     )
+    
     puede_editar = serializers.BooleanField(read_only=True)
     esta_completo = serializers.BooleanField(read_only=True)
     form033_snapshot = Form033SnapshotSerializer(read_only=True)
@@ -357,23 +379,108 @@ class ClinicalRecordDetailSerializer(
         return model_class.objects.create(**data)
     
     def to_representation(self, instance):
+        """
+        Personalizar la representación del historial con todas las secciones
+        """
         data = super().to_representation(instance)
         
-        # Formatear fechas
+        print(f"\n{'='*60}")
+        print(f"TO_REPRESENTATION - Historial ID: {instance.id}")
+        print(f"{'='*60}")
+        
+        # 1. Formatear fechas
         date_fields = [
             'fecha_atencion',
             'fecha_cierre',
             'fecha_creacion',
             'fecha_modificacion',
         ]
-        data = self.format_dates(data, instance, date_fields)
+        for field in date_fields:
+            val = getattr(instance, field, None)
+            if val:
+                data[field] = val.isoformat()
+                print(f" Fecha {field}: {data[field]}")
         
-        # Constantes vitales
+        # 2. Constantes vitales
         if instance.constantes_vitales:
             cv_serializer = WritableConstantesVitalesSerializer(
                 instance.constantes_vitales
             )
             data['constantes_vitales_data'] = cv_serializer.data
+            if instance.constantes_vitales.fecha_consulta:
+                data['constantes_vitales_data']['fecha_consulta'] = (
+                    instance.constantes_vitales.fecha_consulta.isoformat()
+                )
+            print(f" Constantes vitales agregadas")
+        
+        # 3.  INDICADORES DE SALUD BUCAL - USAR FK PRIMERO
+        print(f" Verificando indicadores para historial {instance.id}")
+        
+        # PRIORIDAD 1: Usar los indicadores asociados a este historial (FK)
+        if instance.indicadores_salud_bucal:
+            print(f" Usando indicadores asociados al historial (FK)")
+            print(f"   - ID FK: {instance.indicadores_salud_bucal.id}")
+            print(f"   - Fecha: {instance.indicadores_salud_bucal.fecha}")
+            
+            data['indicadores_salud_bucal_data'] = OralHealthIndicatorsSerializer(
+                instance.indicadores_salud_bucal
+            ).data
+            
+        else:
+            # PRIORIDAD 2: Si no hay FK, buscar los últimos del paciente (solo para crear/preview)
+            print(f"  No hay indicadores asociados por FK, buscando últimos del paciente")
+            
+            from api.clinical_records.services.indicadores_service import ClinicalRecordIndicadoresService
+            
+            indicadores_latest = ClinicalRecordIndicadoresService.obtener_indicadores_paciente(
+                str(instance.paciente_id)
+            )
+            
+            if indicadores_latest:
+                data['indicadores_salud_bucal_data'] = OralHealthIndicatorsSerializer(
+                    indicadores_latest
+                ).data
+                print(f" Indicadores más recientes del paciente encontrados:")
+                print(f"   - ID: {indicadores_latest.id}")
+                print(f"   - Fecha: {indicadores_latest.fecha}")
+            else:
+                data['indicadores_salud_bucal_data'] = None
+                print(f" No hay indicadores para este paciente")
+        
+        # 4. Antecedentes personales
+        if instance.antecedentes_personales:
+            ap_serializer = WritableAntecedentesPersonalesSerializer(
+                instance.antecedentes_personales
+            )
+            data['antecedentes_personales_data'] = ap_serializer.data
+            print(f" Antecedentes personales agregados")
+        
+        # 5. Antecedentes familiares
+        if instance.antecedentes_familiares:
+            af_serializer = WritableAntecedentesFamiliaresSerializer(
+                instance.antecedentes_familiares
+            )
+            data['antecedentes_familiares_data'] = af_serializer.data
+            print(f" Antecedentes familiares agregados")
+        
+        # 6. Examen estomatognático
+        if instance.examen_estomatognatico:
+            ee_serializer = WritableExamenEstomatognaticoSerializer(
+                instance.examen_estomatognatico
+            )
+            data['examen_estomatognatico_data'] = ee_serializer.data
+            print(f" Examen estomatognático agregado")
+        
+        # 7. CAMPOS INSTITUCIONALES
+        data['institucion_sistema'] = instance.institucion_sistema or "SISTEMA NACIONAL DE SALUD"
+        data['unicodigo'] = instance.unicodigo or ""
+        data['establecimiento_salud'] = instance.establecimiento_salud or ""
+        data['numero_hoja'] = instance.numero_hoja or 1
+        data['numero_historia_clinica_unica'] = instance.numero_historia_clinica_unica or ""
+        data['numero_archivo'] = instance.numero_archivo or ""
+        
+        print(f" Campos institucionales agregados")
+        print(f"{'='*60}\n")
         
         return data
 
@@ -508,3 +615,5 @@ class ClinicalRecordReopenSerializer(serializers.Serializer):
         required=True, 
         help_text='Motivo de la reapertura del historial'
     )
+    
+

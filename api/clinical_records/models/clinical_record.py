@@ -154,7 +154,14 @@ class ClinicalRecord(BaseModel):
         blank=True,
         verbose_name='Observaciones del Profesional'
     )
-    
+    indicadores_salud_bucal = models.ForeignKey(
+        'odontogram.IndicadoresSaludBucal',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historiales_clinicos',
+        verbose_name='Indicadores de Salud Bucal'
+    )
     
 
     class Meta:
@@ -166,6 +173,7 @@ class ClinicalRecord(BaseModel):
             models.Index(fields=['estado', 'activo']),
             models.Index(fields=['odontologo_responsable', '-fecha_atencion']),
             models.Index(fields=['numero_historia_clinica_unica']),
+            
         ]
         #constraints = [
             #models.UniqueConstraint(

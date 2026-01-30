@@ -29,6 +29,12 @@ from .fhir_views import FHIRViewSet
 from .diagnostico_views import export_fhir_observation
 from .cda_views import export_cda_xml, export_fhir_bundle
 
+# ==================== INDICADORES ENDPOINTS ====================
+from .indicadores_views import (
+    obtener_informacion_piezas_indice,
+    verificar_disponibilidad_piezas,
+)
+
 # ==================== EXPORTS ====================
 __all__ = [
     # Catálogo ViewSets
@@ -52,4 +58,8 @@ __all__ = [
     'export_fhir_observation',
     'export_cda_xml',
     'export_fhir_bundle',
+    
+    # Indicadores endpoints
+    'obtener_informacion_piezas_indice',
+    'verificar_disponibilidad_piezas',
 ]

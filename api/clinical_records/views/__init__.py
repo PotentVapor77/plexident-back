@@ -37,8 +37,8 @@ __all__ = [
     'ClinicalRecordViewSet',
     
     # Futuros (descomentar cuando se implementen)
-    # 'OdontogramViewSet',
-    # 'OralHealthIndicatorsViewSet',
+    'OdontogramViewSet',
+    'OralHealthIndicatorsViewSet',
     # 'DiagnosticViewSet',
     # 'TreatmentPlanViewSet',
     # 'ComplementaryExamViewSet',

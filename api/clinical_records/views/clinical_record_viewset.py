@@ -27,6 +27,7 @@ from api.clinical_records.serializers.medical_history import WritableAntecedente
 from api.clinical_records.serializers.stomatognathic_exam import WritableExamenEstomatognaticoSerializer
 from api.clinical_records.serializers.vital_signs import WritableConstantesVitalesSerializer
 from api.clinical_records.services.vital_signs_service import VitalSignsService
+from api.clinical_records.serializers.oral_health_indicators import OralHealthIndicatorsSerializer
 
 from .base import (
     ClinicalRecordPagination,
@@ -78,6 +79,7 @@ class ClinicalRecordViewSet(
         'antecedentes_familiares',
         'constantes_vitales',
         'examen_estomatognatico',
+        'indicadores_salud_bucal', 
         'creado_por',
     ]
     
@@ -465,6 +467,170 @@ class ClinicalRecordViewSet(
             return None, f"El historial debe estar en BORRADOR (Actual: {ultimo_historial.estado})"
             
         return ultimo_historial, None
+    
+    @action(detail=True, methods=['get'], url_path='indicadores-salud-bucal')
+    def obtener_indicadores_historial(self, request, pk=None):
+        """
+        Obtiene los indicadores de salud bucal asociados a este historial específico (FK).
+        GET: /api/clinical-records/{id}/indicadores-salud-bucal/
+        """
+        historial = self.get_object()
+        
+        if historial.indicadores_salud_bucal:
+            
+            serializer = OralHealthIndicatorsSerializer(historial.indicadores_salud_bucal)
+            return Response({
+                'success': True,
+                'message': 'Indicadores del historial',
+                'data': serializer.data,
+                'source': 'historial_fk'  
+            })
+        
+        from api.clinical_records.services.indicadores_service import ClinicalRecordIndicadoresService
+        
+        indicadores = ClinicalRecordIndicadoresService.obtener_indicadores_paciente(
+            str(historial.paciente_id)
+        )
+        
+        if indicadores:
+            
+            serializer = OralHealthIndicatorsSerializer(indicadores)
+            
+            return Response({
+                'success': True,
+                'message': 'Indicadores más recientes del paciente (no asociados a este historial)',
+                'data': serializer.data,
+                'source': 'paciente_latest',  
+                'warning': 'Este historial no tiene indicadores asociados específicamente'
+            })
+        
+        return Response({
+            'success': False,
+            'message': 'No hay indicadores de salud bucal para este historial ni para el paciente',
+            'data': None
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+    @action(detail=True, methods=['post'], url_path='guardar-indicadores-salud-bucal')
+    def guardar_indicadores_salud_bucal(self, request, pk=None):
+        """
+        Guarda nuevos indicadores de salud bucal y los asocia a este historial (FK).
+        
+        POST: /api/clinical-records/{id}/guardar-indicadores-salud-bucal/
+        Body: { ...datos de indicadores... }
+        """
+        historial = self.get_object()
+        
+        # Validar que el historial no esté cerrado
+        if historial.estado == 'CERRADO':
+            return Response({
+                'success': False,
+                'message': 'No se pueden agregar indicadores a un historial cerrado'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from odontogram.models import IndicadoresSaludBucal
+            
+            # Validar datos
+            serializer = OralHealthIndicatorsSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            # Crear nuevos indicadores
+            indicadores = IndicadoresSaludBucal.objects.create(
+                paciente=historial.paciente,
+                creado_por=request.user,
+                **serializer.validated_data
+            )
+            
+            historial.indicadores_salud_bucal = indicadores
+            historial.save(update_fields=['indicadores_salud_bucal'])
+            
+            
+            output_serializer = OralHealthIndicatorsSerializer(indicadores)
+            
+            logger.info(
+                f"Indicadores {indicadores.id} guardados y asociados "
+                f"al historial {pk} por {request.user.username}"
+            )
+            
+            return Response({
+                'success': True,
+                'message': 'Indicadores guardados y asociados al historial exitosamente',
+                'data': output_serializer.data
+            }, status=status.HTTP_201_CREATED)
+            
+        except ValidationError as e:
+            logger.error(f"Error validando indicadores para historial {pk}: {str(e)}")
+            return Response({
+                'success': False,
+                'message': 'Error de validación',
+                'errors': e.detail
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.error(f"Error guardando indicadores para historial {pk}: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error guardando indicadores: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+    @action(detail=True, methods=['patch'], url_path='actualizar-indicadores-salud-bucal')
+    def actualizar_indicadores_salud_bucal(self, request, pk=None):
+        """
+        Actualiza los indicadores de salud bucal asociados a este historial.
+        PATCH: /api/clinical-records/{id}/actualizar-indicadores-salud-bucal/
+        """
+        historial = self.get_object()
+        
+        # Validar que el historial no esté cerrado
+        if historial.estado == 'CERRADO':
+            return Response(
+                {'detail': 'No se puede modificar un historial cerrado'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verificar que el historial tenga indicadores asociados
+        if not historial.indicadores_salud_bucal:
+            return Response(
+                {
+                    'detail': 'Este historial no tiene indicadores asociados. '
+                            'Use el endpoint guardar-indicadores-salud-bucal para crear nuevos.'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Actualizar los indicadores existentes
+        serializer = OralHealthIndicatorsSerializer(
+            historial.indicadores_salud_bucal,
+            data=request.data,
+            partial=True
+        )
+        
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            indicadores = serializer.save()
+            
+            
+            return Response({
+                'success': True,
+                'message': 'Indicadores actualizados exitosamente',
+                'data': OralHealthIndicatorsSerializer(indicadores).data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(
+                f"Error actualizando indicadores para historial {pk}: {str(e)}"
+            )
+            return Response(
+                {'detail': f'Error al actualizar indicadores: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=['get'], url_path=r'antecedentes-personales/(?P<paciente_id>[^/]+)/latest')
     def latest_antecedentes_personales(self, request, paciente_id=None):
@@ -529,3 +695,24 @@ class ClinicalRecordViewSet(
             return Response({'detail': 'No hay odontograma previo'}, status=404)
             
         return Response(Form033SnapshotSerializer(snapshot).data)
+    
+    # lastes de Indicadores de Salud Bucal
+    @action(detail=False, methods=['get'], url_path=r'indicadores-salud-bucal/(?P<paciente_id>[^/]+)/latest')
+    def latest_indicadores_salud(self, request, paciente_id=None):
+        """
+        Obtiene los indicadores de salud bucal más recientes (Read-only).
+        """
+        
+        from api.clinical_records.services.indicadores_service import ClinicalRecordIndicadoresService
+        from api.clinical_records.serializers.oral_health_indicators import OralHealthIndicatorsSerializer
+
+        indicadores = ClinicalRecordIndicadoresService.obtener_indicadores_paciente(paciente_id)
+        
+        if not indicadores:
+            return Response(
+                {'detail': 'No hay registros de indicadores para este paciente.'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = OralHealthIndicatorsSerializer(indicadores)
+        return Response(serializer.data)

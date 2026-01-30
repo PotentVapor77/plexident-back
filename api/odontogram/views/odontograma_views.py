@@ -30,11 +30,13 @@ from api.odontogram.serializers import (
     DiagnosticoDentalDetailSerializer,
     DiagnosticoDentalCreateSerializer,
     HistorialOdontogramaSerializer,
+    IndicadoresSaludBucalSerializer,
 )
 
-from api.odontogram.services.odontogram_services import IndicadoresSaludBucalService, OdontogramaService, IndiceCariesService
+from api.odontogram.services.indicadores_service import IndicadoresSaludBucalService
+from api.odontogram.services.odontogram_services import OdontogramaService, IndiceCariesService
 from api.odontogram.serializers.bundle_serializers import FHIRBundleSerializer
-from api.odontogram.serializers.serializers import DienteSerializer, IndicadoresSaludBucalSerializer
+
 from api.users.permissions import UserBasedPermission
 from django.db import models
 
@@ -684,7 +686,7 @@ class IndicadoresSaludBucalViewSet(viewsets.ModelViewSet):
             creado_por=self.request.user,
             activo=True
         )
-        IndicadoresSaludBucalService.calcular_promedios(indicadores)
+        IndicadoresSaludBucalService.calcular_y_guardar_promedios(indicadores)
         
         logger.info(f" → Indicador creado: {indicadores.id}")
 
@@ -694,7 +696,7 @@ class IndicadoresSaludBucalViewSet(viewsets.ModelViewSet):
         
         # Asignar actualizado_por automáticamente
         indicadores = serializer.save(actualizado_por=self.request.user)
-        IndicadoresSaludBucalService.calcular_promedios(indicadores)
+        IndicadoresSaludBucalService.calcular_y_guardar_promedios(indicadores)
         
         logger.info(f" → Indicador actualizado: {indicadores.id}")
 

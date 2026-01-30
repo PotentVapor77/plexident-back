@@ -18,7 +18,8 @@ from api.odontogram.models import (
     HistorialOdontograma,
     CategoriaDiagnostico,
     TipoAtributoClinico,
-)    
+)
+from api.odontogram.constants import ESCALA_CALCULO, ESCALA_GINGIVITIS, ESCALA_PLACA, NIVELES_FLUOROSIS, NIVELES_PERIODONTAL, TIPOS_OCLUSION    
 
 
 User = get_user_model()
@@ -495,49 +496,467 @@ class IndiceCariesSnapshotSerializer(serializers.ModelSerializer):
         read_only_fields = fields
         
 class IndicadoresSaludBucalSerializer(serializers.ModelSerializer):
-    creado_por_nombre = serializers.SerializerMethodField()
-    actualizado_por_nombre = serializers.SerializerMethodField()
+    """
+    Serializer base para Indicadores de Salud Bucal
+    Contiene solo los campos del modelo
+    """
     
-    paciente_nombre = serializers.SerializerMethodField()
-    paciente_apellido = serializers.SerializerMethodField()
-    paciente_cedula = serializers.SerializerMethodField()
-    paciente_nombre_completo = serializers.SerializerMethodField()
-
     class Meta:
         model = IndicadoresSaludBucal
         fields = "__all__"
-        read_only_fields = ("id", "fecha", "creado_por", "actualizado_por")
+        read_only_fields = (
+            "id", 
+            "fecha", 
+            "creado_por", 
+            "actualizado_por",
+            "ohi_promedio_placa", 
+            "ohi_promedio_calculo",
+            "gi_promedio_gingivitis", 
+            "informacion_calculo",
+            "piezas_usadas_en_registro"
+        )
+    
+    def validate(self, data):
+        """
+        Validación personalizada para los indicadores
+        """
+        # Validar rangos de valores por pieza
+        for pieza in ['16', '11', '26', '36', '31', '46']:
+            placa_field = f'pieza_{pieza}_placa'
+            calculo_field = f'pieza_{pieza}_calculo'
+            gingivitis_field = f'pieza_{pieza}_gingivitis'
+            
+            if placa_field in data and data[placa_field] is not None:
+                if not 0 <= data[placa_field] <= 3:
+                    raise serializers.ValidationError(
+                        {placa_field: f"Valor debe estar entre 0 y 3, actual: {data[placa_field]}"}
+                    )
+            
+            if calculo_field in data and data[calculo_field] is not None:
+                if not 0 <= data[calculo_field] <= 3:
+                    raise serializers.ValidationError(
+                        {calculo_field: f"Valor debe estar entre 0 y 3, actual: {data[calculo_field]}"}
+                    )
+            
+            if gingivitis_field in data and data[gingivitis_field] is not None:
+                if not 0 <= data[gingivitis_field] <= 3:
+                    raise serializers.ValidationError(
+                        {gingivitis_field: f"Valor debe estar entre 0 y 3, actual: {data[gingivitis_field]}"}
+                    )
+        
+        return data
 
+
+class IndicadoresSaludBucalListSerializer(IndicadoresSaludBucalSerializer):
+    """
+    Serializer para listar indicadores (campos mínimos)
+    """
+    
+    paciente_nombre_completo = serializers.SerializerMethodField()
+    creado_por_nombre = serializers.SerializerMethodField()
+    resumen_higiene = serializers.SerializerMethodField()
+    resumen_gingival = serializers.SerializerMethodField()
+    
+    class Meta(IndicadoresSaludBucalSerializer.Meta):
+        fields = [
+            'id',
+            'paciente_nombre_completo',
+            'fecha',
+            'enfermedad_periodontal',
+            'nivel_gingivitis',
+            'ohi_promedio_placa',
+            'ohi_promedio_calculo',
+            'gi_promedio_gingivitis',
+            'resumen_higiene',
+            'resumen_gingival',
+            'creado_por_nombre',
+            'activo'
+        ]
+    
+    def get_paciente_nombre_completo(self, obj):
+        if obj.paciente:
+            return f"{obj.paciente.nombres} {obj.paciente.apellidos}"
+        return None
+    
     def get_creado_por_nombre(self, obj):
         if obj.creado_por:
             return f"{obj.creado_por.nombres} {obj.creado_por.apellidos}"
         return "N/A"
+    
+    def get_resumen_higiene(self, obj):
+        """Calcula resumen de higiene basado en promedios"""
+        if obj.ohi_promedio_placa is not None and obj.ohi_promedio_calculo is not None:
+            total = obj.ohi_promedio_placa + obj.ohi_promedio_calculo
+            if total <= 0.6:
+                return "Excelente"
+            elif total <= 1.2:
+                return "Bueno"
+            elif total <= 1.8:
+                return "Regular"
+            elif total <= 3.0:
+                return "Deficiente"
+            else:
+                return "Pésimo"
+        return "Sin datos"
+    
+    def get_resumen_gingival(self, obj):
+        """Resumen de salud gingival"""
+        if obj.gi_promedio_gingivitis is not None:
+            if obj.gi_promedio_gingivitis <= 0.1:
+                return "Normal"
+            elif obj.gi_promedio_gingivitis <= 1.0:
+                return "Leve"
+            elif obj.gi_promedio_gingivitis <= 2.0:
+                return "Moderada"
+            else:
+                return "Severa"
+        return "Sin datos"
 
-    def get_actualizado_por_nombre(self, obj):
+
+class IndicadoresSaludBucalDetailSerializer(IndicadoresSaludBucalSerializer):
+    """
+    Serializer detallado para indicadores con toda la información
+    """
+    
+    paciente_info = serializers.SerializerMethodField()
+    creado_por_info = serializers.SerializerMethodField()
+    actualizado_por_info = serializers.SerializerMethodField()
+    
+    # Campos calculados
+    calculos_completos = serializers.SerializerMethodField()
+    valores_por_pieza = serializers.SerializerMethodField()
+    escalas_referencia = serializers.SerializerMethodField()
+    
+    # Información de diagnóstico con descripciones
+    enfermedad_periodontal_display = serializers.SerializerMethodField()
+    tipo_oclusion_display = serializers.SerializerMethodField()
+    nivel_fluorosis_display = serializers.SerializerMethodField()
+    nivel_gingivitis_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = IndicadoresSaludBucal
+        fields = [
+            # Información básica
+            'id', 'fecha', 'fecha_modificacion', 'activo',
+            
+            # Información del paciente
+            'paciente', 'paciente_info',
+            
+            # Auditoría
+            'creado_por', 'creado_por_info',
+            'actualizado_por', 'actualizado_por_info',
+            'eliminado_por', 'fecha_eliminacion',
+            
+            # Campos de diagnóstico
+            'enfermedad_periodontal', 'enfermedad_periodontal_display',
+            'tipo_oclusion', 'tipo_oclusion_display',
+            'nivel_fluorosis', 'nivel_fluorosis_display',
+            'nivel_gingivitis', 'nivel_gingivitis_display',
+            'observaciones',
+            
+            # Valores por pieza
+            # Placa
+            'pieza_16_placa', 'pieza_11_placa', 'pieza_26_placa',
+            'pieza_36_placa', 'pieza_31_placa', 'pieza_46_placa',
+            
+            # Cálculo
+            'pieza_16_calculo', 'pieza_11_calculo', 'pieza_26_calculo',
+            'pieza_36_calculo', 'pieza_31_calculo', 'pieza_46_calculo',
+            
+            # Gingivitis
+            'pieza_16_gingivitis', 'pieza_11_gingivitis', 'pieza_26_gingivitis',
+            'pieza_36_gingivitis', 'pieza_31_gingivitis', 'pieza_46_gingivitis',
+            
+            # Promedios
+            'ohi_promedio_placa', 'ohi_promedio_calculo', 'gi_promedio_gingivitis',
+            
+            # Información de cálculo (JSON)
+            'informacion_calculo',
+            
+            # Campos calculados
+            'valores_por_pieza',
+            'calculos_completos',
+            'escalas_referencia'
+        ]
+    
+    def get_paciente_info(self, obj):
+        """Información completa del paciente"""
+        if obj.paciente:
+            return {
+                'id': str(obj.paciente.id),
+                'nombres': obj.paciente.nombres,
+                'apellidos': obj.paciente.apellidos,
+                'nombre_completo': f"{obj.paciente.nombres} {obj.paciente.apellidos}",
+                'cedula_pasaporte': obj.paciente.cedula_pasaporte,
+                'edad': obj.paciente.edad if hasattr(obj.paciente, 'edad') else None,
+                'sexo': obj.paciente.sexo
+            }
+        return None
+    
+    def get_creado_por_info(self, obj):
+        """Información del usuario creador"""
+        if obj.creado_por:
+            return {
+                'id': obj.creado_por.id,
+                'nombre_completo': f"{obj.creado_por.nombres} {obj.creado_por.apellidos}",
+                'nombres': obj.creado_por.nombres,
+                'apellidos': obj.creado_por.apellidos,
+                'correo': obj.creado_por.correo
+            }
+        return None
+    
+    def get_actualizado_por_info(self, obj):
+        """Información del usuario que actualizó"""
         if obj.actualizado_por:
-            return f"{obj.actualizado_por.nombres} {obj.actualizado_por.apellidos}"
+            return {
+                'id': obj.actualizado_por.id,
+                'nombre_completo': f"{obj.actualizado_por.nombres} {obj.actualizado_por.apellidos}",
+                'nombres': obj.actualizado_por.nombres,
+                'apellidos': obj.actualizado_por.apellidos,
+                'correo': obj.actualizado_por.correo
+            }
         return None
     
-    def get_paciente_nombre(self, obj):
-        """Obtiene el nombre del paciente"""
-        if obj.paciente:
-            return obj.paciente.nombres
+    def get_enfermedad_periodontal_display(self, obj):
+        """Descripción de enfermedad periodontal"""
+        if obj.enfermedad_periodontal:
+            return NIVELES_PERIODONTAL.get(obj.enfermedad_periodontal, obj.enfermedad_periodontal)
         return None
     
-    def get_paciente_apellido(self, obj):
-        """Obtiene el apellido del paciente"""
-        if obj.paciente:
-            return obj.paciente.apellidos
+    def get_tipo_oclusion_display(self, obj):
+        """Descripción de tipo de oclusión"""
+        if obj.tipo_oclusion:
+            return TIPOS_OCLUSION.get(obj.tipo_oclusion, obj.tipo_oclusion)
         return None
     
-    def get_paciente_cedula(self, obj):
-        """Obtiene la cédula del paciente"""
-        if obj.paciente:
-            return obj.paciente.cedula_pasaporte
+    def get_nivel_fluorosis_display(self, obj):
+        """Descripción de nivel de fluorosis"""
+        if obj.nivel_fluorosis:
+            return NIVELES_FLUOROSIS.get(obj.nivel_fluorosis, obj.nivel_fluorosis)
         return None
     
-    def get_paciente_nombre_completo(self, obj):
-        """Obtiene el nombre completo del paciente"""
-        if obj.paciente:
-            return f"{obj.paciente.nombres} {obj.paciente.apellidos}"
+    def get_nivel_gingivitis_display(self, obj):
+        """Descripción de nivel de gingivitis"""
+        if obj.nivel_gingivitis:
+            return obj.get_nivel_gingivitis_display()
         return None
+    
+    def get_valores_por_pieza(self, obj):
+        """Organiza valores por pieza dental"""
+        piezas = ['16', '11', '26', '36', '31', '46']
+        resultado = []
+        
+        for pieza in piezas:
+            placa = getattr(obj, f'pieza_{pieza}_placa', None)
+            calculo = getattr(obj, f'pieza_{pieza}_calculo', None)
+            gingivitis = getattr(obj, f'pieza_{pieza}_gingivitis', None)
+            
+            # Obtener descripciones de escalas
+            placa_desc = ESCALA_PLACA.get(placa) if placa is not None else None
+            calculo_desc = ESCALA_CALCULO.get(calculo) if calculo is not None else None
+            gingivitis_desc = ESCALA_GINGIVITIS.get(gingivitis) if gingivitis is not None else None
+            
+            # Calcular subtotales
+            subtotal_ohi = None
+            if placa is not None and calculo is not None:
+                subtotal_ohi = placa + calculo
+            
+            resultado.append({
+                'pieza': pieza,
+                'placa': {
+                    'valor': placa,
+                    'descripcion': placa_desc,
+                    'escala': 'Índice de Placa de Silness & Löe (0-3)'
+                },
+                'calculo': {
+                    'valor': calculo,
+                    'descripcion': calculo_desc,
+                    'escala': 'Índice de Cálculo de Greene & Vermillion (0-3)'
+                },
+                'gingivitis': {
+                    'valor': gingivitis,
+                    'descripcion': gingivitis_desc,
+                    'escala': 'Índice Gingival de Löe & Silness (0-3)'
+                },
+                'subtotal_ohi': subtotal_ohi,
+                'completo': all(v is not None for v in [placa, calculo, gingivitis])
+            })
+        
+        return resultado
+    
+    def get_calculos_completos(self, obj):
+        """
+        Obtiene cálculos completos desde informacion_calculo
+        Si no existe, calcula en tiempo real
+        """
+        from api.odontogram.services.indicadores_service import CalculosIndicadoresService
+        from api.odontogram.services.indicadores_service import PiezasIndiceService
+        
+        # Si ya tenemos información de cálculo almacenada, usarla
+        if obj.informacion_calculo and 'calculos' in obj.informacion_calculo:
+            return obj.informacion_calculo['calculos']
+        
+        # Si no, calcular en tiempo real
+        try:
+            # Obtener información de piezas
+            info_piezas = PiezasIndiceService.obtener_informacion_piezas(str(obj.paciente_id))
+            
+            # Recopilar valores
+            valores_placa = {}
+            valores_calculo = {}
+            valores_gingivitis = {}
+            
+            for pieza_original in info_piezas['piezas'].keys():
+                placa = getattr(obj, f"pieza_{pieza_original}_placa", None)
+                calculo = getattr(obj, f"pieza_{pieza_original}_calculo", None)
+                gingivitis = getattr(obj, f"pieza_{pieza_original}_gingivitis", None)
+                
+                if placa is not None:
+                    valores_placa[pieza_original] = placa
+                if calculo is not None:
+                    valores_calculo[pieza_original] = calculo
+                if gingivitis is not None:
+                    valores_gingivitis[pieza_original] = gingivitis
+            
+            # Calcular resumen completo
+            return CalculosIndicadoresService.calcular_resumen_completo(
+                valores_placa, valores_calculo, valores_gingivitis
+            )
+            
+        except Exception as e:
+            # En caso de error, retornar estructura básica
+            return {
+                'error': f"No se pudieron calcular los indicadores: {str(e)}",
+                'ohi_s': None,
+                'indice_gingival': None,
+                'recomendaciones': []
+            }
+    
+    def get_escalas_referencia(self, obj):
+        """
+        Retorna las escalas de referencia para interpretación
+        """
+        return {
+            'placa': ESCALA_PLACA,
+            'calculo': ESCALA_CALCULO,
+            'gingivitis': ESCALA_GINGIVITIS,
+            'interpretacion_ohi_s': {
+                'excelente': '0 - 0.6',
+                'bueno': '0.7 - 1.2',
+                'regular': '1.3 - 1.8',
+                'deficiente': '1.9 - 3.0',
+                'pesimo': '> 3.0'
+            },
+            'interpretacion_gi': {
+                'normal': '0 - 0.1',
+                'leve': '0.2 - 1.0',
+                'moderada': '1.1 - 2.0',
+                'severa': '> 2.0'
+            }
+        }
+
+
+class IndicadoresSaludBucalCreateSerializer(IndicadoresSaludBucalSerializer):
+    """
+    Serializer especializado para creación de indicadores
+    Usa el servicio modular para manejar piezas disponibles
+    """
+    
+    class Meta(IndicadoresSaludBucalSerializer.Meta):
+        # No heredar read_only_fields, definir explícitamente
+        fields = "__all__"
+        read_only_fields = (
+            "id", 
+            "fecha", 
+            "creado_por", 
+            "actualizado_por",
+            "ohi_promedio_placa", 
+            "ohi_promedio_calculo",
+            "gi_promedio_gingivitis", 
+            "informacion_calculo"
+        )
+    
+    def create(self, validated_data):
+        """
+        Override create para usar el servicio modular
+        """
+        from api.odontogram.services.indicadores_service import IndicadoresSaludBucalService
+        
+        # Extraer datos necesarios
+        paciente_id = str(validated_data['paciente'].id)
+        usuario_id = self.context['request'].user.id
+        
+        try:
+            # Usar el servicio modular para crear indicadores completos
+            indicadores = IndicadoresSaludBucalService.crear_indicadores_completos(
+                paciente_id=paciente_id,
+                usuario_id=usuario_id,
+                datos=validated_data
+            )
+            return indicadores
+            
+        except Exception as e:
+            # Si falla el servicio modular, crear básico
+            validated_data['creado_por_id'] = usuario_id
+            indicadores = super().create(validated_data)
+            
+            # Calcular promedios básicos
+            from api.odontogram.services.indicadores_service import IndicadoresSaludBucalService as Service
+            Service.calcular_y_guardar_promedios(indicadores)
+            
+            return indicadores
+
+
+class IndicadoresSaludBucalUpdateSerializer(IndicadoresSaludBucalSerializer):
+    """
+    Serializer especializado para actualización de indicadores
+    """
+    
+    class Meta(IndicadoresSaludBucalSerializer.Meta):
+        fields = "__all__"
+        read_only_fields = (
+            "id", 
+            "fecha", 
+            "creado_por", 
+            "actualizado_por",
+            "ohi_promedio_placa", 
+            "ohi_promedio_calculo",
+            "gi_promedio_gingivitis", 
+            "informacion_calculo"
+        )
+    
+    def update(self, instance, validated_data):
+        """
+        Override update para usar el servicio modular
+        """
+        from api.odontogram.services.indicadores_service import IndicadoresSaludBucalService
+        
+        # Si no hay campos de pieza dental en los datos, actualizar normal
+        campos_pieza = any(field.startswith('pieza_') for field in validated_data.keys())
+        
+        if not campos_pieza:
+            # Actualización simple de campos básicos
+            validated_data['actualizado_por'] = self.context['request'].user
+            return super().update(instance, validated_data)
+        
+        # Actualización completa con servicio modular
+        try:
+            usuario_id = self.context['request'].user.id
+            
+            indicadores = IndicadoresSaludBucalService.actualizar_indicadores(
+                indicadores_id=str(instance.id),
+                usuario_id=usuario_id,
+                datos=validated_data
+            )
+            return indicadores
+            
+        except Exception as e:
+            # Si falla el servicio modular, actualizar básico
+            validated_data['actualizado_por'] = self.context['request'].user
+            indicadores = super().update(instance, validated_data)
+            
+            # Recalcular promedios
+            from api.odontogram.services.indicadores_service import IndicadoresSaludBucalService as Service
+            Service.calcular_y_guardar_promedios(indicadores)
+            
+            return indicadores

@@ -19,7 +19,7 @@ from api.odontogram.models import (
     DiagnosticoDental,
     Diagnostico,
 )
-
+from api.odontogram.services.indicadores_service import IndicadoresSaludBucalService as NuevoIndicadoresService
 from api.odontogram.services.odontogramaDiagnostico_service import OdontogramaDiagnosticoService
 from api.odontogram.services.odontogramaEstadoDiente_service import OdontogramaEstadoDienteService
 from api.odontogram.services.odontogramaRead_service import OdontogramaReadService
@@ -308,30 +308,3 @@ class IndiceCariesService:
         return snapshot
     
     
-class IndicadoresSaludBucalService:
-
-    @staticmethod
-    def calcular_promedios(indicadores: IndicadoresSaludBucal):
-        placa_vals = [
-            indicadores.pieza_16_placa,
-            indicadores.pieza_11_placa,
-            indicadores.pieza_26_placa,
-            indicadores.pieza_36_placa,
-            indicadores.pieza_31_placa,
-            indicadores.pieza_46_placa,
-        ]
-        calculo_vals = [
-            indicadores.pieza_16_calculo,
-            indicadores.pieza_11_calculo,
-            indicadores.pieza_26_calculo,
-            indicadores.pieza_36_calculo,
-            indicadores.pieza_31_calculo,
-            indicadores.pieza_46_calculo,
-        ]
-        placa = [v for v in placa_vals if v is not None]
-        calculo = [v for v in calculo_vals if v is not None]
-
-        indicadores.ohi_promedio_placa = sum(placa) / len(placa) if placa else None
-        indicadores.ohi_promedio_calculo = sum(calculo) / len(calculo) if calculo else None
-        indicadores.save()
-        return indicadores

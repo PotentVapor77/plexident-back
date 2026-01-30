@@ -8,7 +8,9 @@ from .serializers import (
     TipoAtributoClinicoSerializer,
     OpcionAtributoClinicoSerializer,
     OdontogramaConfigSerializer,
+    IndicadoresSaludBucalSerializer, 
     
+    PacienteBasicSerializer,
     # Se usan los nombres definidos:
     PacienteBasicSerializer,
     PacienteDetailSerializer,
@@ -68,4 +70,7 @@ __all__ = [
     # Bundle FHIR
     'FHIRBundleSerializer',
     'FHIRBundleEntrySerializer',
+    
+    'IndicadoresSaludBucalSerializer', 
+    'PacienteBasicSerializer',
 ]

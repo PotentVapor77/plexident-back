@@ -16,6 +16,10 @@ from api.patients.serializers import (
 )
 from api.clinical_records.config import INSTITUCION_CONFIG
 from .number_generator_service import NumberGeneratorService
+# AGREGAR ESTAS IMPORTACIONES:
+from .indicadores_service import ClinicalRecordIndicadoresService
+from api.clinical_records.serializers.oral_health_indicators import OralHealthIndicatorsSerializer
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,8 @@ class RecordLoaderService:
             return obj.fecha_creacion.isoformat()
         if obj and hasattr(obj, 'fecha_consulta'):
             return obj.fecha_consulta.isoformat()
+        if obj and hasattr(obj, 'fecha'):
+            return obj.fecha.isoformat()
         return None
     
     @classmethod
@@ -58,6 +64,9 @@ class RecordLoaderService:
             paciente_id=paciente_id,
             activo=True
         ).order_by('-fecha_atencion').first()
+        
+        # AGREGAR: Obtener indicadores de salud bucal más recientes
+        indicadores = ClinicalRecordIndicadoresService.obtener_indicadores_paciente(paciente_id)
         
         # Generar números automáticos
         numero_historia_unica = (
@@ -103,6 +112,12 @@ class RecordLoaderService:
             ultimos_datos.get('examen_estomatognatico'),
             ExamenEstomatognaticoSerializer,
             'examen estomatognático'
+        )
+        
+        indicadores_salud_bucal_data = cls._serializar_seccion(
+            indicadores,
+            OralHealthIndicatorsSerializer,
+            'indicadores de salud bucal'
         )
         
         return {
@@ -152,6 +167,11 @@ class RecordLoaderService:
             'examen_estomatognatico': cls._formatear_seccion(
                 ultimos_datos.get('examen_estomatognatico'),
                 examen_estomatognatico_data
+            ),
+            # AGREGAR ESTA SECCIÓN:
+            'indicadores_salud_bucal': cls._formatear_seccion(
+                indicadores,
+                indicadores_salud_bucal_data
             ),
         }
     
