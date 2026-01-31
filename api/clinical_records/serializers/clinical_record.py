@@ -16,6 +16,7 @@ from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
 from api.clinical_records.config import INSTITUCION_CONFIG
 from api.clinical_records.serializers.form033_snapshot_serializer import Form033SnapshotSerializer
 from api.clinical_records.serializers.oral_health_indicators import OralHealthIndicatorsSerializer
+from api.clinical_records.serializers.indices_caries_serializers import WritableIndicesCariesSerializer
 
 from .base import DateFormatterMixin
 from .patient_data import PatientInfoMixin
@@ -73,6 +74,7 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
             'puede_editar',
             'esta_completo',
             'indicadores_salud',
+            'indices_caries',
         ]
         read_only_fields = (
             'id',
@@ -126,6 +128,14 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
             else:
                 data['indicadores_salud_bucal_data'] = None
                 
+        
+        if instance.indices_caries:
+            data["indices_caries_data"] = WritableIndicesCariesSerializer(
+                instance.indices_caries
+            ).data
+        else:
+            data["indices_caries_data"] = None
+            
         # 4. Campos institucionales
         data['institucion_sistema'] = instance.institucion_sistema or "SISTEMA NACIONAL DE SALUD"
         data['unicodigo'] = instance.unicodigo or ""
@@ -153,6 +163,7 @@ class ClinicalRecordDetailSerializer(
     paciente_info = serializers.SerializerMethodField()
     odontologo_info = serializers.SerializerMethodField()
     creado_por_info = serializers.SerializerMethodField()
+    
     
     # Secciones expandidas - WRITABLE
     antecedentes_personales_data = WritableAntecedentesPersonalesSerializer(
@@ -186,6 +197,12 @@ class ClinicalRecordDetailSerializer(
     esta_completo = serializers.BooleanField(read_only=True)
     form033_snapshot = Form033SnapshotSerializer(read_only=True)
     tiene_odontograma = serializers.BooleanField(read_only=True)
+    
+    indices_caries_data = WritableIndicesCariesSerializer(
+        source='indices_caries',
+        required=False,
+        allow_null=True
+    )
     class Meta:
         model = ClinicalRecord
         fields = '__all__'
@@ -201,7 +218,9 @@ class ClinicalRecordDetailSerializer(
             'numero_historia_clinica_unica',
             'numero_archivo',
             'form033_snapshot', 
-            'tiene_odontograma'
+            'tiene_odontograma',
+            'indices_caries',
+            'indices_caries_data',
         )
     
     def update(self, instance, validated_data):
@@ -556,7 +575,6 @@ class ClinicalRecordCreateSerializer(serializers.ModelSerializer):
             'numero_hoja',
             'numero_historia_clinica_unica',
             'numero_archivo',
-            
         ]
         extra_kwargs = {
             'institucion_sistema': {

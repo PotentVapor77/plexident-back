@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 
 from django.db.models import Q
 
+
 from api.odontogram.models import (
     AreaAfectada,
     Diagnostico,
@@ -485,16 +486,304 @@ class HistorialOdontogramaSerializer(serializers.ModelSerializer):
             return f"{paciente.nombres} {paciente.apellidos}"
         return None
     
+class WritableIndiceCariesSnapshotSerializer(serializers.ModelSerializer):
+    """
+    Serializer writable para anidación en historial clínico
+    """
+    
+    class Meta:
+        model = IndiceCariesSnapshot
+        fields = '__all__'
+        read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion', 'activo']
+    
+    def validate(self, data):
+        """Validaciones personalizadas"""
+        # Validar que al menos un índice tenga valor
+        indices_componentes = [
+            'cpo_c', 'cpo_p', 'cpo_o',
+            'ceo_c', 'ceo_e', 'ceo_o'
+        ]
+        
+        if not any(data.get(field) for field in indices_componentes if data.get(field) is not None):
+            raise serializers.ValidationError(
+                'Debe proporcionar al menos un valor de índice'
+            )
+        
+        # Validar que no haya valores negativos
+        for field in indices_componentes:
+            if data.get(field) is not None and data[field] < 0:
+                raise serializers.ValidationError(
+                    f'El valor de {field} no puede ser negativo'
+                )
+        
+        return data
+    
+    def create(self, validated_data):
+        """Override create para manejar campos calculados"""
+        # Calcular totales si no se proporcionan
+        if 'cpo_total' not in validated_data:
+            validated_data['cpo_total'] = (
+                validated_data.get('cpo_c', 0) +
+                validated_data.get('cpo_p', 0) +
+                validated_data.get('cpo_o', 0)
+            )
+        
+        if 'ceo_total' not in validated_data:
+            validated_data['ceo_total'] = (
+                validated_data.get('ceo_c', 0) +
+                validated_data.get('ceo_e', 0) +
+                validated_data.get('ceo_o', 0)
+            )
+        
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        """Override update para recalcular totales"""
+        # Actualizar campos manualmente para recalcular totales
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Recalcular totales
+        instance.cpo_total = instance.cpo_c + instance.cpo_p + instance.cpo_o
+        instance.ceo_total = instance.ceo_c + instance.ceo_e + instance.ceo_o
+        
+        instance.save()
+        return instance
 class IndiceCariesSnapshotSerializer(serializers.ModelSerializer):
+    """
+    Serializer base (Read-only) para índices de caries
+    """
+    
+    creado_por_nombre = serializers.SerializerMethodField()
+    paciente_nombre = serializers.SerializerMethodField()
+    
     class Meta:
         model = IndiceCariesSnapshot
         fields = [
-            'id', 'paciente', 'version_id', 'fecha',
-            'cpo_c', 'cpo_p', 'cpo_o', 'cpo_total',
-            'ceo_c', 'ceo_e', 'ceo_o', 'ceo_total',
+            'id',
+            'paciente',
+            'paciente_nombre',
+            'version_id',
+            'fecha_evaluacion',
+            'observaciones',
+            'creado_por',
+            'creado_por_nombre',
+            'actualizado_por',
+            'fecha_creacion',
+            'fecha_modificacion',
+            # Índices CPO
+            'cpo_c',
+            'cpo_p',
+            'cpo_o',
+            'cpo_total',
+            # Índices ceo
+            'ceo_c',
+            'ceo_e',
+            'ceo_o',
+            'ceo_total',
+            'activo'
         ]
-        read_only_fields = fields
+        read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion']
+    
+    def get_creado_por_nombre(self, obj):
+        if obj.creado_por:
+            return f"{obj.creado_por.nombres} {obj.creado_por.apellidos}"
+        return None
+    
+    def get_paciente_nombre(self, obj):
+        if obj.paciente:
+            return f"{obj.paciente.nombres} {obj.paciente.apellidos}"
+        return None
+    
+    def validate(self, data):
+        """Validaciones personalizadas"""
+        # Validar que los totales sean consistentes (si se proporcionan componentes)
+        if 'cpo_c' in data or 'cpo_p' in data or 'cpo_o' in data:
+            cpo_c = data.get('cpo_c', getattr(self.instance, 'cpo_c', 0) if self.instance else 0)
+            cpo_p = data.get('cpo_p', getattr(self.instance, 'cpo_p', 0) if self.instance else 0)
+            cpo_o = data.get('cpo_o', getattr(self.instance, 'cpo_o', 0) if self.instance else 0)
+            data['cpo_total'] = cpo_c + cpo_p + cpo_o
         
+        if 'ceo_c' in data or 'ceo_e' in data or 'ceo_o' in data:
+            ceo_c = data.get('ceo_c', getattr(self.instance, 'ceo_c', 0) if self.instance else 0)
+            ceo_e = data.get('ceo_e', getattr(self.instance, 'ceo_e', 0) if self.instance else 0)
+            ceo_o = data.get('ceo_o', getattr(self.instance, 'ceo_o', 0) if self.instance else 0)
+            data['ceo_total'] = ceo_c + ceo_e + ceo_o
+        
+        return data
+
+
+class WritableIndiceCariesSnapshotSerializer(serializers.ModelSerializer):
+    """
+    Serializer writable para anidación en historial clínico
+    """
+    
+    class Meta:
+        model = IndiceCariesSnapshot
+        fields = [
+            'id',
+            'paciente',
+            'version_id',
+            'fecha_evaluacion',
+            'observaciones',
+            'creado_por',
+            # Índices CPO
+            'cpo_c',
+            'cpo_p',
+            'cpo_o',
+            'cpo_total',
+            # Índices ceo
+            'ceo_c',
+            'ceo_e',
+            'ceo_o',
+            'ceo_total'
+        ]
+        read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion', 'activo']
+    
+    def validate(self, data):
+        """Validaciones personalizadas"""
+        # Validar que al menos un índice tenga valor
+        indices_componentes = [
+            'cpo_c', 'cpo_p', 'cpo_o',
+            'ceo_c', 'ceo_e', 'ceo_o'
+        ]
+        
+        if not any(data.get(field) for field in indices_componentes if data.get(field) is not None):
+            raise serializers.ValidationError(
+                'Debe proporcionar al menos un valor de índice'
+            )
+        
+        # Validar que no haya valores negativos
+        for field in indices_componentes:
+            if data.get(field) is not None and data[field] < 0:
+                raise serializers.ValidationError(
+                    f'El valor de {field} no puede ser negativo'
+                )
+        
+        return data
+
+
+class WritableIndiceCariesSnapshotSerializer(serializers.ModelSerializer):
+    """
+    Serializer writable para anidación en historial clínico
+    """
+    
+    class Meta:
+        model = IndiceCariesSnapshot
+        fields = '__all__'
+        read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion', 'activo']
+    
+    def validate(self, data):
+        """Validaciones personalizadas"""
+        # Validar que al menos un índice tenga valor
+        indices_componentes = [
+            'cpo_c', 'cpo_p', 'cpo_o',
+            'ceo_c', 'ceo_e', 'ceo_o'
+        ]
+        
+        if not any(data.get(field) for field in indices_componentes if data.get(field) is not None):
+            raise serializers.ValidationError(
+                'Debe proporcionar al menos un valor de índice'
+            )
+        
+        # Validar que no haya valores negativos
+        for field in indices_componentes:
+            if data.get(field) is not None and data[field] < 0:
+                raise serializers.ValidationError(
+                    f'El valor de {field} no puede ser negativo'
+                )
+        
+        return data
+    
+    def create(self, validated_data):
+        """Override create para manejar campos calculados"""
+        # Calcular totales si no se proporcionan
+        if 'cpo_total' not in validated_data:
+            validated_data['cpo_total'] = (
+                validated_data.get('cpo_c', 0) +
+                validated_data.get('cpo_p', 0) +
+                validated_data.get('cpo_o', 0)
+            )
+        
+        if 'ceo_total' not in validated_data:
+            validated_data['ceo_total'] = (
+                validated_data.get('ceo_c', 0) +
+                validated_data.get('ceo_e', 0) +
+                validated_data.get('ceo_o', 0)
+            )
+        
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        """Override update para recalcular totales"""
+        # Actualizar campos manualmente para recalcular totales
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Recalcular totales
+        instance.cpo_total = instance.cpo_c + instance.cpo_p + instance.cpo_o
+        instance.ceo_total = instance.ceo_c + instance.ceo_e + instance.ceo_o
+        
+        instance.save()
+        return instance
+
+
+class IndiceCariesSnapshotDetailSerializer(IndiceCariesSnapshotSerializer):
+    """
+    Serializer detallado con información adicional
+    """
+    
+    interpretacion_cpo = serializers.SerializerMethodField()
+    interpretacion_ceo = serializers.SerializerMethodField()
+    resumen_estado = serializers.SerializerMethodField()
+    
+    class Meta(IndiceCariesSnapshotSerializer.Meta):
+        fields = IndiceCariesSnapshotSerializer.Meta.fields + [
+            'interpretacion_cpo',
+            'interpretacion_ceo',
+            'resumen_estado'
+        ]
+    
+    def get_interpretacion_cpo(self, obj):
+        """Interpretación del índice CPO según OMS"""
+        if obj.cpo_total == 0:
+            return "Excelente salud dental (CPO = 0)"
+        elif obj.cpo_total <= 2:
+            return "Baja prevalencia de caries (CPO 1-2)"
+        elif obj.cpo_total <= 4:
+            return "Moderada prevalencia de caries (CPO 3-4)"
+        elif obj.cpo_total <= 6:
+            return "Alta prevalencia de caries (CPO 5-6)"
+        else:
+            return "Muy alta prevalencia de caries (CPO > 6)"
+    
+    def get_interpretacion_ceo(self, obj):
+        """Interpretación del índice ceo según OMS"""
+        if obj.ceo_total == 0:
+            return "Excelente salud dental temporal (ceo = 0)"
+        elif obj.ceo_total <= 2:
+            return "Baja prevalencia de caries (ceo 1-2)"
+        elif obj.ceo_total <= 4:
+            return "Moderada prevalencia de caries (ceo 3-4)"
+        elif obj.ceo_total <= 6:
+            return "Alta prevalencia de caries (ceo 5-6)"
+        else:
+            return "Muy alta prevalencia de caries (ceo > 6)"
+    
+    def get_resumen_estado(self, obj):
+        """Resumen del estado de salud dental"""
+        if obj.cpo_total == 0 and obj.ceo_total == 0:
+            return "Óptimo - Sin caries diagnosticadas"
+        
+        resumen = []
+        if obj.cpo_total > 0:
+            resumen.append(f"CPO: {obj.cpo_total} (C:{obj.cpo_c} P:{obj.cpo_p} O:{obj.cpo_o})")
+        if obj.ceo_total > 0:
+            resumen.append(f"ceo: {obj.ceo_total} (c:{obj.ceo_c} e:{obj.ceo_e} o:{obj.ceo_o})")
+        
+        return " | ".join(resumen)
+
+
 class IndicadoresSaludBucalSerializer(serializers.ModelSerializer):
     """
     Serializer base para Indicadores de Salud Bucal
@@ -514,6 +803,7 @@ class IndicadoresSaludBucalSerializer(serializers.ModelSerializer):
             "gi_promedio_gingivitis", 
             "informacion_calculo",
             "piezas_usadas_en_registro"
+            
         )
     
     def validate(self, data):

@@ -677,7 +677,8 @@ class IndiceCariesSnapshot(models.Model):
     paciente = models.ForeignKey(
         Paciente,
         on_delete=models.CASCADE,
-        related_name='indices_caries'
+        related_name='snapshots_indices_caries',  
+        verbose_name='Paciente'
     )
 
     # Opcional: enlazar a una versión específica del historial de odontograma
@@ -1130,3 +1131,38 @@ class SesionTratamiento(models.Model):
         self.estado = self.EstadoSesion.COMPLETADA
         self.fecha_realizacion = timezone.now()
         self.save()
+        
+        
+    fecha_evaluacion = models.DateTimeField(
+        default=timezone.now,
+        verbose_name='Fecha de evaluación'
+    )
+    
+    # Observaciones del profesional
+    observaciones = models.TextField(
+        blank=True,
+        verbose_name='Observaciones del profesional'
+    )
+    
+    # Usuario que creó el registro
+    creado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name='indices_caries_creados',
+        null=True,
+        blank=True,
+        verbose_name='Creado por'
+    )
+    
+    # Auditoría adicional
+    actualizado_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='indices_caries_actualizados',
+        null=True,
+        blank=True,
+        verbose_name='Actualizado por'
+    )
+    
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)

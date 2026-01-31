@@ -159,8 +159,15 @@ class ClinicalRecord(BaseModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='historiales_clinicos',
         verbose_name='Indicadores de Salud Bucal'
+    )
+    
+    indices_caries = models.ForeignKey(
+        'odontogram.IndiceCariesSnapshot', 
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='Índices de Caries (CPO/ceo)'
     )
     
 

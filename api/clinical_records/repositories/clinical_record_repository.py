@@ -1,5 +1,6 @@
 from django.db.models import Q, Prefetch
 from api.clinical_records.models import ClinicalRecord
+from api.clinical_records.services.indices_caries_service import ClinicalRecordIndicesCariesService
 
 
 
@@ -117,5 +118,5 @@ class ClinicalRecordRepository:
             paciente_id=paciente_id,
             activo=True
             ).order_by('-fecha', '-id').first(),
-            
+            'indices_caries': ClinicalRecordIndicesCariesService.obtener_ultimos_indices(paciente_id),
         }

@@ -116,7 +116,7 @@ class OralHealthIndicatorsSerializer(serializers.ModelSerializer):
                 'gingivitis': {
                     'valor': gingivitis,
                     'descripcion': gingivitis_desc,
-                    'escala': 'Índice Gingival de Löe & Silness (0-3)'
+                    'escala': 'Índice Gingival de Löe & Silness (0-1)'
                 },
                 'completo': all(v is not None for v in [placa, calculo, gingivitis])
             })

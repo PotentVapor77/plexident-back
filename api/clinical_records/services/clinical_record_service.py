@@ -129,7 +129,8 @@ class ClinicalRecordService:
         secciones = [
             'antecedentes_personales',
             'antecedentes_familiares',
-            'examen_estomatognatico'
+            'examen_estomatognatico',
+            'indices_caries'
         ]
         for seccion in secciones:
             if not data.get(seccion) and ultimos_datos.get(seccion):

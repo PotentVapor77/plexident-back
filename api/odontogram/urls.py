@@ -280,4 +280,18 @@ urlpatterns = [
         IndicadoresSaludBucalListView.as_view(),
         name="paciente-indicadores-list",
     ),
+    # GET /api/odontogram/pacientes/{id}/snapshots-caries/
+    path(
+        "pacientes/<uuid:pk>/snapshots-caries/",
+        PacienteViewSet.as_view({'get': 'snapshots_caries'}),
+        name="paciente-snapshots-caries",
+    ),
+    
+    # GET /api/odontogram/pacientes/{id}/ultimo-snapshot/
+    path(
+        "pacientes/<uuid:pk>/ultimo-snapshot/",
+        PacienteViewSet.as_view({'get': 'ultimo_snapshot'}),
+        name="paciente-ultimo-snapshot",
+    ),
+    
 ]

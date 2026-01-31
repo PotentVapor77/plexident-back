@@ -30,7 +30,7 @@ from api.odontogram.models import (
     DiagnosticoDental,
     HistorialOdontograma,
 )
-from api.odontogram.services.odontogram_services import IndiceCariesService
+from api.odontogram.services.indice_caries_service import IndiceCariesService
 from api.odontogram.services.context_service import OperacionContexto
 
 

@@ -28,6 +28,9 @@ from api.clinical_records.serializers.stomatognathic_exam import WritableExamenE
 from api.clinical_records.serializers.vital_signs import WritableConstantesVitalesSerializer
 from api.clinical_records.services.vital_signs_service import VitalSignsService
 from api.clinical_records.serializers.oral_health_indicators import OralHealthIndicatorsSerializer
+from api.odontogram.models import IndiceCariesSnapshot
+from api.odontogram.serializers.indices_caries_serializers import WritableIndiceCariesSnapshotSerializer
+from api.clinical_records.serializers.indices_caries_serializers import WritableIndicesCariesSerializer
 
 from .base import (
     ClinicalRecordPagination,
@@ -631,6 +634,136 @@ class ClinicalRecordViewSet(
                 {'detail': f'Error al actualizar indicadores: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+            
+            
+    @action(detail=True, methods=['post'], url_path='guardar-indices-caries')
+    def guardar_indices_caries(self, request, pk=None):
+        """
+        Guarda nuevos índices de caries y los asocia al historial
+        POST: /api/clinical-records/{id}/guardar-indices-caries/
+        
+        Body puede contener:
+        1. indices_caries_id: ID de registro existente
+        2. Datos completos para crear nuevo registro
+        """
+        historial = self.get_object()
+        
+        # Validar que el historial no esté cerrado
+        if historial.estado == 'CERRADO':
+            return Response({
+                'detail': 'No se pueden agregar índices a un historial cerrado'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            indices_caries_id = request.data.get('indices_caries_id')
+            if indices_caries_id:
+                try:
+                    indices = IndiceCariesSnapshot.objects.get(
+                        id=indices_caries_id,
+                        paciente=historial.paciente,
+                        activo=True
+                    )
+                    historial.indices_caries = indices
+                    historial.save(update_fields=['indices_caries'])
+                    
+                    logger.info(f"Índices {indices.id} asociados al historial {pk}")
+                    
+                    return Response({
+                        'success': True,
+                        'message': 'Índices asociados exitosamente',
+                        'data': WritableIndicesCariesSerializer(indices).data
+                    }, status=status.HTTP_200_OK)
+                    
+                except IndiceCariesSnapshot.DoesNotExist:
+                    return Response({
+                        'detail': 'Los índices especificados no existen o no pertenecen al paciente'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            serializer = WritableIndicesCariesSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            # Crear nuevos índices
+            indices = IndiceCariesSnapshot.objects.create(
+                paciente=historial.paciente,
+                creado_por=request.user,
+                **serializer.validated_data
+            )
+            
+            # Asociar al historial
+            historial.indices_caries = indices
+            historial.save(update_fields=['indices_caries'])
+            
+            logger.info(f"Índices {indices.id} creados y asociados al historial {pk}")
+            
+            return Response({
+                'success': True,
+                'message': 'Índices creados y asociados exitosamente',
+                'data': WritableIndicesCariesSerializer(indices).data
+            }, status=status.HTTP_201_CREATED)
+            
+        except ValidationError as e:
+            return Response({
+                'success': False,
+                'message': 'Error de validación',
+                'errors': e.detail
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.error(f"Error guardando índices para historial {pk}: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error guardando índices: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['patch'], url_path='actualizar-indices-caries')
+    def actualizar_indices_caries(self, request, pk=None):
+        """
+        Actualiza los índices de caries asociados al historial
+        PATCH: /api/clinical-records/{id}/actualizar-indices-caries/
+        """
+        historial = self.get_object()
+        
+        # Validar que el historial no esté cerrado
+        if historial.estado == 'CERRADO':
+            return Response({
+                'detail': 'No se puede modificar un historial cerrado'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verificar que el historial tenga índices asociados
+        if not historial.indices_caries:
+            return Response({
+                'detail': 'Este historial no tiene índices de caries asociados. '
+                          'Use el endpoint guardar-indices-caries para crear nuevos.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Actualizar los índices existentes
+        
+        
+        serializer = WritableIndicesCariesSerializer(
+            historial.indices_caries,
+            data=request.data,
+            partial=True
+        )
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            indices = serializer.save()
+            
+            logger.info(f"Índices {indices.id} actualizados para historial {pk}")
+            
+            return Response({
+                'success': True,
+                'message': 'Índices actualizados exitosamente',
+                'data': WritableIndicesCariesSerializer(indices).data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error actualizando índices para historial {pk}: {str(e)}")
+            return Response({
+                'detail': f'Error al actualizar índices: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'], url_path=r'antecedentes-personales/(?P<paciente_id>[^/]+)/latest')
     def latest_antecedentes_personales(self, request, paciente_id=None):
@@ -716,3 +849,36 @@ class ClinicalRecordViewSet(
         
         serializer = OralHealthIndicatorsSerializer(indicadores)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path=r'indices-caries/(?P<paciente_id>[^/]+)/latest')
+    def latest_indices_caries(self, request, paciente_id=None):
+        """
+        GET: /api/clinical-records/indices-caries/{paciente_id}/latest/
+        """
+        logger.info(f" Solicitando índices para paciente: {paciente_id}")
+        
+        historial, error = self._validar_puede_recargar(paciente_id)
+        if error:
+            logger.warning(f" Validación falló: {error}") 
+            pass  
+        
+        logger.info(f" Buscando índices en base de datos...")
+        
+        datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
+        instancia = datos.get('indices_caries')
+        
+        logger.info(f" Índices encontrados: {instancia}")
+        
+        if not instancia:
+            logger.warning(f" No se encontraron índices para paciente {paciente_id}")
+            return Response({
+                'detail': 'No hay índices de caries previos registrados',
+                'disponible': False
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        
+        serializer_data = WritableIndicesCariesSerializer(instancia).data
+        
+        logger.info(f"Retornando datos: {serializer_data}")
+        
+        return Response(serializer_data)

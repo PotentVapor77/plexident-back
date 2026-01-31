@@ -12,8 +12,10 @@ from api.odontogram.models import (
     DiagnosticoDental,
     HistorialOdontograma,
     Diagnostico,
+    IndiceCariesSnapshot,  
 )
 from api.odontogram.services.context_service import OperacionContexto
+
 
 User = get_user_model()
 
@@ -31,89 +33,157 @@ def _es_uuid_valido(valor: str) -> bool:
 
 
 class OdontogramaWriteService:
+    
+    def _crear_snapshot_caries(self, paciente_id: str, version_id=None) -> IndiceCariesSnapshot:
+        """
+        Método interno para crear snapshot de índices de caries
+        Evita importación circular
+        """
+        # Importar localmente para evitar dependencia circular
+        from api.odontogram.services.indice_caries_service import IndiceCariesService
+        return IndiceCariesService.crear_snapshot_indices(paciente_id, version_id)
+    
     @transaction.atomic
     def guardar_odontograma_completo(
         self,
         paciente_id: str,
         odontologo_id: int,
         odontograma_data: Dict[str, Dict[str, List[Dict[str, Any]]]],
-        
     ) -> Dict[str, Any]:
         """
         Guarda el odontograma completo de un paciente.
-
         Reglas:
         - Si viene un ID que es UUID válido -> intenta editar por ID.
         - Si no hay ID o el ID no es UUID válido -> usa equivalencia por attrs.
         - Si no existe ni por ID ni por attrs -> crea diagnóstico nuevo.
         - Crea snapshot SOLO si hay cambios reales (diagnósticos nuevos o modificados).
+        - Crea snapshot de índices de caries automáticamente.
         """
         OperacionContexto.iniciar_operacion(paciente_id, 'guardado_odontograma')
+        
         try:
-            paciente = Paciente.objects.get(id=paciente_id)
-            odontologo = User.objects.get(id=odontologo_id)
-        except (Paciente.DoesNotExist, User.DoesNotExist):
-            raise ValidationError("Paciente u odontólogo no encontrado")
-
-        resultado = {
-            "paciente_id": str(paciente.id),
-            "dientes_procesados": [],
-            "diagnosticos_guardados": 0,
-            "diagnosticos_modificados": 0,
-            "errores": [],
-        }
-
-        version_id = uuid.uuid4()
-        now = timezone.now()
-        
-        print(f"[DEBUG] VERSION_ID generado: {version_id}")
-        print(f"[CONTEXTO] Operación activa: {OperacionContexto.esta_en_operacion(paciente_id)}")
-        
-        # Procesar cada diente
-        for codigo_fdi, superficies_dict in odontograma_data.items():
             try:
-                diente, created = Diente.objects.get_or_create(
-                    paciente=paciente,
-                    codigo_fdi=codigo_fdi,
-                )
-                resultado["dientes_procesados"].append(codigo_fdi)
+                paciente = Paciente.objects.get(id=paciente_id)
+                odontologo = User.objects.get(id=odontologo_id)
+            except (Paciente.DoesNotExist, User.DoesNotExist):
+                raise ValidationError("Paciente u odontólogo no encontrado")
 
-                # Procesar cada superficie
-                for nombre_superficie, diagnosticos_list in superficies_dict.items():
-                    try:
-                        superficie, _ = SuperficieDental.objects.get_or_create(
-                            diente=diente,
-                            nombre=nombre_superficie,
-                        )
+            resultado = {
+                "paciente_id": str(paciente.id),
+                "dientes_procesados": [],
+                "diagnosticos_guardados": 0,
+                "diagnosticos_modificados": 0,
+                "errores": [],
+                "snapshot_caries_creado": False,
+                "snapshot_caries_id": None,
+            }
 
-                        # Procesar cada diagnóstico
-                        for diag_data in diagnosticos_list:
-                            try:
-                                diagnostico_cat = Diagnostico.objects.get(
-                                    key=diag_data["procedimientoId"],
-                                    activo=True,
-                                )
+            version_id = uuid.uuid4()
+            now = timezone.now()
+            print(f"[DEBUG] VERSION_ID generado: {version_id}")
+            print(f"[CONTEXTO] Operación activa: {OperacionContexto.esta_en_operacion(paciente_id)}")
 
-                                attrs = diag_data.get("secondaryOptions", {}) or {}
-                                descripcion = diag_data.get("descripcion", "") or ""
-                                diag_id = diag_data.get("id")
+            # Procesar cada diente
+            for codigo_fdi, superficies_dict in odontograma_data.items():
+                try:
+                    diente, created = Diente.objects.get_or_create(
+                        paciente=paciente,
+                        codigo_fdi=codigo_fdi,
+                    )
 
-                                # 1) Si viene ID y es UUID válido, intentar EDITAR por ID
-                                if diag_id and _es_uuid_valido(diag_id):
-                                    try:
-                                        diag_dental = DiagnosticoDental.objects.get(
-                                            id=diag_id,
-                                            superficie=superficie,
-                                            diagnostico_catalogo=diagnostico_cat,
-                                            activo=True,
-                                        )
-                                    except DiagnosticoDental.DoesNotExist:
-                                        diag_dental = None
+                    resultado["dientes_procesados"].append(codigo_fdi)
 
-                                    if diag_dental:
+                    # Procesar cada superficie
+                    for nombre_superficie, diagnosticos_list in superficies_dict.items():
+                        try:
+                            superficie, _ = SuperficieDental.objects.get_or_create(
+                                diente=diente,
+                                nombre=nombre_superficie,
+                            )
+
+                            # Procesar cada diagnóstico
+                            for diag_data in diagnosticos_list:
+                                try:
+                                    diagnostico_cat = Diagnostico.objects.get(
+                                        key=diag_data["procedimientoId"],
+                                        activo=True,
+                                    )
+
+                                    attrs = diag_data.get("secondaryOptions", {}) or {}
+                                    descripcion = diag_data.get("descripcion", "") or ""
+                                    diag_id = diag_data.get("id")
+
+                                    # 1) Si viene ID y es UUID válido, intentar EDITAR por ID
+                                    if diag_id and _es_uuid_valido(diag_id):
+                                        try:
+                                            diag_dental = DiagnosticoDental.objects.get(
+                                                id=diag_id,
+                                                superficie=superficie,
+                                                diagnostico_catalogo=diagnostico_cat,
+                                                activo=True,
+                                            )
+                                        except DiagnosticoDental.DoesNotExist:
+                                            diag_dental = None
+
+                                        if diag_dental:
+                                            datos_anteriores = {
+                                                "descripcion": diag_dental.descripcion,
+                                                "atributos_clinicos": diag_dental.atributos_clinicos,
+                                            }
+
+                                            datos_nuevos = {
+                                                "descripcion": descripcion,
+                                                "atributos_clinicos": attrs,
+                                            }
+
+                                            ha_cambios = (
+                                                datos_anteriores["descripcion"]
+                                                != datos_nuevos["descripcion"]
+                                                or datos_anteriores["atributos_clinicos"]
+                                                != datos_nuevos["atributos_clinicos"]
+                                            )
+
+                                            if ha_cambios:
+                                                diag_dental.descripcion = descripcion
+                                                diag_dental.atributos_clinicos = attrs
+                                                diag_dental.save()
+
+                                                HistorialOdontograma.objects.create(
+                                                    diente=superficie.diente,
+                                                    tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_MODIFICADO,
+                                                    descripcion=(
+                                                        f"Diagnóstico {diagnostico_cat.nombre} "
+                                                        f"modificado en {superficie.get_nombre_display()}"
+                                                    ),
+                                                    odontologo=odontologo,
+                                                    datos_anteriores=datos_anteriores,
+                                                    datos_nuevos=datos_nuevos,
+                                                    fecha=now,
+                                                    version_id=version_id,
+                                                )
+
+                                                resultado["diagnosticos_modificados"] += 1
+                                                print(
+                                                    f"[DEBUG] Modificado con cambios: {diag_id}"
+                                                )
+                                            else:
+                                                print(
+                                                    f"[DEBUG] Sin cambios, no se registra: {diag_id}"
+                                                )
+                                            continue
+
+                                    # 2) Editar por equivalencia
+                                    existente = DiagnosticoDental.objects.filter(
+                                        superficie=superficie,
+                                        diagnostico_catalogo=diagnostico_cat,
+                                        atributos_clinicos=attrs,
+                                        activo=True,
+                                    ).first()
+
+                                    if existente:
                                         datos_anteriores = {
-                                            "descripcion": diag_dental.descripcion,
-                                            "atributos_clinicos": diag_dental.atributos_clinicos,
+                                            "descripcion": existente.descripcion,
+                                            "atributos_clinicos": existente.atributos_clinicos,
                                         }
 
                                         datos_nuevos = {
@@ -129,9 +199,9 @@ class OdontogramaWriteService:
                                         )
 
                                         if ha_cambios:
-                                            diag_dental.descripcion = descripcion
-                                            diag_dental.atributos_clinicos = attrs
-                                            diag_dental.save()
+                                            existente.descripcion = descripcion
+                                            existente.atributos_clinicos = attrs
+                                            existente.save()
 
                                             HistorialOdontograma.objects.create(
                                                 diente=superficie.diente,
@@ -146,227 +216,189 @@ class OdontogramaWriteService:
                                                 fecha=now,
                                                 version_id=version_id,
                                             )
+
                                             resultado["diagnosticos_modificados"] += 1
                                             print(
-                                                f"[DEBUG] Modificado con cambios: {diag_id}"
+                                                f"[DEBUG] Modificado por attrs: {existente.id}"
                                             )
                                         else:
                                             print(
-                                                f"[DEBUG] Sin cambios, no se registra: {diag_id}"
+                                                f"[DEBUG] Sin cambios por attrs: {existente.id}"
                                             )
-
                                         continue
 
-                                # 2) Editar por equivalencia
-                                existente = DiagnosticoDental.objects.filter(
-                                    superficie=superficie,
-                                    diagnostico_catalogo=diagnostico_cat,
-                                    atributos_clinicos=attrs,
-                                    activo=True,
-                                ).first()
-
-                                if existente:
-                                    datos_anteriores = {
-                                        "descripcion": existente.descripcion,
-                                        "atributos_clinicos": existente.atributos_clinicos,
-                                    }
-
-                                    datos_nuevos = {
-                                        "descripcion": descripcion,
-                                        "atributos_clinicos": attrs,
-                                    }
-
-                                    ha_cambios = (
-                                        datos_anteriores["descripcion"]
-                                        != datos_nuevos["descripcion"]
-                                        or datos_anteriores["atributos_clinicos"]
-                                        != datos_nuevos["atributos_clinicos"]
+                                    # 3) Alta nueva real
+                                    print(
+                                        "DEBUG: creando nuevo diagnostico",
+                                        diagnostico_cat.key,
+                                        attrs,
                                     )
 
-                                    if ha_cambios:
-                                        existente.descripcion = descripcion
-                                        existente.atributos_clinicos = attrs
-                                        existente.save()
+                                    diag_dental = DiagnosticoDental.objects.create(
+                                        superficie=superficie,
+                                        diagnostico_catalogo=diagnostico_cat,
+                                        odontologo=odontologo,
+                                        descripcion=descripcion,
+                                        atributos_clinicos=attrs,
+                                        estado_tratamiento=DiagnosticoDental.EstadoTratamiento.DIAGNOSTICADO,
+                                    )
 
-                                        HistorialOdontograma.objects.create(
-                                            diente=superficie.diente,
-                                            tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_MODIFICADO,
-                                            descripcion=(
-                                                f"Diagnóstico {diagnostico_cat.nombre} "
-                                                f"modificado en {superficie.get_nombre_display()}"
-                                            ),
-                                            odontologo=odontologo,
-                                            datos_anteriores=datos_anteriores,
-                                            datos_nuevos=datos_nuevos,
-                                            fecha=now,
-                                            version_id=version_id,
+                                    HistorialOdontograma.objects.create(
+                                        diente=diente,
+                                        tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_AGREGADO,
+                                        descripcion=(
+                                            f"Diagnóstico {diagnostico_cat.nombre} agregado en "
+                                            f"{superficie.get_nombre_display()}"
+                                        ),
+                                        odontologo=odontologo,
+                                        datos_nuevos={
+                                            "diagnostico": diagnostico_cat.key,
+                                            "superficie": nombre_superficie,
+                                            "atributos": attrs,
+                                        },
+                                        fecha=now,
+                                        version_id=version_id,
+                                    )
+
+                                    resultado["diagnosticos_guardados"] += 1
+
+                                except Diagnostico.DoesNotExist:
+                                    resultado["errores"].append(
+                                        f"Diagnóstico {diag_data.get('procedimientoId')} no encontrado"
+                                    )
+                                except Exception as e:
+                                    resultado["errores"].append(
+                                        f"Error guardando diagnóstico en {codigo_fdi}/{nombre_superficie}: {str(e)}"
+                                    )
+
+                        except Exception as e:
+                            resultado["errores"].append(
+                                f"Error procesando superficie {nombre_superficie}: {str(e)}"
+                            )
+
+                except Exception as e:
+                    resultado["errores"].append(
+                        f"Error procesando diente {codigo_fdi}: {str(e)}"
+                    )
+
+            total_cambios = (
+                resultado["diagnosticos_guardados"] + resultado["diagnosticos_modificados"]
+            )
+
+            # SOLO crear snapshot si hay cambios reales
+            if total_cambios > 0 and resultado["dientes_procesados"]:
+                primer_diente = Diente.objects.filter(
+                    paciente=paciente, codigo_fdi=resultado["dientes_procesados"][0]
+                ).first()
+
+                if primer_diente:
+                    odontograma_snapshot = {}
+                    for codigo_fdi, superficies_dict in odontograma_data.items():
+                        odontograma_snapshot[codigo_fdi] = {}
+                        for (
+                            nombre_superficie,
+                            diagnosticos_list,
+                        ) in superficies_dict.items():
+                            odontograma_snapshot[codigo_fdi][nombre_superficie] = []
+                            for diag_data in diagnosticos_list:
+                                try:
+                                    diagnostico_cat = (
+                                        Diagnostico.objects.select_related("categoria")
+                                        .prefetch_related("areas_relacionadas__area")
+                                        .get(
+                                            key=diag_data["procedimientoId"],
+                                            activo=True,
                                         )
-                                        resultado["diagnosticos_modificados"] += 1
-                                        print(
-                                            f"[DEBUG] Modificado por attrs: {existente.id}"
-                                        )
-                                    else:
-                                        print(
-                                            f"[DEBUG] Sin cambios por attrs: {existente.id}"
-                                        )
+                                    )
 
-                                    continue
+                                    diag_enriquecido = {
+                                        "id": diag_data.get("id"),
+                                        "procedimientoId": diagnostico_cat.key,
+                                        "key": diagnostico_cat.key,
+                                        "nombre": diagnostico_cat.nombre,
+                                        "siglas": diagnostico_cat.siglas,
+                                        "colorHex": diagnostico_cat.simbolo_color,
+                                        "categoria_nombre": diagnostico_cat.categoria.nombre,
+                                        "categoria_color_key": diagnostico_cat.categoria.color_key,
+                                        "prioridadKey": diagnostico_cat.categoria.prioridad_key,
+                                        "prioridad": diagnostico_cat.prioridad,
+                                        "afectaArea": list(
+                                            diagnostico_cat.areas_relacionadas.values_list(
+                                                "area__key", flat=True
+                                            )
+                                        ),
+                                        "secondaryOptions": diag_data.get(
+                                            "secondaryOptions", {}
+                                        ),
+                                        "descripcion": diag_data.get("descripcion", ""),
+                                    }
 
-                                # 3) Alta nueva real
-                                print(
-                                    "DEBUG: creando nuevo diagnostico",
-                                    diagnostico_cat.key,
-                                    attrs,
-                                )
-                                diag_dental = DiagnosticoDental.objects.create(
-                                    superficie=superficie,
-                                    diagnostico_catalogo=diagnostico_cat,
-                                    odontologo=odontologo,
-                                    descripcion=descripcion,
-                                    atributos_clinicos=attrs,
-                                    estado_tratamiento=DiagnosticoDental.EstadoTratamiento.DIAGNOSTICADO,
-                                )
+                                    odontograma_snapshot[codigo_fdi][
+                                        nombre_superficie
+                                    ].append(diag_enriquecido)
+                                except Diagnostico.DoesNotExist:
+                                    # Si el diagnóstico no existe, mantener datos originales
+                                    odontograma_snapshot[codigo_fdi][
+                                        nombre_superficie
+                                    ].append(diag_data)
 
-                                HistorialOdontograma.objects.create(
-                                    diente=diente,
-                                    tipo_cambio=HistorialOdontograma.TipoCambio.DIAGNOSTICO_AGREGADO,
-                                    descripcion=(
-                                        f"Diagnóstico {diagnostico_cat.nombre} agregado en "
-                                        f"{superficie.get_nombre_display()}"
-                                    ),
-                                    odontologo=odontologo,
-                                    datos_nuevos={
-                                        "diagnostico": diagnostico_cat.key,
-                                        "superficie": nombre_superficie,
-                                        "atributos": attrs,
-                                    },
-                                    fecha=now,
-                                    version_id=version_id,
-                                )
+                    snapshot_master = HistorialOdontograma.objects.create(
+                        diente=primer_diente,
+                        tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO,
+                        descripcion=(
+                            f"Odontograma guardado: {resultado['diagnosticos_guardados']} diagnósticos nuevos, "
+                            f"{resultado['diagnosticos_modificados']} modificados en "
+                            f"{len(resultado['dientes_procesados'])} dientes"
+                        ),
+                        odontologo=odontologo,
+                        datos_nuevos=odontograma_snapshot,
+                        fecha=now,
+                        version_id=version_id,
+                    )
 
-                                resultado["diagnosticos_guardados"] += 1
+                    print(
+                        f"[DEBUG] Snapshot creado (cambios reales): version_id={version_id}"
+                    )
 
-                            except Diagnostico.DoesNotExist:
-                                resultado["errores"].append(
-                                    f"Diagnóstico {diag_data.get('procedimientoId')} no encontrado"
-                                )
-                            except Exception as e:
-                                resultado["errores"].append(
-                                    f"Error guardando diagnóstico en {codigo_fdi}/{nombre_superficie}: {str(e)}"
-                                )
+                    resultado["snapshot_id"] = str(snapshot_master.id)
 
-                    except Exception as e:
-                        resultado["errores"].append(
-                            f"Error procesando superficie {nombre_superficie}: {str(e)}"
+                    # ========== CREAR SNAPSHOT DE ÍNDICES DE CARIES ==========
+                    try:
+                        print(f"[DEBUG] Creando snapshot de índices de caries para paciente {paciente_id}")
+                        snapshot_caries = self._crear_snapshot_caries(
+                            paciente_id=paciente_id,
+                            version_id=version_id
                         )
 
-            except Exception as e:
-                resultado["errores"].append(
-                    f"Error procesando diente {codigo_fdi}: {str(e)}"
-                )
-
-        total_cambios = (
-            resultado["diagnosticos_guardados"] + resultado["diagnosticos_modificados"]
-        )
-
-        # SOLO crear snapshot si hay cambios reales
-        if total_cambios > 0 and resultado["dientes_procesados"]:
-            primer_diente = Diente.objects.filter(
-                paciente=paciente, codigo_fdi=resultado["dientes_procesados"][0]
-            ).first()
-
-            if primer_diente:
-                odontograma_snapshot = {}
-
-                for codigo_fdi, superficies_dict in odontograma_data.items():
-                    odontograma_snapshot[codigo_fdi] = {}
-
-                    for (
-                        nombre_superficie,
-                        diagnosticos_list,
-                    ) in superficies_dict.items():
-                        odontograma_snapshot[codigo_fdi][nombre_superficie] = []
-
-                        for diag_data in diagnosticos_list:
-                            try:
-                                diagnostico_cat = (
-                                    Diagnostico.objects.select_related("categoria")
-                                    .prefetch_related("areas_relacionadas__area")
-                                    .get(
-                                        key=diag_data["procedimientoId"],
-                                        activo=True,
-                                    )
-                                )
-
-                                diag_enriquecido = {
-                                    "id": diag_data.get("id"),
-                                    "procedimientoId": diagnostico_cat.key,
-                                    "key": diagnostico_cat.key,
-                                    "nombre": diagnostico_cat.nombre,
-                                    "siglas": diagnostico_cat.siglas,
-                                    "colorHex": diagnostico_cat.simbolo_color,
-                                    "categoria_nombre": diagnostico_cat.categoria.nombre,
-                                    "categoria_color_key": diagnostico_cat.categoria.color_key,
-                                    "prioridadKey": diagnostico_cat.categoria.prioridad_key,
-                                    "prioridad": diagnostico_cat.prioridad,
-                                    "afectaArea": list(
-                                        diagnostico_cat.areas_relacionadas.values_list(
-                                            "area__key", flat=True
-                                        )
-                                    ),
-                                    "secondaryOptions": diag_data.get(
-                                        "secondaryOptions", {}
-                                    ),
-                                    "descripcion": diag_data.get("descripcion", ""),
-                                }
-
-                                odontograma_snapshot[codigo_fdi][
-                                    nombre_superficie
-                                ].append(diag_enriquecido)
-                            except Diagnostico.DoesNotExist:
-                                # Si el diagnóstico no existe, mantener datos originales
-                                odontograma_snapshot[codigo_fdi][
-                                    nombre_superficie
-                                ].append(diag_data)
-
-                snapshot_master = HistorialOdontograma.objects.create(
-                    diente=primer_diente,
-                    tipo_cambio=HistorialOdontograma.TipoCambio.SNAPSHOT_COMPLETO,
-                    descripcion=(
-                        f"Odontograma guardado: {resultado['diagnosticos_guardados']} diagnósticos nuevos, "
-                        f"{resultado['diagnosticos_modificados']} modificados en "
-                        f"{len(resultado['dientes_procesados'])} dientes"
-                    ),
-                    odontologo=odontologo,
-                    datos_nuevos=odontograma_snapshot,
-                    fecha=now,
-                    version_id=version_id,
-                )
-                
-                print(
-                    f"[DEBUG] Snapshot creado (cambios reales): version_id={version_id}"
-                )
-
-                resultado["snapshot_id"] = str(snapshot_master.id)
+                        resultado["snapshot_caries_creado"] = True
+                        resultado["snapshot_caries_id"] = str(snapshot_caries.id)
+                        resultado["cpo_total"] = snapshot_caries.cpo_total
+                        resultado["ceo_total"] = snapshot_caries.ceo_total
+                        print(f"[DEBUG] Snapshot de caries creado: {snapshot_caries.id}")
+                        print(f"[DEBUG] CPO total: {snapshot_caries.cpo_total}, CEO total: {snapshot_caries.ceo_total}")
+                    except Exception as e:
+                        print(f"[ERROR] No se pudo crear snapshot de índices de caries: {str(e)}")
+                        resultado["snapshot_caries_error"] = str(e)
+                else:
+                    resultado["snapshot_id"] = None
             else:
                 resultado["snapshot_id"] = None
-        else:
-            resultado["snapshot_id"] = None
-            print(f"[DEBUG] Sin cambios reales (total_cambios={total_cambios}), NO se crea snapshot")
+                print(f"[DEBUG] Sin cambios reales (total_cambios={total_cambios}), NO se crea snapshot")
 
-        # Configuración final de respuesta
-        resultado["version_id"] = str(version_id)
-        resultado["tiene_cambios"] = total_cambios > 0
-        
-        print(f"[DEBUG] Resultado final: total_cambios={total_cambios}, tiene_cambios={resultado['tiene_cambios']}")
+            # Configuración final de respuesta
+            resultado["version_id"] = str(version_id)
+            resultado["tiene_cambios"] = total_cambios > 0
+            print(f"[DEBUG] Resultado final: total_cambios={total_cambios}, tiene_cambios={resultado['tiene_cambios']}")
 
-        # Invalidar caché SOLO si hubo cambios
-        if total_cambios > 0:
-            cache_key = f"odontograma:completo:{paciente_id}"
-            cache.delete(cache_key)
-            print(f"[DEBUG] Caché invalidada (hubo cambios)")
-        else:
-            print(f"[DEBUG] Caché NO invalidada (sin cambios)")
-        
-        OperacionContexto.finalizar_operacion(paciente_id, 'guardado_odontograma')
-        return resultado
+            # Invalidar caché SOLO si hubo cambios
+            if total_cambios > 0:
+                cache_key = f"odontograma:completo:{paciente_id}"
+                cache.delete(cache_key)
+                print(f"[DEBUG] Caché invalidada (hubo cambios)")
+            else:
+                print(f"[DEBUG] Caché NO invalidada (sin cambios)")
+
+            return resultado
+            
+        finally:
+            OperacionContexto.finalizar_operacion(paciente_id, 'guardado_odontograma')

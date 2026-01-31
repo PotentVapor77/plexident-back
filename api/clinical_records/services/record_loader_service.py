@@ -15,6 +15,8 @@ from api.patients.serializers import (
     ExamenEstomatognaticoSerializer,
 )
 from api.clinical_records.config import INSTITUCION_CONFIG
+from api.clinical_records.serializers.indices_caries_serializers import IndicesCariesSerializer
+from api.clinical_records.services.indices_caries_service import ClinicalRecordIndicesCariesService
 from .number_generator_service import NumberGeneratorService
 # AGREGAR ESTAS IMPORTACIONES:
 from .indicadores_service import ClinicalRecordIndicadoresService
@@ -120,6 +122,17 @@ class RecordLoaderService:
             'indicadores de salud bucal'
         )
         
+        indices_caries = ClinicalRecordIndicesCariesService.obtener_ultimos_indices(paciente_id)
+        
+        indices_caries_data = cls._serializar_seccion(
+            indices_caries,
+            IndicesCariesSerializer,  
+            'índices de caries'
+        )
+        indices_caries_formatted = cls._formatear_seccion(
+            indices_caries,
+            indices_caries_data,
+        )
         return {
             # Información del paciente
             'paciente': {
@@ -168,11 +181,11 @@ class RecordLoaderService:
                 ultimos_datos.get('examen_estomatognatico'),
                 examen_estomatognatico_data
             ),
-            # AGREGAR ESTA SECCIÓN:
             'indicadores_salud_bucal': cls._formatear_seccion(
                 indicadores,
                 indicadores_salud_bucal_data
             ),
+            'indices_caries': indices_caries_formatted,
         }
     
     @staticmethod

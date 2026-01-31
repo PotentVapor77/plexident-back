@@ -22,6 +22,10 @@ from .serializers import (
     
     HistorialOdontogramaSerializer,
     GuardarOdontogramaCompletoSerializer, 
+    
+    IndiceCariesSnapshotSerializer,
+    WritableIndiceCariesSnapshotSerializer,
+    IndiceCariesSnapshotDetailSerializer
 )
 
 # Serializers FHIR
@@ -73,4 +77,7 @@ __all__ = [
     
     'IndicadoresSaludBucalSerializer', 
     'PacienteBasicSerializer',
+    'IndiceCariesSnapshotSerializer',
+    'WritableIndiceCariesSnapshotSerializer',
+    'IndiceCariesSnapshotDetailSerializer',
 ]
