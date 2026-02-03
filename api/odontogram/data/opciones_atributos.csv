@@ -23,7 +23,16 @@ motivo_extraccion,ortodontico,Motivo Ortodóntico,2,4,True
 motivo_extraccion,supernumerario,Supernumerario,2,5,True
 motivo_extraccion,inclusion,Inclusión/Impactación,3,6,True
 motivo_extraccion,otro,Otro Motivo,3,3,True
+motivo_perdida,fractura_irreparable,Fractura Irreparable,5,2,True
+motivo_perdida,enfermedad_periodontal,Enfermedad Periodontal Severa,4,3,True
+motivo_perdida,ortodontico,Motivo Ortodóntico,2,4,True
+motivo_perdida,supernumerario,Supernumerario,2,5,True
+motivo_perdida,inclusion,Inclusión/Impactación,3,6,True
+motivo_perdida,otro,Otro Motivo,3,3,True
 movilidad_dental,grado_0,Grado 0 (Sin movilidad - Normal),1.0,1,True
 movilidad_dental,grado_1,Grado 1 (Movilidad leve: hasta 1mm horizontal),2.0,2,True
 movilidad_dental,grado_2,Grado 2 (Movilidad moderada: 1-2mm horizontal),3.0,3,True
 movilidad_dental,grado_3,Grado 3 (Movilidad severa: >2mm o vertical),5.0,4,True
+gravedad_recesion,leve,Leve (1-2mm),1,1,True
+gravedad_recesion,moderada,Moderada (3-4mm),2,2,True
+gravedad_recesion,severa,Severa (5mm o más),2,3,True

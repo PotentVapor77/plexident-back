@@ -7,5 +7,6 @@ corona_realizada,material_restauracion
 corona_realizada,estado_restauracion
 extraccion_indicada,motivo_extraccion
 extraccion_otra_causa,motivo_extraccion
-perdida_otra_causa,motivo_extraccion
+perdida_otra_causa,motivo_perdida
 movilidad_dental,movilidad_dental
+recesion_gingival,gravedad_recesion

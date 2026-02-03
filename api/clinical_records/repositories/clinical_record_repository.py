@@ -1,5 +1,7 @@
 from django.db.models import Q, Prefetch
 from api.clinical_records.models import ClinicalRecord
+from api.clinical_records.services.indices_caries_service import ClinicalRecordIndicesCariesService
+
 
 
 class ClinicalRecordRepository:
@@ -93,22 +95,28 @@ class ClinicalRecordRepository:
         from api.patients.models.antecedentes_familiares import AntecedentesFamiliares
         from api.patients.models.constantes_vitales import ConstantesVitales
         from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
+        from api.odontogram.models import IndicadoresSaludBucal
         
         return {
             'antecedentes_personales': AntecedentesPersonales.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            ).first(),
+            ).order_by('-fecha_creacion').first(),
             'antecedentes_familiares': AntecedentesFamiliares.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            ).first(),
+            ).order_by('-fecha_creacion').first(),
             'constantes_vitales': ConstantesVitales.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            ).first(),
+            ).order_by('-fecha_creacion').first(),
             'examen_estomatognatico': ExamenEstomatognatico.objects.filter(
                 paciente_id=paciente_id,
                 activo=True
-            ).first(),
+            ).order_by('-fecha_creacion').first(),
+            'indicadores_salud': IndicadoresSaludBucal.objects.filter(
+            paciente_id=paciente_id,
+            activo=True
+            ).order_by('-fecha', '-id').first(),
+            'indices_caries': ClinicalRecordIndicesCariesService.obtener_ultimos_indices(paciente_id),
         }

@@ -30,11 +30,14 @@ from api.odontogram.serializers import (
     DiagnosticoDentalDetailSerializer,
     DiagnosticoDentalCreateSerializer,
     HistorialOdontogramaSerializer,
+    IndicadoresSaludBucalSerializer,
 )
 
-from api.odontogram.services.odontogram_services import IndicadoresSaludBucalService, OdontogramaService, IndiceCariesService
+from api.odontogram.services.indicadores_service import IndicadoresSaludBucalService
+from api.odontogram.services.odontogram_services import OdontogramaService
+from api.odontogram.services.indice_caries_service import IndiceCariesService
 from api.odontogram.serializers.bundle_serializers import FHIRBundleSerializer
-from api.odontogram.serializers.serializers import DienteSerializer, IndicadoresSaludBucalSerializer
+
 from api.users.permissions import UserBasedPermission
 from django.db import models
 
@@ -106,6 +109,51 @@ class PacienteViewSet(viewsets.ModelViewSet):
         logger.info(f"Odontograma cargado para paciente {paciente.id}: {len(dientes_data)} dientes")
         
         return Response(response_data)
+    
+    def snapshots_caries(self, request, pk=None):
+        """
+        GET /api/pacientes/{id}/snapshots-caries/
+        Retorna todos los snapshots de índices de caries del paciente
+        """
+        paciente = self.get_object()
+        
+        # Obtener snapshots ordenados por fecha (más reciente primero)
+        snapshots = IndiceCariesSnapshot.objects.filter(
+            paciente=paciente
+        ).order_by('-fecha')
+        
+        # Serializar
+        from api.odontogram.serializers import IndiceCariesSnapshotSerializer
+        serializer = IndiceCariesSnapshotSerializer(snapshots, many=True)
+        
+        return Response({
+            'paciente_id': str(paciente.id),
+            'paciente_nombre': f"{paciente.nombres} {paciente.apellidos}",
+            'total_snapshots': snapshots.count(),
+            'snapshots': serializer.data
+        })
+    
+    @action(detail=True, methods=['get'], url_path='ultimo-snapshot')
+    def ultimo_snapshot(self, request, pk=None):
+        """
+        GET /api/pacientes/{id}/ultimo-snapshot/
+        """
+        paciente = self.get_object()
+        
+        snapshot = IndiceCariesSnapshot.objects.filter(
+            paciente=paciente
+        ).order_by('-fecha').first()
+        
+        if not snapshot:
+            return Response({
+                'detail': 'No hay snapshots disponibles para este paciente'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        from api.odontogram.serializers import IndiceCariesSnapshotDetailSerializer
+        serializer = IndiceCariesSnapshotDetailSerializer(snapshot)
+        
+        return Response(serializer.data)
+    
     
     @action(detail=True, methods=['get'], url_path='indices-cpo-ceo')
     def indices_cpo_ceo(self, request, pk=None):
@@ -585,6 +633,14 @@ def guardar_odontograma_completo(request, paciente_id):
             odontograma_data=odontograma_data,
             odontologo_id=odontologo_id
         )
+        if resultado is None:
+            logger.error(f"[guardar_odontograma_completo] El servicio retornó None")
+            return Response({
+                'success': False,
+                'status_code': 500,
+                'message': 'Error interno: el servicio no retornó resultado válido',
+                'data': None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         snapshot_id = resultado.get('snapshot_id')
         version_id = resultado.get('version_id')
         
@@ -684,7 +740,7 @@ class IndicadoresSaludBucalViewSet(viewsets.ModelViewSet):
             creado_por=self.request.user,
             activo=True
         )
-        IndicadoresSaludBucalService.calcular_promedios(indicadores)
+        IndicadoresSaludBucalService.calcular_y_guardar_promedios(indicadores)
         
         logger.info(f" → Indicador creado: {indicadores.id}")
 
@@ -694,7 +750,7 @@ class IndicadoresSaludBucalViewSet(viewsets.ModelViewSet):
         
         # Asignar actualizado_por automáticamente
         indicadores = serializer.save(actualizado_por=self.request.user)
-        IndicadoresSaludBucalService.calcular_promedios(indicadores)
+        IndicadoresSaludBucalService.calcular_y_guardar_promedios(indicadores)
         
         logger.info(f" → Indicador actualizado: {indicadores.id}")
 

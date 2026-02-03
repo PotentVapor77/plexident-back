@@ -677,7 +677,8 @@ class IndiceCariesSnapshot(models.Model):
     paciente = models.ForeignKey(
         Paciente,
         on_delete=models.CASCADE,
-        related_name='indices_caries'
+        related_name='snapshots_indices_caries',  
+        verbose_name='Paciente'
     )
 
     # Opcional: enlazar a una versión específica del historial de odontograma
@@ -743,6 +744,16 @@ class IndicadoresSaludBucal(models.Model):
         LEVE = "LEVE", "Leve"
         MODERADA = "MODERADA", "Moderada"
         SEVERA = "SEVERA", "Severa"
+        
+    class NivelGingivitis(models.TextChoices):
+        NINGUNA = "NINGUNA", "No presenta"
+        LEVE = "LEVE", "Leve"
+        MODERADA = "MODERADA", "Moderada"
+        SEVERA = "SEVERA", "Severa"
+        
+    
+        
+    
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
@@ -790,6 +801,11 @@ class IndicadoresSaludBucal(models.Model):
         blank=True,
         help_text="Fecha y hora de eliminación lógica"
     )
+    piezas_usadas_en_registro = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Información de las piezas dentales usadas en este registro específico"
+    )
     # ================================
 
     # Higiene oral simplificada: piezas índice + puntajes 0–3
@@ -805,10 +821,50 @@ class IndicadoresSaludBucal(models.Model):
     pieza_31_calculo = models.IntegerField(null=True, blank=True)
     pieza_46_placa = models.IntegerField(null=True, blank=True)
     pieza_46_calculo = models.IntegerField(null=True, blank=True)
+    pieza_16_gingivitis = models.IntegerField(
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Índice gingival pieza 16 (0-1)"
+    )
+    pieza_11_gingivitis = models.IntegerField(
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Índice gingival pieza 11 (0-1)"
+    )
+    pieza_26_gingivitis = models.IntegerField(
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Índice gingival pieza 26 (0-1)"
+    )
+    pieza_36_gingivitis = models.IntegerField(
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Índice gingival pieza 36 (0-1)"
+    )
+    pieza_31_gingivitis = models.IntegerField(
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Índice gingival pieza 31 (0-1)"
+    )
+    pieza_46_gingivitis = models.IntegerField(
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Índice gingival pieza 46 (0-1)"
+    )
+    
 
     ohi_promedio_placa = models.FloatField(null=True, blank=True)
     ohi_promedio_calculo = models.FloatField(null=True, blank=True)
-
+    gi_promedio_gingivitis = models.FloatField(
+        null=True, 
+        blank=True,
+    )
     enfermedad_periodontal = models.CharField(
         max_length=10,
         choices=NivelPeriodontal.choices,
@@ -828,6 +884,11 @@ class IndicadoresSaludBucal(models.Model):
         choices=NivelFluorosis.choices,
         null=True,
         blank=True,
+    )
+    informacion_calculo = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Información detallada de cálculos y piezas usadas"
     )
 
     observaciones = models.TextField(null=True, blank=True)
@@ -1070,3 +1131,38 @@ class SesionTratamiento(models.Model):
         self.estado = self.EstadoSesion.COMPLETADA
         self.fecha_realizacion = timezone.now()
         self.save()
+        
+        
+    fecha_evaluacion = models.DateTimeField(
+        default=timezone.now,
+        verbose_name='Fecha de evaluación'
+    )
+    
+    # Observaciones del profesional
+    observaciones = models.TextField(
+        blank=True,
+        verbose_name='Observaciones del profesional'
+    )
+    
+    # Usuario que creó el registro
+    creado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name='indices_caries_creados',
+        null=True,
+        blank=True,
+        verbose_name='Creado por'
+    )
+    
+    # Auditoría adicional
+    actualizado_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='indices_caries_actualizados',
+        null=True,
+        blank=True,
+        verbose_name='Actualizado por'
+    )
+    
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)

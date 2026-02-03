@@ -4,3 +4,5 @@ ESTADO_HISTORIAL_CHOICES = (
     ('ABIERTO', 'Abierto'),
     ('CERRADO', 'Cerrado'),
 )
+
+
