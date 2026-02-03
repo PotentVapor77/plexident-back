@@ -4,7 +4,8 @@ from django import forms
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 
-from api.patients.models.anamnesis_general import AnamnesisGeneral
+from .models.examenes_complementarios import ExamenesComplementarios
+
 
 from .models.examen_estomatognatico import ExamenEstomatognatico
 
@@ -198,21 +199,6 @@ class PacienteAdmin(admin.ModelAdmin):
                 instance.actualizado_por = request.user
             instance.save()
         formset.save_m2m()
-
-
-# ================== REGISTRAR MODELOS RELACIONADOS SEPARADAMENTE ==================
-@admin.register(AntecedentesPersonales)
-class AntecedentesPersonalesAdmin(admin.ModelAdmin):
-    list_display = ['paciente', 'alergia_antibiotico', 'alergia_anestesia']
-    search_fields = ['paciente__nombres', 'paciente__apellidos']
-    list_filter = ['alergia_antibiotico', 'alergia_anestesia']
-
-
-@admin.register(AntecedentesFamiliares)
-class AntecedentesFamiliaresAdmin(admin.ModelAdmin):
-    list_display = ['paciente', 'cardiopatia_familiar', 'hipertension_arterial_familiar']
-    search_fields = ['paciente__nombres', 'paciente__apellidos']
-
 
 
 
@@ -417,206 +403,427 @@ class ConstantesVitalesAdmin(admin.ModelAdmin):
     ordering = ['-fecha_consulta']
 
 
-@admin.register(AnamnesisGeneral)
-class AnamnesisGeneralAdmin(admin.ModelAdmin):
+
+
+
+
+
+@admin.register(AntecedentesPersonales)
+class AntecedentesPersonalesAdmin(admin.ModelAdmin):
+    """Admin para Antecedentes Personales"""
+    
     list_display = [
-        'paciente',
-        'get_alergias_display',
-        'get_hemorragias_display',  # ✅ CAMBIADO
-        'get_condiciones_criticas_display',
-        'activo',
-        'fecha_creacion'
+        'paciente_info',
+        'nivel_riesgo',
+        'alergias_resumidas',
+        'diabetes',
+        'hipertension_arterial',
+        'enfermedad_cardiaca',
+        'tiene_condiciones_importantes',
+        'fecha_creacion',
     ]
     
-    list_display_links = ['paciente']
+    list_filter = [
+        'alergia_antibiotico',
+        'alergia_anestesia',
+        'hemorragias',
+        'diabetes',
+        'hipertension_arterial',
+        'enfermedad_cardiaca',
+        'asma',
+        'vih_sida',
+        'tuberculosis',
+        'fecha_creacion',
+    ]
     
     search_fields = [
         'paciente__nombres',
         'paciente__apellidos',
         'paciente__cedula_pasaporte',
-        'observaciones',
-        'alergia_antibiotico_otro',
-        'alergia_anestesia_otro',
-        'hemorragias_detalle',  # ✅ AÑADIDO
-        'otro_antecedente_personal',  # ✅ AÑADIDO
-        'otro_antecedente_familiar'  # ✅ AÑADIDO
+        'paciente__numero_historia_clinica',
     ]
-    
-    list_filter = [
-        'activo',
-        'hemorragias',  # ✅ CAMBIADO
-        'alergia_antibiotico',
-        'alergia_anestesia',
-        'vih_sida',
-        'diabetes',
-        'hipertension_arterial',  # ✅ CAMBIADO
-        'enfermedad_cardiaca',
-        'fecha_creacion'
-    ]
-    
-    raw_id_fields = ['paciente']
     
     readonly_fields = [
+        'id',
         'fecha_creacion',
         'fecha_modificacion',
         'creado_por',
         'actualizado_por',
-        'resumen_condiciones_display'
+        'resumen_completo',
+        'alergias_completas',
+        'exigencias_quirurgicas_display',
     ]
     
     fieldsets = (
         ('Información del Paciente', {
-            'fields': ('paciente', 'activo')
+            'fields': ('paciente', 'resumen_completo')
         }),
-        
         ('Alergias', {
             'fields': (
                 ('alergia_antibiotico', 'alergia_antibiotico_otro'),
                 ('alergia_anestesia', 'alergia_anestesia_otro'),
+                'alergias_completas',
             )
         }),
-        
-        ('Hemorragias / Problemas de Coagulación', {  # ✅ CAMBIADO
+        ('Condiciones Médicas', {
             'fields': (
-                'hemorragias',
-                'hemorragias_detalle'
-            )
-        }),
-        
-        ('Antecedentes Personales', {
-            'fields': (
-                ('vih_sida', 'vih_sida_otro'),
-                ('tuberculosis', 'tuberculosis_otro'),
-                ('asma', 'asma_otro'),
+                ('hemorragias', 'hemorragias_detalle'),
+                'vih_sida',
+                'tuberculosis',
+                'asma',
                 ('diabetes', 'diabetes_otro'),
-                ('hipertension_arterial', 'hipertension_arterial_otro'),  # ✅ CAMBIADO
-                ('enfermedad_cardiaca', 'enfermedad_cardiaca_otro'),  # ✅ CAMBIADO
-                'otro_antecedente_personal'  # ✅ AÑADIDO
-            ),
-            'classes': ('wide',)
-        }),
-        
-        ('Antecedentes Familiares', {
-            'fields': (
-                ('cardiopatia_familiar', 'cardiopatia_familiar_otro'),
-                ('hipertension_familiar', 'hipertension_familiar_otro'),
-                ('enfermedad_cerebrovascular_familiar', 'enfermedad_cerebrovascular_familiar_otro'),
-                ('endocrino_metabolico_familiar', 'endocrino_metabolico_familiar_otro'),
-                ('cancer_familiar', 'cancer_familiar_otro'),
-                ('tuberculosis_familiar', 'tuberculosis_familiar_otro'),
-                ('enfermedad_mental_familiar', 'enfermedad_mental_familiar_otro'),
-                ('enfermedad_infecciosa_familiar', 'enfermedad_infecciosa_familiar_otro'),
-                ('malformacion_familiar', 'malformacion_familiar_otro'),
-                'otro_antecedente_familiar'  # ✅ AÑADIDO
-            ),
-            'classes': ('wide',)
-        }),
-        
-        ('Hábitos y Observaciones', {
-            'fields': (
-                'habitos',
-                'observaciones'
+                'hipertension_arterial',
+                ('enfermedad_cardiaca', 'enfermedad_cardiaca_otro'),
             )
         }),
-        
-        ('Resumen', {
-            'fields': ('resumen_condiciones_display',),
+        ('Otros Antecedentes', {
+            'fields': (
+                'otros_antecedentes_personales',
+                'habitos',
+                'observaciones',
+            )
+        }),
+        ('Precauciones Quirúrgicas', {
+            'fields': ('exigencias_quirurgicas_display',),
             'classes': ('collapse',)
         }),
-        
-        ('Metadata', {
+        ('Metadatos', {
             'fields': (
+                'id',
                 'fecha_creacion',
                 'fecha_modificacion',
                 'creado_por',
-                'actualizado_por'
+                'actualizado_por',
             ),
             'classes': ('collapse',)
         }),
     )
     
-    def get_alergias_display(self, obj):
-        """Muestra alergias en lista"""
-        alergias = []
+    def paciente_info(self, obj):
+        """Información del paciente con enlace"""
+        url = f'/admin/patients/paciente/{obj.paciente.id}/change/'
+        return format_html(
+            '<a href="{}">{}</a><br><small>{}</small>',
+            url,
+            obj.paciente.nombre_completo,
+            obj.paciente.cedula_pasaporte
+        )
+    paciente_info.short_description = 'Paciente'
+    
+    def nivel_riesgo(self, obj):
+        """Nivel de riesgo con colores"""
+        if obj.tiene_antecedentes_criticos:
+            return format_html(
+                '<span style="color: white; background-color: #dc3545; padding: 3px 8px; border-radius: 3px; font-weight: bold;">CRÍTICO</span>'
+            )
+        elif obj.total_antecedentes > 2:
+            return format_html(
+                '<span style="color: #856404; background-color: #fff3cd; padding: 3px 8px; border-radius: 3px; font-weight: bold;">ALTO</span>'
+            )
+        elif obj.total_antecedentes > 0:
+            return format_html(
+                '<span style="color: #0c5460; background-color: #d1ecf1; padding: 3px 8px; border-radius: 3px; font-weight: bold;">MEDIO</span>'
+            )
+        return format_html(
+            '<span style="color: #155724; background-color: #d4edda; padding: 3px 8px; border-radius: 3px; font-weight: bold;">BAJO</span>'
+        )
+    nivel_riesgo.short_description = 'Riesgo'
+    
+    def alergias_resumidas(self, obj):
+        """Resumen de alergias"""
+        if obj.tiene_alergias:
+            return format_html(
+                '<span style="color: #dc3545; font-weight: bold;">{}</span>',
+                obj.resumen_alergias
+            )
+        return format_html('<span style="color: #28a745;">Sin alergias</span>')
+    alergias_resumidas.short_description = 'Alergias'
+    
+    def resumen_completo(self, obj):
+        """Resumen completo de condiciones"""
+        if obj.tiene_condiciones_importantes:
+            antecedentes = '<br>'.join([f'• {ant}' for ant in obj.lista_antecedentes])
+            return format_html(
+                '<div style="padding: 10px; background-color: #fff3cd; border-left: 4px solid #ffc107;">'
+                '<strong>Condiciones importantes:</strong><br>{}</div>',
+                antecedentes
+            )
+        return format_html(
+            '<div style="padding: 10px; background-color: #d4edda; border-left: 4px solid #28a745;">'
+            '<strong>Sin condiciones de riesgo</strong></div>'
+        )
+    resumen_completo.short_description = 'Resumen de Antecedentes'
+    
+    def alergias_completas(self, obj):
+        """Detalle de alergias"""
+        if not obj.tiene_alergias:
+            return format_html('<span style="color: #28a745;">Sin alergias registradas</span>')
+        
+        alergias_list = []
         if obj.alergia_antibiotico != 'NO':
-            texto = f"Antibióticos: {obj.get_alergia_antibiotico_display()}"
+            texto = obj.get_alergia_antibiotico_display()
             if obj.alergia_antibiotico == 'OTRO' and obj.alergia_antibiotico_otro:
-                texto += f" ({obj.alergia_antibiotico_otro})"
-            alergias.append(texto)
+                texto += f' ({obj.alergia_antibiotico_otro})'
+            alergias_list.append(f'<strong>Antibiótico:</strong> {texto}')
         
         if obj.alergia_anestesia != 'NO':
-            texto = f"Anestesia: {obj.get_alergia_anestesia_display()}"
+            texto = obj.get_alergia_anestesia_display()
             if obj.alergia_anestesia == 'OTRO' and obj.alergia_anestesia_otro:
-                texto += f" ({obj.alergia_anestesia_otro})"
-            alergias.append(texto)
+                texto += f' ({obj.alergia_anestesia_otro})'
+            alergias_list.append(f'<strong>Anestesia:</strong> {texto}')
         
-        return format_html('<br>'.join(alergias)) if alergias else 'Sin alergias'
-    get_alergias_display.short_description = 'Alergias'
+        return format_html('<br>'.join(alergias_list))
+    alergias_completas.short_description = 'Detalle de Alergias'
     
-    def get_hemorragias_display(self, obj):  # ✅ NUEVO MÉTODO
-        """Muestra información de hemorragias"""
-        if obj.hemorragias == 'SI':
-            if obj.hemorragias_detalle:
-                return format_html(
-                    '<span style="color: red; font-weight: bold;">⚠️ HEMORRAGIAS</span><br>'
-                    '<small>{}</small>', 
-                    obj.hemorragias_detalle[:50] + '...' if len(obj.hemorragias_detalle) > 50 else obj.hemorragias_detalle
-                )
-            return format_html('<span style="color: red; font-weight: bold;">⚠️ HEMORRAGIAS</span>')
-        return 'Sin problemas'
-    get_hemorragias_display.short_description = 'Hemorragias'
-    
-    def get_condiciones_criticas_display(self, obj):
-        """Muestra condiciones críticas en lista"""
-        condiciones = []
-        if obj.hemorragias == 'SI':  # ✅ CAMBIADO
-            condiciones.append('Hemorragias')
-        if obj.enfermedad_cardiaca != 'NO':
-            condiciones.append('Cardíaca')
-        if obj.vih_sida not in ['NEGATIVO', 'NO_SABE']:
-            condiciones.append('VIH/SIDA')
+    def exigencias_quirurgicas_display(self, obj):
+        """Mostrar exigencias quirúrgicas"""
+        exigencias = obj.exigencias_quirurgicas
+        if not exigencias:
+            return format_html('<span style="color: #28a745;">Sin exigencias especiales</span>')
         
-        if condiciones:
-            return format_html(
-                '<span style="color: red; font-weight: bold;">{}</span>', 
-                ', '.join(condiciones)
-            )
-        return 'Sin críticas'
-    get_condiciones_criticas_display.short_description = 'Condiciones Críticas'
-    
-    def resumen_condiciones_display(self, obj):
-        """Muestra resumen de condiciones en admin"""
+        items = '<br>'.join([f'• {ex}' for ex in exigencias])
         return format_html(
-            '<div style="background-color: #f5f5f5; padding: 10px; border-radius: 5px;">{}</div>', 
-            obj.resumen_condiciones
+            '<div style="padding: 10px; background-color: #f8d7da; border-left: 4px solid #dc3545;">'
+            '<strong>Precauciones:</strong><br>{}</div>',
+            items
         )
-    resumen_condiciones_display.short_description = 'Resumen de Condiciones'
+    exigencias_quirurgicas_display.short_description = 'Exigencias Quirúrgicas'
+
+
+@admin.register(AntecedentesFamiliares)
+class AntecedentesFamiliaresAdmin(admin.ModelAdmin):
+    """Admin para Antecedentes Familiares"""
     
-    def get_queryset(self, request):
-        """Optimizar consultas"""
-        qs = super().get_queryset(request)
-        return qs.select_related(
-            'paciente', 
-            'creado_por', 
-            'actualizado_por'
+    list_display = [
+        'paciente_info',
+        'cardiopatia_familiar',
+        'hipertension_arterial_familiar',
+        'cancer_familiar',
+        'diabetes_familiar',
+        'tiene_antecedentes_importantes',
+        'fecha_creacion',
+    ]
+    
+    list_filter = [
+        'cardiopatia_familiar',
+        'hipertension_arterial_familiar',
+        'enfermedad_vascular_familiar',
+        'cancer_familiar',
+        'enfermedad_mental_familiar',
+        'endocrino_metabolico_familiar',
+        'tuberculosis_familiar',
+        'fecha_creacion',
+    ]
+    
+    search_fields = [
+        'paciente__nombres',
+        'paciente__apellidos',
+        'paciente__cedula_pasaporte',
+        'paciente__numero_historia_clinica',
+    ]
+    
+    readonly_fields = [
+        'id',
+        'fecha_creacion',
+        'fecha_modificacion',
+        'creado_por',
+        'actualizado_por',
+        'resumen_antecedentes_display',
+    ]
+    
+    fieldsets = (
+        ('Información del Paciente', {
+            'fields': ('paciente', 'resumen_antecedentes_display')
+        }),
+        ('Enfermedades Cardiovasculares', {
+            'fields': (
+                ('cardiopatia_familiar', 'cardiopatia_familiar_otro'),
+                ('hipertension_arterial_familiar', 'hipertension_arterial_familiar_otro'),
+                ('enfermedad_vascular_familiar', 'enfermedad_vascular_familiar_otro'),
+            )
+        }),
+        ('Enfermedades Metabólicas y Cáncer', {
+            'fields': (
+                ('endocrino_metabolico_familiar', 'endocrino_metabolico_familiar_detalle'),
+                ('cancer_familiar', 'cancer_familiar_otro'),
+                ('tipo_cancer', 'tipo_cancer_otro'),
+            )
+        }),
+        ('Enfermedades Infecciosas y Otras', {
+            'fields': (
+                ('tuberculosis_familiar', 'tuberculosis_familiar_detalle'),
+                ('enfermedad_mental_familiar', 'enfermedad_mental_familiar_otro'),
+                ('enfermedad_infecciosa_familiar', 'enfermedad_infecciosa_familiar_detalle'),
+                ('malformacion_familiar', 'malformacion_familiar_detalle'),
+            )
+        }),
+        ('Otros Antecedentes', {
+            'fields': ('otros_antecedentes_familiares',)
+        }),
+        ('Metadatos', {
+            'fields': (
+                'id',
+                'fecha_creacion',
+                'fecha_modificacion',
+                'creado_por',
+                'actualizado_por',
+            ),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def paciente_info(self, obj):
+        """Información del paciente con enlace"""
+        url = f'/admin/patients/paciente/{obj.paciente.id}/change/'
+        return format_html(
+            '<a href="{}">{}</a><br><small>{}</small>',
+            url,
+            f"{obj.paciente.apellidos}, {obj.paciente.nombres}",
+            obj.paciente.cedula_pasaporte
         )
+    paciente_info.short_description = 'Paciente'
     
-    def save_model(self, request, obj, form, change):
-        """Asignar usuario que crea/modifica"""
-        if not change:
-            obj.creado_por = request.user
-        obj.actualizado_por = request.user
-        super().save_model(request, obj, form, change)
+    def diabetes_familiar(self, obj):
+        """Mostrar si tiene diabetes familiar"""
+        if obj.endocrino_metabolico_familiar:
+            return format_html('<span style="color: #856404;">SÍ</span>')
+        return format_html('<span style="color: #6c757d;">NO</span>')
+    diabetes_familiar.short_description = 'Diabetes'
     
-    # ✅ Acciones personalizadas
-    actions = ['marcar_como_inactivo']
-    
-    @admin.action(description='📋 Marcar como inactivo')
-    def marcar_como_inactivo(self, request, queryset):
-        """Marcar anamnesis seleccionadas como inactivas"""
-        updated = queryset.update(activo=False)
-        self.message_user(
-            request,
-            f'{updated} anamnesis marcadas como inactivas',
-            level='success'
+    def resumen_antecedentes_display(self, obj):
+        """Resumen de antecedentes familiares"""
+        if not obj.tiene_antecedentes_importantes:
+            return format_html(
+                '<div style="padding: 10px; background-color: #d4edda; border-left: 4px solid #28a745;">'
+                '<strong>Sin antecedentes familiares relevantes</strong></div>'
+            )
+        
+        antecedentes = '<br>'.join([f'• {ant}' for ant in obj.lista_antecedentes])
+        return format_html(
+            '<div style="padding: 10px; background-color: #d1ecf1; border-left: 4px solid #17a2b8;">'
+            '<strong>Antecedentes familiares:</strong><br>{}</div>',
+            antecedentes
         )
+    resumen_antecedentes_display.short_description = 'Resumen de Antecedentes'
+
+
+@admin.register(ExamenesComplementarios)
+class ExamenesComplementariosAdmin(admin.ModelAdmin):
+    """Admin para Exámenes Complementarios"""
+    
+    list_display = [
+        'paciente_info',
+        'pedido_examenes',
+        'informe_examenes',
+        'estado_examenes_display',
+        'fecha_creacion',
+    ]
+    
+    list_filter = [
+        'pedido_examenes',
+        'informe_examenes',
+        'fecha_creacion',
+        'fecha_modificacion',
+    ]
+    
+    search_fields = [
+        'paciente__nombres',
+        'paciente__apellidos',
+        'paciente__cedula_pasaporte',
+        'paciente__numero_historia_clinica',
+        'pedido_examenes_detalle',
+        'informe_examenes_detalle',
+    ]
+    
+    readonly_fields = [
+        'id',
+        'fecha_creacion',
+        'fecha_modificacion',
+        'creado_por',
+        'actualizado_por',
+        'resumen_examenes_display',
+    ]
+    
+    fieldsets = (
+        ('Información del Paciente', {
+            'fields': ('paciente', 'resumen_examenes_display')
+        }),
+        ('Pedido de Exámenes', {
+            'fields': (
+                'pedido_examenes',
+                'pedido_examenes_detalle',
+            )
+        }),
+        ('Informe de Exámenes', {
+            'fields': (
+                'informe_examenes',
+                'informe_examenes_detalle',
+            )
+        }),
+        ('Metadatos', {
+            'fields': (
+                'id',
+                'fecha_creacion',
+                'fecha_modificacion',
+                'creado_por',
+                'actualizado_por',
+            ),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def paciente_info(self, obj):
+        """Información del paciente con enlace"""
+        url = f'/admin/patients/paciente/{obj.paciente.id}/change/'
+        return format_html(
+            '<a href="{}">{}</a><br><small>{}</small>',
+            url,
+            obj.paciente.nombre_completo,
+            obj.paciente.cedula_pasaporte
+        )
+    paciente_info.short_description = 'Paciente'
+    
+    def estado_examenes_display(self, obj):
+        """Estado de exámenes con colores"""
+        estado = obj.estado_examenes
+        
+        if estado == 'completado':
+            return format_html(
+                '<span style="color: white; background-color: #28a745; padding: 3px 8px; border-radius: 3px; font-weight: bold;">COMPLETADO</span>'
+            )
+        elif estado == 'pendiente':
+            return format_html(
+                '<span style="color: #856404; background-color: #fff3cd; padding: 3px 8px; border-radius: 3px; font-weight: bold;">PENDIENTE</span>'
+            )
+        else:
+            return format_html(
+                '<span style="color: #6c757d; background-color: #e9ecef; padding: 3px 8px; border-radius: 3px;">NO SOLICITADO</span>'
+            )
+    estado_examenes_display.short_description = 'Estado'
+    
+    def resumen_examenes_display(self, obj):
+        """Resumen de exámenes complementarios"""
+        estado = obj.estado_examenes
+        
+        if estado == 'completado':
+            return format_html(
+                '<div style="padding: 10px; background-color: #d4edda; border-left: 4px solid #28a745;">'
+                '<strong>Estado:</strong> Completado<br>'
+                '<strong>Tipo:</strong> {}<br>'
+                '<strong>Resultado:</strong> {}</div>',
+                obj.get_informe_examenes_display(),
+                obj.informe_examenes_detalle[:100] + '...' if len(obj.informe_examenes_detalle) > 100 else obj.informe_examenes_detalle
+            )
+        elif estado == 'pendiente':
+            return format_html(
+                '<div style="padding: 10px; background-color: #fff3cd; border-left: 4px solid #ffc107;">'
+                '<strong>Estado:</strong> Pendiente<br>'
+                '<strong>Solicitados:</strong> {}</div>',
+                obj.pedido_examenes_detalle[:100] + '...' if len(obj.pedido_examenes_detalle) > 100 else obj.pedido_examenes_detalle
+            )
+        else:
+            return format_html(
+                '<div style="padding: 10px; background-color: #e9ecef; border-left: 4px solid #6c757d;">'
+                '<strong>No se han solicitado exámenes complementarios</strong></div>'
+            )
+    resumen_examenes_display.short_description = 'Resumen de Exámenes'

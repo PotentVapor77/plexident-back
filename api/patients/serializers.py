@@ -6,7 +6,7 @@ from api.patients.models.antecedentes_personales import AntecedentesPersonales
 from api.patients.models.antecedentes_familiares import AntecedentesFamiliares
 from api.patients.models.constantes_vitales import ConstantesVitales
 from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
-from api.patients.models.anamnesis_general import AnamnesisGeneral
+from api.patients.models.examenes_complementarios import ExamenesComplementarios
 
 
 class PacienteSerializer(serializers.ModelSerializer):
@@ -110,191 +110,7 @@ class PacienteSerializer(serializers.ModelSerializer):
 
 
 
-class AntecedentesPersonalesSerializer(serializers.ModelSerializer):
-    """Serializer para antecedentes personales de pacientes"""
-    
-    paciente_nombre = serializers.CharField(source='paciente.get_full_name', read_only=True)
-    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
-    
-    class Meta:
-        model = AntecedentesPersonales
-        fields = "__all__"
-        read_only_fields = [
-            "id", "creado_por", "actualizado_por", 
-            "fecha_creacion", "fecha_modificacion",
-            "paciente_nombre", "paciente_cedula"
-        ]
 
-    def validate_paciente(self, value):
-        """Validar que el paciente exista y esté activo"""
-        if not value.activo:
-            raise serializers.ValidationError("No se pueden crear antecedentes para un paciente inactivo")
-        return value
-
-    def validate(self, attrs):
-        """Validaciones generales"""
-        # Validar que al menos un campo de antecedentes tenga información
-        campos_antecedentes = [
-            'enfermedades_corazon', 'enfermedades_pulmonares', 'diabetes',
-            'hipertension', 'hepatitis', 'vih_sida', 'alergias',
-            'medicamentos_actuales', 'cirugias_previas', 'hospitalizaciones'
-        ]
-        
-        # Verificar si al menos un campo tiene contenido
-        tiene_datos = any(attrs.get(campo) for campo in campos_antecedentes)
-        
-        if not tiene_datos and self.instance is None:  # Solo en creación
-            raise serializers.ValidationError(
-                "Debe proporcionar al menos un antecedente personal"
-            )
-        
-        return attrs
-
-
-class AntecedentesFamiliaresSerializer(serializers.ModelSerializer):
-    """Serializer para antecedentes familiares de pacientes"""
-    
-    # Campos calculados de solo lectura
-    paciente_nombre = serializers.CharField(source='paciente.get_full_name', read_only=True)
-    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
-    
-    class Meta:
-        model = AntecedentesFamiliares
-        fields = "__all__"
-        read_only_fields = [
-            "id", "creado_por", "actualizado_por", 
-            "fecha_creacion", "fecha_modificacion",
-            "paciente_nombre", "paciente_cedula"
-        ]
-
-
-    def to_representation(self, instance):
-        """Personalizar representación para el frontend"""
-        data = super().to_representation(instance)
-        
-        # Convertir fechas a ISO string
-        if data.get('fecha_creacion'):
-            data['fecha_creacion'] = instance.fecha_creacion.isoformat()
-        if data.get('fecha_modificacion') and instance.fecha_modificacion:
-            data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
-        
-        return data
-
-
-    def validate_paciente(self, value):
-        """Validar que el paciente exista y esté activo"""
-        if not value.activo:
-            raise serializers.ValidationError(
-                "No se pueden crear antecedentes para un paciente inactivo"
-            )
-        
-        return value
-
-
-    def validate_cardiopatia_familiar(self, value):
-        """Validar choices de cardiopatía"""
-        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS']
-        if value and value not in valid_choices:
-            raise serializers.ValidationError(
-                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
-            )
-        return value
-
-
-    def validate_hipertension_arterial_familiar(self, value):
-        """Validar choices de hipertensión"""
-        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS']
-        if value and value not in valid_choices:
-            raise serializers.ValidationError(
-                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
-            )
-        return value
-
-
-    def validate_enfermedad_vascular_familiar(self, value):
-        """Validar choices de enfermedad vascular"""
-        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS']
-        if value and value not in valid_choices:
-            raise serializers.ValidationError(
-                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
-            )
-        return value
-
-
-    def validate_cancer_familiar(self, value):
-        """Validar choices de cáncer"""
-        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS']
-        if value and value not in valid_choices:
-            raise serializers.ValidationError(
-                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
-            )
-        return value
-
-
-    def validate_enfermedad_mental_familiar(self, value):
-        """Validar choices de enfermedad mental"""
-        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS']
-        if value and value not in valid_choices:
-            raise serializers.ValidationError(
-                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
-            )
-        return value
-
-
-    def validate_otros_antecedentes_familiares(self, value):
-        """Validar longitud de otros antecedentes"""
-        if value and len(value) > 500:
-            raise serializers.ValidationError(
-                "El campo 'otros antecedentes' no puede exceder 500 caracteres"
-            )
-        return value
-
-
-    def validate(self, attrs):
-        """Validaciones generales a nivel de objeto"""
-        
-        # Lista de campos con choices (no booleanos)
-        campos_choices = [
-            'cardiopatia_familiar',
-            'hipertension_arterial_familiar',
-            'enfermedad_vascular_familiar',
-            'cancer_familiar',
-            'enfermedad_mental_familiar'
-        ]
-        
-        # Lista de campos booleanos
-        campos_booleanos = [
-            'endocrino_metabolico_familiar',
-            'tuberculosis_familiar',
-            'enfermedad_infecciosa_familiar',
-            'malformacion_familiar'
-        ]
-        
-        # Verificar que al menos un antecedente esté presente (solo en creación)
-        if not self.instance:
-            tiene_choice_activo = any(
-                attrs.get(campo) and attrs.get(campo) != 'NO' 
-                for campo in campos_choices
-            )
-            
-            tiene_booleano_activo = any(
-                attrs.get(campo) is True 
-                for campo in campos_booleanos
-            )
-            
-            tiene_otros = bool(attrs.get('otros_antecedentes_familiares', '').strip())
-            
-            if not (tiene_choice_activo or tiene_booleano_activo or tiene_otros):
-                raise serializers.ValidationError(
-                    "Debe proporcionar al menos un antecedente familiar"
-                )
-        
-        # Validar coherencia: si hay "otros antecedentes", no puede estar vacío
-        otros = attrs.get('otros_antecedentes_familiares', '').strip()
-        if 'otros_antecedentes_familiares' in attrs and not otros:
-            attrs['otros_antecedentes_familiares'] = ''
-        
-        return attrs
 
 class ExamenEstomatognaticoSerializer(serializers.ModelSerializer):
     """Serializer para examen estomatognático"""
@@ -336,12 +152,6 @@ class ExamenEstomatognaticoSerializer(serializers.ModelSerializer):
         if not value.activo:
             raise serializers.ValidationError("No se pueden crear exámenes para un paciente inactivo")
         
-        # 🚨 ELIMINADO: Validación de duplicados para permitir múltiples registros
-        # if not self.instance:
-        #     if ExamenEstomatognatico.objects.filter(paciente=value, activo=True).exists():
-        #         raise serializers.ValidationError(
-        #             "Ya existe un examen estomatognático activo para este paciente"
-        #         )
         
         return value
 
@@ -466,108 +276,21 @@ class ConstantesVitalesSerializer(serializers.ModelSerializer):
         return value
     
 
-class AnamnesisGeneralSerializer(serializers.ModelSerializer):
+
+class AntecedentesPersonalesSerializer(serializers.ModelSerializer):
+    """Serializer para antecedentes personales de pacientes"""
+    
+    # Campos calculados de solo lectura (opcionales)
     paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
     paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
     
-    # ✅ Campos calculados
-    tiene_condiciones_importantes = serializers.BooleanField(read_only=True)
-    resumen_condiciones = serializers.CharField(read_only=True)
-    tiene_pedido_examenes_pendiente = serializers.BooleanField(read_only=True)
-    tiene_informe_examenes_completado = serializers.BooleanField(read_only=True)
-    resumen_examenes_complementarios = serializers.CharField(read_only=True)
-    estado_examenes = serializers.CharField(read_only=True)
-    
     class Meta:
-        model = AnamnesisGeneral
-        fields = [
-            'id',
-            'paciente',
-            'paciente_nombre',
-            'paciente_cedula',
-            
-            # ========== ANTECEDENTES PERSONALES ==========
-            'alergia_antibiotico',
-            'alergia_antibiotico_otro',
-            'alergia_anestesia',
-            'alergia_anestesia_otro',
-            'hemorragias',
-            'hemorragias_detalle',
-            
-            'vih_sida',
-            'vih_sida_otro',
-            'tuberculosis',
-            'tuberculosis_otro',
-            'asma',
-            'asma_otro',
-            'diabetes',
-            'diabetes_otro',
-            'hipertension_arterial',
-            'hipertension_arterial_otro',
-            'enfermedad_cardiaca',
-            'enfermedad_cardiaca_otro',
-            'otro_antecedente_personal',
-            
-            # ========== ANTECEDENTES FAMILIARES ==========
-            'cardiopatia_familiar',
-            'cardiopatia_familiar_otro',
-            'hipertension_familiar',
-            'hipertension_familiar_otro',
-            'enfermedad_cerebrovascular_familiar',
-            'enfermedad_cerebrovascular_familiar_otro',
-            'endocrino_metabolico_familiar',
-            'endocrino_metabolico_familiar_otro',
-            'cancer_familiar',
-            'cancer_familiar_otro',
-            'tuberculosis_familiar',
-            'tuberculosis_familiar_otro',
-            'enfermedad_mental_familiar',
-            'enfermedad_mental_familiar_otro',
-            'enfermedad_infecciosa_familiar',
-            'enfermedad_infecciosa_familiar_otro',
-            'malformacion_familiar',
-            'malformacion_familiar_otro',
-            'otro_antecedente_familiar',
-            
-            # ========== HÁBITOS Y OBSERVACIONES ==========
-            'habitos',
-            'observaciones',
-            
-            # ========== EXÁMENES COMPLEMENTARIOS ==========
-            'pedido_examenes_complementarios',
-            'pedido_examenes_complementarios_detalle',
-            'informe_examenes',
-            'informe_examenes_detalle',
-            
-            # ========== CAMPOS CALCULADOS ==========
-            'tiene_condiciones_importantes',
-            'resumen_condiciones',
-            'tiene_pedido_examenes_pendiente',
-            'tiene_informe_examenes_completado',
-            'resumen_examenes_complementarios',
-            'estado_examenes',
-            
-            # ========== METADATA ==========
-            'activo',
-            'fecha_creacion',
-            'fecha_modificacion',
-            'creado_por',
-            'actualizado_por',
-        ]
+        model = AntecedentesPersonales
+        fields = "__all__"
         read_only_fields = [
-            'id', 
-            'fecha_creacion', 
-            'fecha_modificacion', 
-            'creado_por', 
-            'actualizado_por',
-            'paciente_nombre',
-            'paciente_cedula',
-            'tiene_condiciones_importantes',
-            'resumen_condiciones',
-            'tiene_pedido_examenes_pendiente',
-            'tiene_informe_examenes_completado',
-            'resumen_examenes_complementarios',
-            'estado_examenes',
+            "id", "creado_por", "actualizado_por", 
+            "fecha_creacion", "fecha_modificacion",
+            "paciente_nombre", "paciente_cedula"  # ← Solo estos
         ]
     
     def to_representation(self, instance):
@@ -582,87 +305,560 @@ class AnamnesisGeneralSerializer(serializers.ModelSerializer):
         
         return data
     
-    def validate(self, data):
-        """Validaciones personalizadas basadas en el modelo"""
-        errors = {}
+    def validate_paciente(self, value):
+        """Validar que el paciente exista y esté activo"""
+        if not value.activo:
+            raise serializers.ValidationError(
+                "No se pueden crear antecedentes para un paciente inactivo"
+            )
+        return value
+    
+    def validate_alergia_antibiotico(self, value):
+        """Validar choices de alergia antibiótico"""
+        valid_choices = ['NO', 'PENICILINA', 'SULFA', 'CEFALOSPORINAS', 'MACROLIDOS', 'OTRO']  # ✅ Actualizado
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_alergia_anestesia(self, value):
+        """Validar choices de alergia anestesia"""
+        valid_choices = ['NO', 'LOCAL', 'GENERAL', 'AMBAS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_hemorragias(self, value):
+        """Validar choices de hemorragias"""
+        valid_choices = ['NO', 'SI']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_vih_sida(self, value):
+        """Validar choices de VIH/SIDA"""
+        valid_choices = ['NEGATIVO', 'POSITIVO', 'DESCONOCIDO', 'OTRO']  # ✅ Agregado 'OTRO'
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_tuberculosis(self, value):
+        """Validar choices de tuberculosis"""
+        valid_choices = ['NUNCA', 'TRATADA', 'ACTIVA', 'DESCONOCIDO', 'OTRO']  # ✅ Agregado 'OTRO'
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_asma(self, value):
+        """Validar choices de asma"""
+        valid_choices = ['NO', 'LEVE', 'MODERADA', 'SEVERA', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_diabetes(self, value):
+        """Validar choices de diabetes"""
+        valid_choices = ['NO', 'PREDIABETICO', 'TIPO_1', 'TIPO_2', 'GESTACIONAL', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_hipertension_arterial(self, value):
+        """Validar choices de hipertensión"""
+        valid_choices = ['NO', 'CONTROLADA', 'NO_CONTROLADA', 'SIN_TRATAMIENTO', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_enfermedad_cardiaca(self, value):
+        """Validar choices de enfermedad cardíaca"""
+        valid_choices = ['NO', 'ARRITMIA', 'INSUFICIENCIA', 'CONGENITA', 'OTRO']  # ✅ Cambiado 'OTRA' a 'OTRO'
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate(self, attrs):
+        """Validaciones generales"""
         
-        # Validar campos "Otro" que requieren especificación
-        campos_otro_validacion = [
+        # Lista de TODOS los campos con sus correspondientes _otro
+        campos_validar = [
             ('alergia_antibiotico', 'alergia_antibiotico_otro', 'OTRO'),
             ('alergia_anestesia', 'alergia_anestesia_otro', 'OTRO'),
-            ('vih_sida', 'vih_sida_otro', 'OTRO'),
-            ('tuberculosis', 'tuberculosis_otro', 'OTRO'),
+            ('vih_sida', 'vih_sida_otro', 'OTRO'),  # ✅ Agregado
+            ('tuberculosis', 'tuberculosis_otro', 'OTRO'),  # ✅ Agregado
             ('asma', 'asma_otro', 'OTRO'),
             ('diabetes', 'diabetes_otro', 'OTRO'),
             ('hipertension_arterial', 'hipertension_arterial_otro', 'OTRO'),
-            ('enfermedad_cardiaca', 'enfermedad_cardiaca_otro', 'OTRO'),
-            ('cardiopatia_familiar', 'cardiopatia_familiar_otro', 'OTRO'),
-            ('hipertension_familiar', 'hipertension_familiar_otro', 'OTRO'),
-            ('enfermedad_cerebrovascular_familiar', 'enfermedad_cerebrovascular_familiar_otro', 'OTRO'),
-            ('endocrino_metabolico_familiar', 'endocrino_metabolico_familiar_otro', 'OTRO'),
-            ('cancer_familiar', 'cancer_familiar_otro', 'OTRO'),
-            ('tuberculosis_familiar', 'tuberculosis_familiar_otro', 'OTRO'),
-            ('enfermedad_mental_familiar', 'enfermedad_mental_familiar_otro', 'OTRO'),
-            ('enfermedad_infecciosa_familiar', 'enfermedad_infecciosa_familiar_otro', 'OTRO'),
-            ('malformacion_familiar', 'malformacion_familiar_otro', 'OTRO'),
+            ('enfermedad_cardiaca', 'enfermedad_cardiaca_otro', 'OTRO'),  # ✅ Cambiado 'OTRA' a 'OTRO'
         ]
         
-        for campo_select, campo_otro, valor_otro in campos_otro_validacion:
-            valor_select = data.get(campo_select)
-            valor_otro_field = data.get(campo_otro)
+        # Validación para todos los campos con _otro
+        for campo_principal, campo_otro, valor_otro in campos_validar:
+            valor_principal = attrs.get(campo_principal)
+            valor_otro_text = attrs.get(campo_otro, '')
             
-            # Si estamos actualizando y el campo no está en data, usar el valor actual
-            if self.instance and valor_select is None:
-                valor_select = getattr(self.instance, campo_select)
-            if self.instance and valor_otro_field is None:
-                valor_otro_field = getattr(self.instance, campo_otro)
+            # 1. Si NO es OTRO, el campo _otro debe estar vacío
+            if valor_principal and valor_principal != valor_otro and valor_otro_text:
+                campo_nombre = campo_principal.replace('_', ' ').title()
+                raise serializers.ValidationError({
+                    campo_otro: f'No debe especificar detalles cuando selecciona "{valor_principal}". '
+                               f'Solo complete este campo si selecciona "{valor_otro}".'
+                })
             
-            if valor_select == valor_otro and not valor_otro_field:
-                field = self.Meta.model._meta.get_field(campo_select)
-                nombre_display = dict(field.choices).get(valor_select, valor_select)
-                errors[campo_otro] = f'Debe especificar cuando selecciona "{nombre_display}"'
+            # 2. Si es OTRO, el campo _otro es requerido
+            if valor_principal == valor_otro and not valor_otro_text:
+                tipo_error = campo_principal.replace('_', ' ')
+                raise serializers.ValidationError({
+                    campo_otro: f'Debe especificar el tipo de {tipo_error} cuando selecciona "{valor_otro}"'
+                })
         
-        # ✅ VALIDACIÓN para exámenes complementarios
-        pedido_examenes = data.get('pedido_examenes_complementarios')
-        pedido_detalle = data.get('pedido_examenes_complementarios_detalle')
+        # Validación específica para hemorragias
+        if attrs.get('hemorragias') != 'SI' and attrs.get('hemorragias_detalle'):
+            raise serializers.ValidationError({
+                'hemorragias_detalle': 'Solo debe especificar detalles de hemorragias si selecciona "SI"'
+            })
         
-        if self.instance:
-            if pedido_examenes is None:
-                pedido_examenes = self.instance.pedido_examenes_complementarios
-            if pedido_detalle is None:
-                pedido_detalle = self.instance.pedido_examenes_complementarios_detalle
+        if attrs.get('hemorragias') == 'SI' and not attrs.get('hemorragias_detalle'):
+            raise serializers.ValidationError({
+                'hemorragias_detalle': 'Debe especificar detalles de hemorragias'
+            })
         
-        if pedido_examenes == 'SI' and not pedido_detalle:
-            errors['pedido_examenes_complementarios_detalle'] = 'Debe especificar los exámenes solicitados'
+        # ✅ CORRECCIÓN: Actualizar validación para diabetes_otro
+        # Ahora diabetes_otro solo se usa cuando diabetes es "OTRO"
+        if attrs.get('diabetes') != 'OTRO' and attrs.get('diabetes_otro'):
+            raise serializers.ValidationError({
+                'diabetes_otro': 'Solo debe especificar detalles de diabetes cuando selecciona "OTRO"'
+            })
         
-        # ✅ VALIDACIÓN para informe de exámenes
-        informe_tipo = data.get('informe_examenes')
-        informe_detalle = data.get('informe_examenes_detalle')
+        # Validación de longitud de campos de texto
+        if attrs.get('otros_antecedentes_personales') and len(attrs['otros_antecedentes_personales']) > 1000:
+            raise serializers.ValidationError({
+                'otros_antecedentes_personales': 'El campo no puede exceder 1000 caracteres'
+            })
         
-        if self.instance:
-            if informe_tipo is None:
-                informe_tipo = self.instance.informe_examenes
-            if informe_detalle is None:
-                informe_detalle = self.instance.informe_examenes_detalle
+        if attrs.get('habitos') and len(attrs['habitos']) > 1000:
+            raise serializers.ValidationError({
+                'habitos': 'El campo no puede exceder 1000 caracteres'
+            })
         
-        if informe_tipo == 'OTROS' and not informe_detalle:
-            errors['informe_examenes_detalle'] = 'Debe especificar el tipo de examen cuando selecciona "Otros"'
+        if attrs.get('observaciones') and len(attrs['observaciones']) > 1000:
+            raise serializers.ValidationError({
+                'observaciones': 'El campo no puede exceder 1000 caracteres'
+            })
         
-        if informe_tipo != 'NINGUNO' and not informe_detalle:
-            errors['informe_examenes_detalle'] = 'Debe detallar los resultados del examen'
+        # Validación adicional: hemorragias_detalle no debe exceder 500 caracteres
+        if attrs.get('hemorragias_detalle') and len(attrs['hemorragias_detalle']) > 500:
+            raise serializers.ValidationError({
+                'hemorragias_detalle': 'El campo no puede exceder 500 caracteres'
+            })
         
-        if errors:
-            raise serializers.ValidationError(errors)
+        # Validación adicional: campos _otro no deben exceder 100 caracteres
+        campos_otro = [
+            'alergia_antibiotico_otro', 'alergia_anestesia_otro', 'vih_sida_otro',
+            'tuberculosis_otro', 'asma_otro', 'diabetes_otro',
+            'hipertension_arterial_otro', 'enfermedad_cardiaca_otro'
+        ]
+        
+        for campo in campos_otro:
+            if attrs.get(campo) and len(attrs[campo]) > 100:
+                raise serializers.ValidationError({
+                    campo: 'El campo no puede exceder 100 caracteres'
+                })
+        
+        return attrs
+
+
+class AntecedentesFamiliaresSerializer(serializers.ModelSerializer):
+    """Serializer para antecedentes familiares de pacientes"""
+    
+    # Campos calculados de solo lectura (opcionales)
+    paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
+    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
+    
+    class Meta:
+        model = AntecedentesFamiliares
+        fields = "__all__"
+        read_only_fields = [
+            "id", "creado_por", "actualizado_por", 
+            "fecha_creacion", "fecha_modificacion",
+            "paciente_nombre", "paciente_cedula"  # ← Solo estos
+        ]
+    
+    def to_representation(self, instance):
+        """Personalizar representación para el frontend"""
+        data = super().to_representation(instance)
+        
+        # Convertir fechas a ISO string
+        if data.get('fecha_creacion'):
+            data['fecha_creacion'] = instance.fecha_creacion.isoformat()
+        if data.get('fecha_modificacion') and instance.fecha_modificacion:
+            data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
         
         return data
     
-    def create(self, validated_data):
-        """Crear anamnesis general"""
-        validated_data['creado_por'] = self.context['request'].user
-        validated_data['actualizado_por'] = self.context['request'].user
-        return super().create(validated_data)
+    def validate_paciente(self, value):
+        """Validar que el paciente exista y esté activo"""
+        if not value.activo:
+            raise serializers.ValidationError(
+                "No se pueden crear antecedentes para un paciente inactivo"
+            )
+        return value
     
-    def update(self, instance, validated_data):
-        """Actualizar anamnesis general"""
-        validated_data['actualizado_por'] = self.context['request'].user
-        return super().update(instance, validated_data)
+    def validate_cardiopatia_familiar(self, value):
+        """Validar choices de cardiopatía"""
+        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_hipertension_arterial_familiar(self, value):
+        """Validar choices de hipertensión"""
+        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_enfermedad_vascular_familiar(self, value):
+        """Validar choices de enfermedad vascular"""
+        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_endocrino_metabolico_familiar(self, value):
+        """Validar choices de endócrino metabólico"""
+        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_cancer_familiar(self, value):
+        """Validar choices de cáncer"""
+        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_tuberculosis_familiar(self, value):
+        """Validar choices de tuberculosis"""
+        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_enfermedad_mental_familiar(self, value):
+        """Validar choices de enfermedad mental"""
+        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_enfermedad_infecciosa_familiar(self, value):
+        """Validar choices de enfermedad infecciosa"""
+        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_malformacion_familiar(self, value):
+        """Validar choices de malformación"""
+        valid_choices = ['NO', 'PADRE', 'MADRE', 'HERMANOS', 'ABUELOS', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_tipo_cancer(self, value):
+        """Validar choices de tipo de cáncer"""
+        valid_choices = ['MAMA', 'PULMON', 'PROSTATA', 'COLORRECTAL', 'CERVICOUTERINO', 'OTRO']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_otros_antecedentes_familiares(self, value):
+        """Validar longitud de otros antecedentes"""
+        if value and len(value) > 1000:
+            raise serializers.ValidationError(
+                "El campo 'otros antecedentes' no puede exceder 1000 caracteres"
+            )
+        return value
+    
+    def validate(self, attrs):
+        """Validaciones generales a nivel de objeto"""
+        
+        # Lista de campos para validación
+        campos_validar = [
+            ('cardiopatia_familiar', 'cardiopatia_familiar_otro'),
+            ('hipertension_arterial_familiar', 'hipertension_arterial_familiar_otro'),
+            ('enfermedad_vascular_familiar', 'enfermedad_vascular_familiar_otro'),
+            ('endocrino_metabolico_familiar', 'endocrino_metabolico_familiar_otro'),
+            ('cancer_familiar', 'cancer_familiar_otro'),
+            ('tuberculosis_familiar', 'tuberculosis_familiar_otro'),
+            ('enfermedad_mental_familiar', 'enfermedad_mental_familiar_otro'),
+            ('enfermedad_infecciosa_familiar', 'enfermedad_infecciosa_familiar_otro'),
+            ('malformacion_familiar', 'malformacion_familiar_otro'),
+        ]
+        
+        # Validación 1: Campos _otro solo cuando principal es "OTRO"
+        for campo_principal, campo_otro in campos_validar:
+            valor_principal = attrs.get(campo_principal)
+            valor_otro = attrs.get(campo_otro, '')
+            
+            if valor_principal and valor_principal != 'OTRO' and valor_otro:
+                raise serializers.ValidationError({
+                    campo_otro: f'No debe especificar familiar "otro" cuando selecciona "{valor_principal}". '
+                               f'Solo complete este campo si selecciona "OTRO" como familiar.'
+                })
+        
+        # Validación 2: Campos _otro requeridos cuando principal es "OTRO"
+        for campo_principal, campo_otro in campos_validar:
+            valor_principal = attrs.get(campo_principal)
+            valor_otro = attrs.get(campo_otro, '')
+            
+            if valor_principal == 'OTRO' and not valor_otro:
+                raise serializers.ValidationError({
+                    campo_otro: f'Debe especificar el familiar cuando selecciona "OTRO"'
+                })
+        
+        # Validación 3: Campos "OTRO" que requieren especificación
+        if attrs.get('cardiopatia_familiar') == 'OTRO' and not attrs.get('cardiopatia_familiar_otro'):
+            raise serializers.ValidationError({
+                'cardiopatia_familiar_otro': 'Debe especificar el familiar cuando selecciona "Otro"'
+            })
+        
+        if attrs.get('hipertension_arterial_familiar') == 'OTRO' and not attrs.get('hipertension_arterial_familiar_otro'):
+            raise serializers.ValidationError({
+                'hipertension_arterial_familiar_otro': 'Debe especificar el familiar cuando selecciona "Otro"'
+            })
+        
+        if attrs.get('enfermedad_vascular_familiar') == 'OTRO' and not attrs.get('enfermedad_vascular_familiar_otro'):
+            raise serializers.ValidationError({
+                'enfermedad_vascular_familiar_otro': 'Debe especificar el familiar cuando selecciona "Otro"'
+            })
+        
+        if attrs.get('endocrino_metabolico_familiar') == 'OTRO' and not attrs.get('endocrino_metabolico_familiar_otro'):
+            raise serializers.ValidationError({
+                'endocrino_metabolico_familiar_otro': 'Debe especificar el familiar cuando selecciona "Otro"'
+            })
+        
+        if attrs.get('cancer_familiar') == 'OTRO' and not attrs.get('cancer_familiar_otro'):
+            raise serializers.ValidationError({
+                'cancer_familiar_otro': 'Debe especificar el familiar cuando selecciona "Otro"'
+            })
+        
+        if attrs.get('tuberculosis_familiar') == 'OTRO' and not attrs.get('tuberculosis_familiar_otro'):
+            raise serializers.ValidationError({
+                'tuberculosis_familiar_otro': 'Debe especificar el familiar cuando selecciona "Otro"'
+            })
+        
+        if attrs.get('enfermedad_mental_familiar') == 'OTRO' and not attrs.get('enfermedad_mental_familiar_otro'):
+            raise serializers.ValidationError({
+                'enfermedad_mental_familiar_otro': 'Debe especificar el familiar cuando selecciona "Otro"'
+            })
+        
+        if attrs.get('enfermedad_infecciosa_familiar') == 'OTRO' and not attrs.get('enfermedad_infecciosa_familiar_otro'):
+            raise serializers.ValidationError({
+                'enfermedad_infecciosa_familiar_otro': 'Debe especificar el familiar cuando selecciona "Otro"'
+            })
+        
+        if attrs.get('malformacion_familiar') == 'OTRO' and not attrs.get('malformacion_familiar_otro'):
+            raise serializers.ValidationError({
+                'malformacion_familiar_otro': 'Debe especificar el familiar cuando selecciona "Otro"'
+            })
+        
+        # Validar tipo de cáncer
+        if attrs.get('cancer_familiar') and attrs.get('cancer_familiar') != 'NO':
+            if not attrs.get('tipo_cancer'):
+                raise serializers.ValidationError({
+                    'tipo_cancer': 'Debe especificar el tipo de cáncer'
+                })
+        
+        if attrs.get('tipo_cancer') == 'OTRO' and not attrs.get('tipo_cancer_otro'):
+            raise serializers.ValidationError({
+                'tipo_cancer_otro': 'Debe especificar el tipo de cáncer cuando selecciona "Otro"'
+            })
+        
+        # Validar que tipo_cancer_otro esté vacío si no es OTRO
+        if attrs.get('tipo_cancer') and attrs.get('tipo_cancer') != 'OTRO' and attrs.get('tipo_cancer_otro'):
+            raise serializers.ValidationError({
+                'tipo_cancer_otro': 'Solo debe especificar tipo de cáncer "otro" cuando selecciona "OTRO"'
+            })
+        
+        # Lista de TODOS los campos con choices
+        campos_choices = [
+            'cardiopatia_familiar',
+            'hipertension_arterial_familiar', 
+            'enfermedad_vascular_familiar',
+            'endocrino_metabolico_familiar',
+            'cancer_familiar',
+            'tuberculosis_familiar',  
+            'enfermedad_mental_familiar',
+            'enfermedad_infecciosa_familiar',
+            'malformacion_familiar'
+        ]
+        
+        # Verificar que al menos un antecedente esté presente (solo en creación)
+        if not self.instance:
+            tiene_choice_activo = any(
+                attrs.get(campo) and attrs.get(campo) != 'NO' 
+                for campo in campos_choices
+            )
+            
+            tiene_otros = bool(attrs.get('otros_antecedentes_familiares', '').strip())
+            
+            if not (tiene_choice_activo or tiene_otros):
+                raise serializers.ValidationError(
+                    "Debe proporcionar al menos un antecedente familiar"
+                )
+        
+        # Validar coherencia: si hay "otros antecedentes", no puede estar vacío
+        otros = attrs.get('otros_antecedentes_familiares', '').strip()
+        if 'otros_antecedentes_familiares' in attrs and not otros:
+            attrs['otros_antecedentes_familiares'] = ''
+        
+        return attrs
+
+
+class ExamenesComplementariosSerializer(serializers.ModelSerializer):
+    """Serializer para exámenes complementarios de pacientes"""
+    
+    # Campos calculados de solo lectura
+    paciente_nombre = serializers.CharField(source='paciente.nombre_completo', read_only=True)
+    paciente_cedula = serializers.CharField(source='paciente.cedula_pasaporte', read_only=True)
+    
+    class Meta:
+        model = ExamenesComplementarios
+        fields = "__all__"
+        read_only_fields = [
+            "id", "creado_por", "actualizado_por", 
+            "fecha_creacion", "fecha_modificacion",
+            "paciente_nombre", "paciente_cedula"  # ← Solo estos
+        ]
+    
+    def to_representation(self, instance):
+        """Personalizar representación para el frontend"""
+        data = super().to_representation(instance)
+        
+        # Convertir fechas a ISO string
+        if data.get('fecha_creacion'):
+            data['fecha_creacion'] = instance.fecha_creacion.isoformat()
+        if data.get('fecha_modificacion') and instance.fecha_modificacion:
+            data['fecha_modificacion'] = instance.fecha_modificacion.isoformat()
+        
+        return data
+    
+    def validate_paciente(self, value):
+        """Validar que el paciente exista y esté activo"""
+        if not value.activo:
+            raise serializers.ValidationError(
+                "No se pueden crear exámenes para un paciente inactivo"
+            )
+        return value
+    
+    def validate_pedido_examenes(self, value):
+        """Validar choices de pedido de exámenes"""
+        valid_choices = ['NO', 'SI']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_informe_examenes(self, value):
+        """Validar choices de informe de exámenes"""
+        valid_choices = ['NINGUNO', 'BIOMETRIA', 'QUIMICA_SANGUINEA', 'RAYOS_X', 'OTROS']
+        if value and value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Valor inválido. Debe ser uno de: {', '.join(valid_choices)}"
+            )
+        return value
+    
+    def validate_pedido_examenes_detalle(self, value):
+        """Validar longitud de detalle de pedido"""
+        if value and len(value) > 1000:
+            raise serializers.ValidationError(
+                "El campo 'detalle de exámenes solicitados' no puede exceder 1000 caracteres"
+            )
+        return value
+    
+    def validate_informe_examenes_detalle(self, value):
+        """Validar longitud de detalle de informe"""
+        if value and len(value) > 1000:
+            raise serializers.ValidationError(
+                "El campo 'resultados de exámenes' no puede exceder 1000 caracteres"
+            )
+        return value
+    
+    def validate(self, attrs):
+        """Validaciones generales"""
+        
+        # Validar pedido de exámenes
+        if attrs.get('pedido_examenes') == 'SI' and not attrs.get('pedido_examenes_detalle'):
+            raise serializers.ValidationError({
+                'pedido_examenes_detalle': 'Debe especificar los exámenes solicitados'
+            })
+        
+        # Validar que pedido_examenes_detalle esté vacío si pedido_examenes es 'NO'
+        if attrs.get('pedido_examenes') == 'NO' and attrs.get('pedido_examenes_detalle'):
+            raise serializers.ValidationError({
+                'pedido_examenes_detalle': 'No debe especificar detalles si no solicita exámenes'
+            })
+        
+        # Validar informe de exámenes "OTROS"
+        if attrs.get('informe_examenes') == 'OTROS' and not attrs.get('informe_examenes_detalle'):
+            raise serializers.ValidationError({
+                'informe_examenes_detalle': 'Debe especificar el tipo de examen cuando selecciona "Otros"'
+            })
+        
+        # Validar que informe_examenes_detalle esté vacío si informe_examenes es 'NINGUNO'
+        if attrs.get('informe_examenes') == 'NINGUNO' and attrs.get('informe_examenes_detalle'):
+            raise serializers.ValidationError({
+                'informe_examenes_detalle': 'No debe especificar resultados si no hay informe de exámenes'
+            })
+        
+        # Validar que si hay informe, debe tener detalle
+        if attrs.get('informe_examenes') and attrs.get('informe_examenes') != 'NINGUNO':
+            if not attrs.get('informe_examenes_detalle'):
+                raise serializers.ValidationError({
+                    'informe_examenes_detalle': 'Debe detallar los resultados del examen'
+                })
+        
+        return attrs
+    
+

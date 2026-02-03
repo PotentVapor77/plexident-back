@@ -235,21 +235,16 @@ class CitaViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='reprogramar')
     def reprogramar(self, request, pk=None):
         """Reprogramar una cita"""
-        serializer = CitaReprogramarSerializer(data=request.data)
+        cita_original = self.get_object()
+        
+        # ✅ Pasar la cita en el contexto del serializer
+        serializer = CitaReprogramarSerializer(
+            data=request.data,
+            context={'cita': cita_original}  # ← IMPORTANTE
+        )
         serializer.is_valid(raise_exception=True)
         
         try:
-            # Obtener la cita original antes de reprogramar
-            cita_original = self.get_object()
-            
-            # Log de información original
-            logger.info(
-                f"Iniciando reprogramación - Cita ID: {pk}, "
-                f"Fecha original: {cita_original.fecha} {cita_original.hora_inicio}, "
-                f"Estado original: {cita_original.estado}"
-            )
-            
-            # Reprogramar la cita
             nueva_cita = CitaService.reprogramar_cita(
                 pk,
                 serializer.validated_data['nueva_fecha'],
@@ -257,29 +252,22 @@ class CitaViewSet(viewsets.ModelViewSet):
                 request.user
             )
             
-            # ✅ Verificar que el estado sea REPROGRAMADA
-            if nueva_cita.estado != EstadoCita.REPROGRAMADA:
-                logger.warning(f"Cita reprogramada con estado incorrecto: {nueva_cita.estado}")
-                # Forzar el estado correcto
-                nueva_cita.estado = EstadoCita.REPROGRAMADA
-                nueva_cita.save()
-            
             output_serializer = CitaDetailSerializer(nueva_cita)
-            
-            # Log detallado del resultado
-            logger.info(
-                f"Cita reprogramada exitosamente. "
-                f"Nueva cita ID: {nueva_cita.id}, "
-                f"Nueva fecha: {nueva_cita.fecha} {nueva_cita.hora_inicio}, "
-                f"Estado: {nueva_cita.estado}, "
-                f"Usuario: {request.user.username}"
-            )
+            logger.info(f"Cita {pk} reprogramada exitosamente por {request.user.username}")
             
             return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+            
         except ValidationError as e:
             logger.error(f"Error reprogramando cita {pk}: {str(e)}")
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
+
+
+
+
+
+
+
+
     @action(detail=True, methods=['patch'], url_path='cambiar-estado')
     def cambiar_estado(self, request, pk=None):
         """Cambiar estado de una cita"""

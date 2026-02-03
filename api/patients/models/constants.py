@@ -20,91 +20,118 @@ EMBARAZADA_CHOICES = [
 ]
 
 
-# Sección D: ANTECEDENTES PATOLÓGICOS PERSONALES - Opciones
+# ================== ANTECEDENTES PERSONALES ==================
+
+# ALERGIA ANTIBIÓTICO
 ALERGIA_ANTIBIOTICO_CHOICES = [
     ('NO', 'No'),
-    ('PENICILINA', 'Penicilina'),
-    ('SULFA', 'Sulfa'),
-    ('OTRO', 'Otro'),
+    ('PENICILINA', 'Penicilina/Amoxicilina'), 
+    ('SULFA', 'Sulfametoxazol/Bactrim'),      
+    ('CEFALOSPORINAS', 'Cefalosporinas'),    
+    ('MACROLIDOS', 'Macrólidos (Eritromicina)'),
+    ('OTRO', 'Otro antibiótico'),  
 ]
 
+# ALERGIA ANESTESIA
 ALERGIA_ANESTESIA_CHOICES = [
     ('NO', 'No'),
     ('LOCAL', 'Anestesia local'),
     ('GENERAL', 'Anestesia general'),
     ('AMBAS', 'Ambas'),
-    ('OTRO', 'Otro'),
+    ('OTRO', 'Otro tipo de anestesia'),  #
 ]
 
-# 3. HEMORRAGIAS - Simple: Sí o No (si no sabe, marca No por defecto)
+# HEMORRAGIAS
 HEMORRAGIAS_CHOICES = [
     ('NO', 'No'),
     ('SI', 'Sí'),
 ]
 
-# 4. VIH / SIDA - Aquí SÍ tiene sentido "Desconocido" (no se ha hecho la prueba)
+# VIH / SIDA
 VIH_SIDA_CHOICES = [
     ('NEGATIVO', 'Negativo'),
     ('POSITIVO', 'Positivo'),
     ('DESCONOCIDO', 'No se ha realizado prueba'),
+    ('OTRO', 'Otra condición inmunológica'),  
 ]
 
-# 5. TUBERCULOSIS - "Desconocido" útil (puede no recordar diagnóstico antiguo)
+# TUBERCULOSIS
 TUBERCULOSIS_CHOICES = [
     ('NUNCA', 'Nunca'),
     ('TRATADA', 'Tratada anteriormente'),
     ('ACTIVA', 'Activa'),
     ('DESCONOCIDO', 'No está seguro'),
+    ('OTRO', 'Otra enfermedad pulmonar'),  
 ]
 
-# 6. ASMA - Sin desconocido (si tiene síntomas respiratorios, el médico evalúa)
+# ASMA
 ASMA_CHOICES = [
     ('NO', 'No'),
     ('LEVE', 'Leve'),
     ('MODERADA', 'Moderada'),
     ('SEVERA', 'Severa'),
+    ('OTRO', 'Otra enfermedad respiratoria'),  
 ]
 
-# 7. DIABETES - Sin desconocido (se diagnostica con exámenes)
+# DIABETES
 DIABETES_CHOICES = [
     ('NO', 'No'),
     ('PREDIABETICO', 'Prediabético'),
     ('TIPO_1', 'Tipo 1'),
     ('TIPO_2', 'Tipo 2'),
     ('GESTACIONAL', 'Gestacional'),
+    ('OTRO', 'Otro tipo de diabetes'), 
 ]
 
-# 8. HIPERTENSIÓN - Sin desconocido (se mide en consulta)
+# HIPERTENSIÓN ARTERIAL
 HIPERTENSION_CHOICES = [
     ('NO', 'No'),
     ('CONTROLADA', 'Controlada'),
     ('NO_CONTROLADA', 'No controlada'),
     ('SIN_TRATAMIENTO', 'Sin tratamiento'),
+    ('OTRO', 'Otro trastorno cardiovascular'),  
 ]
 
-# 9. ENFERMEDAD CARDÍACA - "Otra" cubre casos no listados
+# ENFERMEDAD CARDIACA
 ENFERMEDAD_CARDIACA_CHOICES = [
     ('NO', 'No'),
     ('ARRITMIA', 'Arritmia'),
     ('INSUFICIENCIA', 'Insuficiencia cardíaca'),
     ('CONGENITA', 'Congénita'),
-    ('OTRA', 'Otra'),
+    ('OTRO', 'Otra enfermedad cardíaca'),  
 ]
 
+# ================== ANTECEDENTES FAMILIARES ==================
 
-
-# Sección E: ANTECEDENTES PATOLÓGICOS FAMILIARES - Opciones
 FAMILIAR_BASE_CHOICES = [
+    ('NO', 'No hay antecedentes'),
     ('PADRE', 'Padre'),
     ('MADRE', 'Madre'),
     ('HERMANOS', 'Hermanos'),
     ('ABUELOS', 'Abuelos'),
-    ('NO', 'No hay antecedentes'),
+    ('OTRO', 'Otro'),
 ]
 
-CARDIOPATIA_FAMILIAR_CHOICES = FAMILIAR_BASE_CHOICES
-HIPERTENSION_FAMILIAR_CHOICES = FAMILIAR_BASE_CHOICES
-ENFERMEDAD_VASCULAR_CHOICES = FAMILIAR_BASE_CHOICES
-CANCER_FAMILIAR_CHOICES = FAMILIAR_BASE_CHOICES
-ENFERMEDAD_MENTAL_CHOICES = FAMILIAR_BASE_CHOICES
+TIPO_CANCER_CHOICES = [
+    ('MAMA', 'Cáncer de Mama'),
+    ('PULMON', 'Cáncer de Pulmón'),
+    ('PROSTATA', 'Cáncer de Próstata'),
+    ('COLORRECTAL', 'Cáncer Colorrectal'),
+    ('CERVICOUTERINO', 'Cáncer Cervicouterino'),
+    ('OTRO', 'Otro'),
+]
 
+# ================== EXÁMENES COMPLEMENTARIOS ==================
+
+INFORME_EXAMENES_CHOICES = [
+    ('NINGUNO', 'Ninguno'),
+    ('BIOMETRIA', 'Biometría'),
+    ('QUIMICA_SANGUINEA', 'Química sanguínea'),
+    ('RAYOS_X', 'Rayos X'),
+    ('OTROS', 'Otros'),
+]
+
+PEDIDO_EXAMENES_CHOICES = [
+    ('NO', 'No'),
+    ('SI', 'Sí'),
+]

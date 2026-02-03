@@ -450,19 +450,20 @@ class DashboardRepository:
             estado=EstadoCita.ASISTIDA
         ).count()
 
+    
     @staticmethod
     def get_pacientes_con_condiciones_importantes():
-        """Pacientes con condiciones importantes según AnamnesisGeneral"""
+        """Pacientes con condiciones importantes según AntecedentesPersonales"""
         return Paciente.objects.filter(
             activo=True,
-            anamnesis_general__isnull=False
+            antecedentes_personales__isnull=False
         ).filter(
-            Q(anamnesis_general__alergia_antibiotico__in=['PENICILINA', 'AMOXICILINA', 'CEFALEXINA', 'AZITROMICINA', 'CLARITROMICINA', 'OTRO']) |
-            Q(anamnesis_general__alergia_anestesia__in=['LIDOCAINA', 'ARTICAINA', 'MEPIVACAINA', 'BUPIVACAINA', 'PRILOCAINA', 'OTRO']) |
-            Q(anamnesis_general__hemorragias='SI') |
-            Q(anamnesis_general__diabetes__in=['TIPO_1', 'TIPO_2', 'GESTACIONAL', 'PREDIABETES', 'LADA', 'OTRO']) |
-            Q(anamnesis_general__hipertension_arterial__in=['CONTROLADA', 'LIMITROFE', 'NO_CONTROLADA', 'RESISTENTE', 'MALIGNA', 'OTRO']) |
-            Q(anamnesis_general__enfermedad_cardiaca__in=['CARDIOPATIA_ISQUEMICA', 'INSUFICIENCIA_CARDIACA', 'ARRITMIA', 'VALVULOPATIA', 'CARDIOMIOPATIA', 'OTRO'])
+            Q(antecedentes_personales__alergia_antibiotico__in=['PENICILINA', 'AMOXICILINA', 'CEFALEXINA', 'AZITROMICINA', 'CLARITROMICINA', 'OTRO']) |
+            Q(antecedentes_personales__alergia_anestesia__in=['LIDOCAINA', 'ARTICAINA', 'MEPIVACAINA', 'BUPIVACAINA', 'PRILOCAINA', 'OTRO']) |
+            Q(antecedentes_personales__hemorragias='SI') |
+            Q(antecedentes_personales__diabetes__in=['TIPO_1', 'TIPO_2', 'GESTACIONAL', 'PREDIABETES', 'LADA', 'OTRO']) |
+            Q(antecedentes_personales__hipertension_arterial__in=['CONTROLADA', 'LIMITROFE', 'NO_CONTROLADA', 'RESISTENTE', 'MALIGNA', 'OTRO']) |
+            Q(antecedentes_personales__enfermedad_cardiaca__in=['CARDIOPATIA_ISQUEMICA', 'INSUFICIENCIA_CARDIACA', 'ARRITMIA', 'VALVULOPATIA', 'CARDIOMIOPATIA', 'OTRO'])
         ).count()
 
     @staticmethod
@@ -474,22 +475,24 @@ class DashboardRepository:
             estado=EstadoCita.CANCELADA
         ).select_related('paciente').order_by('-fecha', '-hora_inicio')[:limit]
 
+
     @staticmethod
     def get_pacientes_con_condiciones_importantes_lista(limit=10):
         """Lista de pacientes con condiciones importantes"""
         pacientes = Paciente.objects.filter(
             activo=True,
-            anamnesis_general__isnull=False
+            antecedentes_personales__isnull=False
         ).filter(
-            Q(anamnesis_general__alergia_antibiotico__in=['PENICILINA', 'AMOXICILINA', 'CEFALEXINA', 'AZITROMICINA', 'CLARITROMICINA', 'OTRO']) |
-            Q(anamnesis_general__alergia_anestesia__in=['LIDOCAINA', 'ARTICAINA', 'MEPIVACAINA', 'BUPIVACAINA', 'PRILOCAINA', 'OTRO']) |
-            Q(anamnesis_general__hemorragias='SI') |
-            Q(anamnesis_general__diabetes__in=['TIPO_1', 'TIPO_2', 'GESTACIONAL', 'PREDIABETES', 'LADA', 'OTRO']) |
-            Q(anamnesis_general__hipertension_arterial__in=['CONTROLADA', 'LIMITROFE', 'NO_CONTROLADA', 'RESISTENTE', 'MALIGNA', 'OTRO']) |
-            Q(anamnesis_general__enfermedad_cardiaca__in=['CARDIOPATIA_ISQUEMICA', 'INSUFICIENCIA_CARDIACA', 'ARRITMIA', 'VALVULOPATIA', 'CARDIOMIOPATIA', 'OTRO'])
-        ).select_related('anamnesis_general').order_by('-fecha_creacion')[:limit]
+            Q(antecedentes_personales__alergia_antibiotico__in=['PENICILINA', 'AMOXICILINA', 'CEFALEXINA', 'AZITROMICINA', 'CLARITROMICINA', 'OTRO']) |
+            Q(antecedentes_personales__alergia_anestesia__in=['LIDOCAINA', 'ARTICAINA', 'MEPIVACAINA', 'BUPIVACAINA', 'PRILOCAINA', 'OTRO']) |
+            Q(antecedentes_personales__hemorragias='SI') |
+            Q(antecedentes_personales__diabetes__in=['TIPO_1', 'TIPO_2', 'GESTACIONAL', 'PREDIABETES', 'LADA', 'OTRO']) |
+            Q(antecedentes_personales__hipertension_arterial__in=['CONTROLADA', 'LIMITROFE', 'NO_CONTROLADA', 'RESISTENTE', 'MALIGNA', 'OTRO']) |
+            Q(antecedentes_personales__enfermedad_cardiaca__in=['CARDIOPATIA_ISQUEMICA', 'INSUFICIENCIA_CARDIACA', 'ARRITMIA', 'VALVULOPATIA', 'CARDIOMIOPATIA', 'OTRO'])
+        ).select_related('antecedentes_personales').order_by('-fecha_creacion')[:limit]
         
         return pacientes
+
 
     @staticmethod
     def get_pacientes_sin_consulta_reciente():
@@ -520,21 +523,26 @@ class DashboardRepository:
             .order_by('-total')[:5]
         )
 
+
     @staticmethod
     def get_pacientes_sin_anamnesis():
-        """Pacientes sin anamnesis general registrada"""
+        """Pacientes sin antecedentes personales registrados"""
         return Paciente.objects.filter(
             activo=True,
-            anamnesis_general__isnull=True
+            antecedentes_personales__isnull=True
         ).count()
+
+
 
     @staticmethod
     def get_pacientes_sin_anamnesis_lista(limit=10):
-        """Lista de pacientes sin anamnesis general"""
+        """Lista de pacientes sin antecedentes personales"""
         return Paciente.objects.filter(
             activo=True,
-            anamnesis_general__isnull=True
+            antecedentes_personales__isnull=True
         ).order_by('-fecha_creacion')[:limit]
+    
+    
 
     # ==================== MÉTRICAS ASISTENTE ====================
 

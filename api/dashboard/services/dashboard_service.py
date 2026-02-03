@@ -350,11 +350,32 @@ class DashboardService:
         pacientes_condiciones_data = []
         for p in pacientes_condiciones_qs:
             alergias_list = []
-            if hasattr(p, 'anamnesis_general') and p.anamnesis_general:
-                if p.anamnesis_general.alergia_antibiotico and p.anamnesis_general.alergia_antibiotico != 'NINGUNA':
-                    alergias_list.append(f"Antibiótico: {p.anamnesis_general.alergia_antibiotico}")
-                if p.anamnesis_general.alergia_anestesia and p.anamnesis_general.alergia_anestesia != 'NINGUNA':
-                    alergias_list.append(f"Anestesia: {p.anamnesis_general.alergia_anestesia}")
+            condiciones_list = []
+            if hasattr(p, 'antecedentes_personales') and p.antecedentes_personales:
+                antecedentes = p.antecedentes_personales
+                
+                # Alergias
+                if antecedentes.alergia_antibiotico and antecedentes.alergia_antibiotico != 'NO':
+                    texto = antecedentes.get_alergia_antibiotico_display()
+                    if antecedentes.alergia_antibiotico == 'OTRO' and antecedentes.alergia_antibiotico_otro:
+                        texto += f" ({antecedentes.alergia_antibiotico_otro})"
+                    alergias_list.append(f"Antibiótico: {texto}")
+                
+                if antecedentes.alergia_anestesia and antecedentes.alergia_anestesia != 'NO':
+                    texto = antecedentes.get_alergia_anestesia_display()
+                    if antecedentes.alergia_anestesia == 'OTRO' and antecedentes.alergia_anestesia_otro:
+                        texto += f" ({antecedentes.alergia_anestesia_otro})"
+                    alergias_list.append(f"Anestesia: {texto}")
+                
+                # Otras condiciones importantes
+                if antecedentes.hemorragias == 'SI':
+                    condiciones_list.append("Hemorragias")
+                if antecedentes.diabetes != 'NO':
+                    condiciones_list.append(f"Diabetes: {antecedentes.get_diabetes_display()}")
+                if antecedentes.hipertension_arterial != 'NO':
+                    condiciones_list.append(f"Hipertensión: {antecedentes.get_hipertension_arterial_display()}")
+                if antecedentes.enfermedad_cardiaca != 'NO':
+                    condiciones_list.append(f"Enfermedad cardíaca: {antecedentes.get_enfermedad_cardiaca_display()}")
             
             pacientes_condiciones_data.append({
                 'id': str(p.id),
@@ -362,6 +383,7 @@ class DashboardService:
                         else f"{p.nombres} {p.apellidos}",
                 'cedula': p.cedula_pasaporte or 'N/A',
                 'alergias': ', '.join(alergias_list) if alergias_list else 'Sin alergias',
+                'condiciones': ', '.join(condiciones_list) if condiciones_list else 'Sin condiciones',
                 'telefono': p.telefono or 'N/A',
             })
 

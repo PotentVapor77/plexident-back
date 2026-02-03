@@ -11,7 +11,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
 
 from api.patients.models.paciente import Paciente
-from api.patients.serializers import AnamnesisGeneralSerializer, AntecedentesFamiliaresSerializer, AntecedentesPersonalesSerializer, ConstantesVitalesSerializer, ExamenEstomatognaticoSerializer, PacienteSerializer
+from api.patients.serializers import  AntecedentesFamiliaresSerializer, AntecedentesPersonalesSerializer, ConstantesVitalesSerializer, ExamenEstomatognaticoSerializer, ExamenesComplementariosSerializer, PacienteSerializer
 from api.patients.services.patient_service import PatientService
 from api.patients.models.antecedentes_personales import AntecedentesPersonales
 from api.patients.models.antecedentes_familiares import AntecedentesFamiliares
@@ -21,7 +21,8 @@ from api.users.permissions import UserBasedPermission
 
 import logging
 
-from api.patients.models.anamnesis_general import AnamnesisGeneral
+from api.patients.models.examenes_complementarios import ExamenesComplementarios
+
 
 
 
@@ -114,226 +115,6 @@ class PacienteViewSet(viewsets.ModelViewSet):
         return Response({'id': str(instance.id)})
 
 
-class AntecedentesPersonalesViewSet(viewsets.ModelViewSet):
-    """ViewSet para antecedentes personales"""
-    serializer_class = AntecedentesPersonalesSerializer
-    queryset = AntecedentesPersonales.objects.all()
-    permission_classes = [IsAuthenticated, UserBasedPermission]
-    permission_model_name = "paciente"
-    pagination_class = PacientePagination
-    
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['paciente', 'activo']
-    ordering_fields = ['fecha_creacion', 'fecha_modificacion']
-    ordering = ['-fecha_creacion']
-
-    def get_queryset(self):
-        """Queryset base con filtros y búsqueda"""
-        request = self.request
-        search = (request.query_params.get("search") or "").strip()
-        activo_param = request.query_params.get("activo")
-        
-        qs = AntecedentesPersonales.objects.select_related('paciente').order_by('-fecha_creacion')
-        
-        # Filtrar por estado
-        if activo_param is not None:
-            activo = activo_param.lower() == 'true'
-            qs = qs.filter(activo=activo)
-        
-        # Búsqueda en datos del paciente
-        if search:
-            qs = qs.filter(
-                Q(paciente__nombres__icontains=search)
-                | Q(paciente__apellidos__icontains=search)
-                | Q(paciente__cedula_pasaporte__icontains=search)
-            )
-        
-        return qs
-
-    def create(self, request, *args, **kwargs):
-        """Crear antecedentes personales"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        # 🚨 ELIMINADO: Verificación de duplicados para permitir múltiples registros
-        # paciente_id = serializer.validated_data.get('paciente')
-        # if AntecedentesPersonales.objects.filter(paciente=paciente_id, activo=True).exists():
-        #     raise ValidationError({'detail': 'Este paciente ya tiene antecedentes personales registrados'})
-        
-        self.perform_create(serializer)
-        
-        paciente_id = serializer.validated_data.get('paciente').id
-        logger.info(f"Antecedentes creados para paciente {paciente_id} por {request.user.username}")
-        
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    def update(self, request, *args, **kwargs):
-        """Actualizar antecedentes"""
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        
-        self.perform_update(serializer)
-        logger.info(f"Antecedentes {instance.id} actualizados por {request.user.username}")
-        return Response(serializer.data)
-
-    def partial_update(self, request, *args, **kwargs):
-        """Actualización parcial"""
-        kwargs['partial'] = True
-        return self.update(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        """Eliminación lógica"""
-        instance = self.get_object()
-        instance.activo = False
-        instance.save()
-        
-        logger.info(f"Antecedentes {instance.id} desactivados por {request.user.username}")
-        return Response({'id': str(instance.id)})
-
-    @action(detail=False, methods=['get'], url_path='by-paciente/(?P<paciente_id>[^/.]+)')
-    def by_paciente(self, request, paciente_id=None):
-        """Obtener antecedentes por ID de paciente"""
-        try:
-            # Obtener el último antecedente activo
-            antecedentes = AntecedentesPersonales.objects.filter(
-                paciente_id=paciente_id,
-                activo=True
-            ).order_by('-fecha_creacion').first()
-            
-            if not antecedentes:
-                raise AntecedentesPersonales.DoesNotExist
-            
-            serializer = self.get_serializer(antecedentes)
-            return Response(serializer.data)
-        except AntecedentesPersonales.DoesNotExist:
-            raise ValidationError({'detail': 'No se encontraron antecedentes para este paciente'})
-
-    @action(detail=False, methods=['get'], url_path='all-by-paciente/(?P<paciente_id>[^/.]+)')
-    def all_by_paciente(self, request, paciente_id=None):
-        """Obtener TODOS los antecedentes por ID de paciente"""
-        antecedentes = AntecedentesPersonales.objects.filter(
-            paciente_id=paciente_id,
-            activo=True
-        ).order_by('-fecha_creacion')
-        
-        serializer = self.get_serializer(antecedentes, many=True)
-        return Response(serializer.data)
-
-
-class AntecedentesFamiliaresViewSet(viewsets.ModelViewSet):
-    """ViewSet para antecedentes familiares"""
-    serializer_class = AntecedentesFamiliaresSerializer
-    queryset = AntecedentesFamiliares.objects.all()
-    permission_classes = [IsAuthenticated, UserBasedPermission]
-    permission_model_name = "paciente"
-    pagination_class = PacientePagination
-    
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['paciente', 'activo']
-    ordering_fields = ['fecha_creacion', 'fecha_modificacion']
-    ordering = ['-fecha_creacion']
-
-
-    def get_queryset(self):
-        """Queryset base con filtros y búsqueda"""
-        request = self.request
-        search = (request.query_params.get("search") or "").strip()
-        activo_param = request.query_params.get("activo")
-        
-        qs = AntecedentesFamiliares.objects.select_related('paciente').order_by('-fecha_creacion')
-        
-        # Filtrar por estado
-        if activo_param is not None:
-            activo = activo_param.lower() == 'true'
-            qs = qs.filter(activo=activo)
-        
-        # Búsqueda en datos del paciente
-        if search:
-            qs = qs.filter(
-                Q(paciente__nombres__icontains=search)
-                | Q(paciente__apellidos__icontains=search)
-                | Q(paciente__cedula_pasaporte__icontains=search)
-            )
-        
-        return qs
-
-
-    def create(self, request, *args, **kwargs):
-        """Crear antecedentes familiares"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        # 🚨 ELIMINADO: Verificación de duplicados para permitir múltiples registros
-        # paciente_id = serializer.validated_data.get('paciente')
-        # if AntecedentesFamiliares.objects.filter(paciente=paciente_id, activo=True).exists():
-        #     raise ValidationError({'detail': 'Este paciente ya tiene antecedentes familiares registrados'})
-        
-        self.perform_create(serializer)
-        
-        paciente_id = serializer.validated_data.get('paciente').id
-        logger.info(f"Antecedentes familiares creados para paciente {paciente_id} por {request.user.username}")
-        
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-    def update(self, request, *args, **kwargs):
-        """Actualizar antecedentes familiares"""
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        
-        self.perform_update(serializer)
-        logger.info(f"Antecedentes familiares {instance.id} actualizados por {request.user.username}")
-        return Response(serializer.data)
-
-
-    def partial_update(self, request, *args, **kwargs):
-        """Actualización parcial (PATCH)"""
-        kwargs['partial'] = True
-        return self.update(request, *args, **kwargs)
-
-
-    def destroy(self, request, *args, **kwargs):
-        """Eliminación lógica"""
-        instance = self.get_object()
-        instance.activo = False
-        instance.save()
-        
-        logger.info(f"Antecedentes familiares {instance.id} desactivados por {request.user.username}")
-        return Response({'id': str(instance.id)})
-
-
-    @action(detail=False, methods=['get'], url_path='by-paciente/(?P<paciente_id>[^/.]+)')
-    def by_paciente(self, request, paciente_id=None):
-        """Obtener antecedentes familiares por ID de paciente"""
-        try:
-            # Obtener el último antecedente activo
-            antecedentes = AntecedentesFamiliares.objects.filter(
-                paciente_id=paciente_id,
-                activo=True
-            ).order_by('-fecha_creacion').first()
-            
-            if not antecedentes:
-                raise AntecedentesFamiliares.DoesNotExist
-            
-            serializer = self.get_serializer(antecedentes)
-            return Response(serializer.data)
-        except AntecedentesFamiliares.DoesNotExist:
-            raise ValidationError({'detail': 'No se encontraron antecedentes familiares para este paciente'})
-
-    @action(detail=False, methods=['get'], url_path='all-by-paciente/(?P<paciente_id>[^/.]+)')
-    def all_by_paciente(self, request, paciente_id=None):
-        """Obtener TODOS los antecedentes familiares por ID de paciente"""
-        antecedentes = AntecedentesFamiliares.objects.filter(
-            paciente_id=paciente_id,
-            activo=True
-        ).order_by('-fecha_creacion')
-        
-        serializer = self.get_serializer(antecedentes, many=True)
-        return Response(serializer.data)
 
 
 class ExamenEstomatognaticoViewSet(viewsets.ModelViewSet):
@@ -352,6 +133,7 @@ class ExamenEstomatognaticoViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Queryset base con filtros y búsqueda"""
         request = self.request
+        
         search = (request.query_params.get("search") or "").strip()
         activo_param = request.query_params.get("activo")
         
@@ -586,56 +368,43 @@ class ConstantesVitalesViewSet(viewsets.ModelViewSet):
     
 
 
-class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
-    """ViewSet para anamnesis general"""
-    serializer_class = AnamnesisGeneralSerializer
-    queryset = AnamnesisGeneral.objects.all()
+# ============================================================================
+# ANTECEDENTES PERSONALES
+# ============================================================================
+
+class AntecedentesPersonalesViewSet(viewsets.ModelViewSet):
+    """ViewSet para antecedentes personales"""
+    serializer_class = AntecedentesPersonalesSerializer
+    queryset = AntecedentesPersonales.objects.all()
     permission_classes = [IsAuthenticated, UserBasedPermission]
     permission_model_name = "paciente"
     pagination_class = PacientePagination
     
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = [
-        'paciente', 
-        'activo', 
-        'hemorragias',
-        'alergia_antibiotico',
-        'alergia_anestesia',
-        'vih_sida',
-        'diabetes',
-        'hipertension_arterial',
-        'enfermedad_cardiaca',
-        'pedido_examenes_complementarios',  # ✅ AÑADIDO
-        'informe_examenes',  # ✅ AÑADIDO
-    ]
-    search_fields = [
-        'paciente__nombres',
-        'paciente__apellidos',
-        'paciente__cedula_pasaporte',
-        'observaciones',
-        'alergia_antibiotico_otro',
-        'alergia_anestesia_otro',
-        'hemorragias_detalle',
-        'otro_antecedente_personal',
-        'otro_antecedente_familiar',
-        'pedido_examenes_complementarios_detalle',  # ✅ AÑADIDO
-        'informe_examenes_detalle',  # ✅ AÑADIDO
-    ]
+    filterset_fields = ['paciente', 'activo']
+    search_fields = ['paciente__nombres', 'paciente__apellidos', 'paciente__cedula_pasaporte']
     ordering_fields = ['fecha_creacion', 'fecha_modificacion']
     ordering = ['-fecha_creacion']
-
+    
     def get_queryset(self):
         """Queryset base con filtros y búsqueda"""
         request = self.request
         search = (request.query_params.get("search") or "").strip()
         activo_param = request.query_params.get("activo")
+        paciente_id = request.query_params.get("paciente")
         
-        qs = AnamnesisGeneral.objects.select_related('paciente').order_by('-fecha_creacion')
+        qs = AntecedentesPersonales.objects.select_related(
+            'paciente'
+        ).order_by('-fecha_creacion')
         
         # Filtrar por estado
         if activo_param is not None:
             activo = activo_param.lower() == 'true'
             qs = qs.filter(activo=activo)
+        
+        # Filtrar por paciente
+        if paciente_id:
+            qs = qs.filter(paciente_id=paciente_id)
         
         # Búsqueda en datos del paciente
         if search:
@@ -643,41 +412,41 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
                 Q(paciente__nombres__icontains=search)
                 | Q(paciente__apellidos__icontains=search)
                 | Q(paciente__cedula_pasaporte__icontains=search)
-                | Q(observaciones__icontains=search)
-                | Q(hemorragias_detalle__icontains=search)
-                | Q(otro_antecedente_personal__icontains=search)
-                | Q(otro_antecedente_familiar__icontains=search)
-                | Q(pedido_examenes_complementarios_detalle__icontains=search)  # ✅ AÑADIDO
-                | Q(informe_examenes_detalle__icontains=search)  # ✅ AÑADIDO
             )
         
         return qs
-
+    
+    def perform_create(self, serializer):
+        """Asignar usuario al crear"""
+        serializer.save(creado_por=self.request.user)
+    
+    def perform_update(self, serializer):
+        """Asignar usuario al actualizar"""
+        serializer.save(actualizado_por=self.request.user)
+    
     def create(self, request, *args, **kwargs):
-        """Crear anamnesis general"""
+        """Crear antecedentes personales"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Validación de duplicados
-        paciente_id = serializer.validated_data.get('paciente').id
-        if AnamnesisGeneral.objects.filter(paciente_id=paciente_id, activo=True).exists():
+        # ✅ Verificar si ya existe (OneToOne)
+        paciente = serializer.validated_data.get('paciente')
+        if AntecedentesPersonales.objects.filter(paciente=paciente).exists():
             raise ValidationError({
-                'detail': 'Este paciente ya tiene una anamnesis general registrada'
+                'detail': 'Este paciente ya tiene antecedentes personales registrados. Use PUT/PATCH para actualizar.'
             })
         
         self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
         
-        logger.info(f"Anamnesis general creada para paciente {paciente_id} por {request.user.username}")
-        
-        return Response(
-            serializer.data, 
-            status=status.HTTP_201_CREATED, 
-            headers=headers
+        logger.info(
+            f"Antecedentes personales creados para paciente {paciente.id} "
+            f"por {request.user.username}"
         )
-
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
     def update(self, request, *args, **kwargs):
-        """Actualizar anamnesis general"""
+        """Actualizar antecedentes personales"""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
@@ -685,113 +454,407 @@ class AnamnesisGeneralViewSet(viewsets.ModelViewSet):
         
         self.perform_update(serializer)
         
-        logger.info(f"Anamnesis general {instance.id} actualizada por {request.user.username}")
+        logger.info(
+            f"Antecedentes personales {instance.id} actualizados "
+            f"por {request.user.username}"
+        )
         
         return Response(serializer.data)
-
+    
+    def partial_update(self, request, *args, **kwargs):
+        """Actualización parcial (PATCH)"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
     def destroy(self, request, *args, **kwargs):
         """Eliminación lógica"""
         instance = self.get_object()
         instance.activo = False
         instance.save()
         
-        logger.info(f"Anamnesis general {instance.id} desactivada por {request.user.username}")
-        
-        return Response(
-            {'id': str(instance.id), 'message': 'Anamnesis desactivada correctamente'},
-            status=status.HTTP_200_OK
+        logger.info(
+            f"Antecedentes personales {instance.id} desactivados "
+            f"por {request.user.username}"
         )
-
+        
+        return Response({'id': str(instance.id)})
+    
     @action(detail=False, methods=['get'], url_path='by-paciente/(?P<paciente_id>[^/.]+)')
     def by_paciente(self, request, paciente_id=None):
-        """Obtener anamnesis general por ID de paciente"""
+        """Obtener antecedentes personales por ID de paciente"""
         try:
-            anamnesis = AnamnesisGeneral.objects.get(
+            antecedentes = AntecedentesPersonales.objects.select_related('paciente').get(
                 paciente_id=paciente_id,
                 activo=True
             )
-            serializer = self.get_serializer(anamnesis)
+            serializer = self.get_serializer(antecedentes)
             return Response(serializer.data)
-        except AnamnesisGeneral.DoesNotExist:
+        except AntecedentesPersonales.DoesNotExist:
             raise ValidationError({
-                'detail': 'No se encontró anamnesis general activa para este paciente'
+                'detail': 'No se encontraron antecedentes personales para este paciente'
             })
-
-    @action(detail=True, methods=['get'])
-    def resumen(self, request, pk=None):
-        """Resumen de condiciones médicas del paciente"""
-        instance = self.get_object()
-        
-        data = {
-            'resumen_condiciones': instance.resumen_condiciones,
-            'alergias': {
-                'antibioticos': instance.get_alergia_antibiotico_display(),
-                'anestesia': instance.get_alergia_anestesia_display(),
-            },
-            'condiciones_criticas': {
-                'hemorragias': instance.hemorragias == 'SI',
-                'enfermedad_cardiaca': instance.enfermedad_cardiaca != 'NO'
-            },
-            'enfermedades_cronicas': {
-                'diabetes': instance.diabetes != 'NO',
-                'hipertension_arterial': instance.hipertension_arterial != 'NO',
-                'asma': instance.asma != 'NO'
-            },
-            'antecedentes_familiares': {
-                'tiene_cardiopatia': instance.cardiopatia_familiar != 'NO',
-                'tiene_hipertension': instance.hipertension_familiar != 'NO',
-                'tiene_cancer': instance.cancer_familiar != 'NO'
-            },
-            'examenes': {  # ✅ AÑADIDO
-                'estado': instance.estado_examenes,
-                'tiene_pedido_pendiente': instance.tiene_pedido_examenes_pendiente,
-                'tiene_informe_completado': instance.tiene_informe_examenes_completado,
-                'resumen': instance.resumen_examenes_complementarios
-            }
-        }
-        
-        return Response(data)
     
-    # ✅ NUEVO ENDPOINT: Solicitar exámenes
-    @action(detail=True, methods=['post'])
-    def solicitar_examenes(self, request, pk=None):
+    @action(detail=True, methods=['get'], url_path='resumen')
+    def resumen(self, request, pk=None):
+        """Obtener resumen de antecedentes personales"""
+        instance = self.get_object()
+        return Response({
+            'paciente': instance.paciente.nombre_completo,
+            'tiene_condiciones_importantes': instance.tiene_condiciones_importantes,
+            'tiene_antecedentes_criticos': instance.tiene_antecedentes_criticos,
+            'tiene_alergias': instance.tiene_alergias,
+            'resumen_alergias': instance.resumen_alergias,
+            'resumen_condiciones': instance.resumen_condiciones,
+            'lista_antecedentes': instance.lista_antecedentes,
+            'total_antecedentes': instance.total_antecedentes,
+            'riesgo_visual': instance.riesgo_visual,
+            'exigencias_quirurgicas': instance.exigencias_quirurgicas,
+        })
+
+
+# ============================================================================
+# ANTECEDENTES FAMILIARES
+# ============================================================================
+
+class AntecedentesFamiliaresViewSet(viewsets.ModelViewSet):
+    """ViewSet para antecedentes familiares"""
+    serializer_class = AntecedentesFamiliaresSerializer
+    queryset = AntecedentesFamiliares.objects.all()
+    permission_classes = [IsAuthenticated, UserBasedPermission]
+    permission_model_name = "paciente"
+    pagination_class = PacientePagination
+    
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['paciente', 'activo']
+    search_fields = ['paciente__nombres', 'paciente__apellidos', 'paciente__cedula_pasaporte']
+    ordering_fields = ['fecha_creacion', 'fecha_modificacion']
+    ordering = ['-fecha_creacion']
+    
+    def get_queryset(self):
+        """Queryset base con filtros y búsqueda"""
+        request = self.request
+        search = (request.query_params.get("search") or "").strip()
+        activo_param = request.query_params.get("activo")
+        paciente_id = request.query_params.get("paciente")
+        
+        qs = AntecedentesFamiliares.objects.select_related(
+            'paciente'
+        ).order_by('-fecha_creacion')
+        
+        # Filtrar por estado
+        if activo_param is not None:
+            activo = activo_param.lower() == 'true'
+            qs = qs.filter(activo=activo)
+        
+        # Filtrar por paciente
+        if paciente_id:
+            qs = qs.filter(paciente_id=paciente_id)
+        
+        # Búsqueda en datos del paciente
+        if search:
+            qs = qs.filter(
+                Q(paciente__nombres__icontains=search)
+                | Q(paciente__apellidos__icontains=search)
+                | Q(paciente__cedula_pasaporte__icontains=search)
+            )
+        
+        return qs
+    
+    def perform_create(self, serializer):
+        """Asignar usuario al crear"""
+        serializer.save(creado_por=self.request.user)
+    
+    def perform_update(self, serializer):
+        """Asignar usuario al actualizar"""
+        serializer.save(actualizado_por=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        """Crear antecedentes familiares"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # ✅ Verificar si ya existe (OneToOne)
+        paciente = serializer.validated_data.get('paciente')
+        if AntecedentesFamiliares.objects.filter(paciente=paciente).exists():
+            raise ValidationError({
+                'detail': 'Este paciente ya tiene antecedentes familiares registrados. Use PUT/PATCH para actualizar.'
+            })
+        
+        self.perform_create(serializer)
+        
+        logger.info(
+            f"Antecedentes familiares creados para paciente {paciente.id} "
+            f"por {request.user.username}"
+        )
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    def update(self, request, *args, **kwargs):
+        """Actualizar antecedentes familiares"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        
+        self.perform_update(serializer)
+        
+        logger.info(
+            f"Antecedentes familiares {instance.id} actualizados "
+            f"por {request.user.username}"
+        )
+        
+        return Response(serializer.data)
+    
+    def partial_update(self, request, *args, **kwargs):
+        """Actualización parcial (PATCH)"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Eliminación lógica"""
+        instance = self.get_object()
+        instance.activo = False
+        instance.save()
+        
+        logger.info(
+            f"Antecedentes familiares {instance.id} desactivados "
+            f"por {request.user.username}"
+        )
+        
+        return Response({'id': str(instance.id)})
+    
+    @action(detail=False, methods=['get'], url_path='by-paciente/(?P<paciente_id>[^/.]+)')
+    def by_paciente(self, request, paciente_id=None):
+        """Obtener antecedentes familiares por ID de paciente"""
+        try:
+            antecedentes = AntecedentesFamiliares.objects.select_related('paciente').get(
+                paciente_id=paciente_id,
+                activo=True
+            )
+            serializer = self.get_serializer(antecedentes)
+            return Response(serializer.data)
+        except AntecedentesFamiliares.DoesNotExist:
+            raise ValidationError({
+                'detail': 'No se encontraron antecedentes familiares para este paciente'
+            })
+    
+    @action(detail=True, methods=['get'], url_path='resumen')
+    def resumen(self, request, pk=None):
+        """Obtener resumen de antecedentes familiares"""
+        instance = self.get_object()
+        return Response({
+            'paciente': f"{instance.paciente.apellidos}, {instance.paciente.nombres}",
+            'tiene_antecedentes_importantes': instance.tiene_antecedentes_importantes,
+            'lista_antecedentes': instance.lista_antecedentes,
+            'resumen_antecedentes': instance.resumen_antecedentes,
+        })
+
+
+# ============================================================================
+# EXÁMENES COMPLEMENTARIOS
+# ============================================================================
+
+class ExamenesComplementariosViewSet(viewsets.ModelViewSet):
+    """ViewSet para exámenes complementarios"""
+    serializer_class = ExamenesComplementariosSerializer
+    queryset = ExamenesComplementarios.objects.all()
+    permission_classes = [IsAuthenticated, UserBasedPermission]
+    permission_model_name = "paciente"
+    pagination_class = PacientePagination
+    
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['paciente', 'activo', 'pedido_examenes', 'informe_examenes']
+    search_fields = ['paciente__nombres', 'paciente__apellidos', 'paciente__cedula_pasaporte']
+    ordering_fields = ['fecha_creacion', 'fecha_modificacion']
+    ordering = ['-fecha_creacion']
+    
+    def get_queryset(self):
+        """Queryset base con filtros y búsqueda"""
+        request = self.request
+        search = (request.query_params.get("search") or "").strip()
+        activo_param = request.query_params.get("activo")
+        paciente_id = request.query_params.get("paciente")
+        estado = request.query_params.get('estado')
+        
+        qs = ExamenesComplementarios.objects.select_related(
+            'paciente'
+        ).order_by('-fecha_creacion')
+        
+        # Filtrar por estado
+        if activo_param is not None:
+            activo = activo_param.lower() == 'true'
+            qs = qs.filter(activo=activo)
+        
+        # Filtrar por paciente
+        if paciente_id:
+            qs = qs.filter(paciente_id=paciente_id)
+        
+        # Filtro por estado de exámenes
+        if estado == 'pendiente':
+            qs = qs.filter(pedido_examenes='SI', informe_examenes='NINGUNO')
+        elif estado == 'completado':
+            qs = qs.exclude(informe_examenes='NINGUNO')
+        elif estado == 'no_solicitado':
+            qs = qs.filter(pedido_examenes='NO', informe_examenes='NINGUNO')
+        
+        # Búsqueda en datos del paciente
+        if search:
+            qs = qs.filter(
+                Q(paciente__nombres__icontains=search)
+                | Q(paciente__apellidos__icontains=search)
+                | Q(paciente__cedula_pasaporte__icontains=search)
+            )
+        
+        return qs
+    
+    def perform_create(self, serializer):
+        """Asignar usuario al crear"""
+        serializer.save(creado_por=self.request.user)
+    
+    def perform_update(self, serializer):
+        """Asignar usuario al actualizar"""
+        serializer.save(actualizado_por=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        """Crear exámenes complementarios"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        paciente = serializer.validated_data.get('paciente')
+        
+        self.perform_create(serializer)
+        
+        logger.info(
+            f"Exámenes complementarios creados para paciente {paciente.id} "
+            f"por {request.user.username}"
+        )
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    def update(self, request, *args, **kwargs):
+        """Actualizar exámenes complementarios"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        
+        self.perform_update(serializer)
+        
+        logger.info(
+            f"Exámenes complementarios {instance.id} actualizados "
+            f"por {request.user.username}"
+        )
+        
+        return Response(serializer.data)
+    
+    def partial_update(self, request, *args, **kwargs):
+        """Actualización parcial (PATCH)"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Eliminación lógica"""
+        instance = self.get_object()
+        instance.activo = False
+        instance.save()
+        
+        logger.info(
+            f"Exámenes complementarios {instance.id} desactivados "
+            f"por {request.user.username}"
+        )
+        
+        return Response({'id': str(instance.id)})
+    
+    @action(detail=False, methods=['get'], url_path='by-paciente/(?P<paciente_id>[^/.]+)')
+    def by_paciente(self, request, paciente_id=None):
+        """Obtener exámenes complementarios por ID de paciente"""
+        try:
+            examenes = ExamenesComplementarios.objects.select_related('paciente').get(
+                paciente_id=paciente_id,
+                activo=True
+            )
+            serializer = self.get_serializer(examenes)
+            return Response(serializer.data)
+        except ExamenesComplementarios.DoesNotExist:
+            raise ValidationError({
+                'detail': 'No se encontraron exámenes complementarios para este paciente'
+            })
+    
+    @action(detail=True, methods=['post'], url_path='marcar-solicitados')
+    def marcar_solicitados(self, request, pk=None):
         """Marcar exámenes como solicitados"""
         instance = self.get_object()
-        detalle = request.data.get('detalle')
+        detalle = request.data.get('detalle', '')
         
         if not detalle:
-            raise ValidationError({'detalle': 'Debe especificar qué exámenes se solicitan'})
+            raise ValidationError({'detalle': 'Debe especificar los exámenes solicitados'})
         
         instance.marcar_examenes_solicitados(detalle)
         
-        logger.info(f"Exámenes solicitados para anamnesis {instance.id} por {request.user.username}")
+        logger.info(
+            f"Exámenes marcados como solicitados para paciente {instance.paciente.id} "
+            f"por {request.user.username}"
+        )
         
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
     
-    # ✅ NUEVO ENDPOINT: Agregar resultado de examen
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='agregar-resultado')
     def agregar_resultado(self, request, pk=None):
-        """Agregar resultados de exámenes"""
+        """Agregar resultado de examen"""
         instance = self.get_object()
-        tipo_examen = request.data.get('tipo_examen')
-        resultado = request.data.get('resultado')
+        tipo_examen = request.data.get('tipo_examen', '')
+        resultado = request.data.get('resultado', '')
         
         if not tipo_examen or not resultado:
             raise ValidationError({
-                'detail': 'Debe especificar tipo_examen y resultado'
+                'tipo_examen': 'Debe especificar el tipo de examen',
+                'resultado': 'Debe especificar el resultado'
             })
         
         # Validar tipo de examen
-        tipos_validos = dict(AnamnesisGeneral._meta.get_field('informe_examenes').choices).keys()
-        if tipo_examen not in tipos_validos:
+        valid_tipos = ['BIOMETRIA', 'QUIMICA_SANGUINEA', 'RAYOS_X', 'OTROS']
+        if tipo_examen not in valid_tipos:
             raise ValidationError({
-                'tipo_examen': f'Tipo de examen inválido. Opciones: {", ".join(tipos_validos)}'
+                'tipo_examen': f'Tipo de examen inválido. Debe ser uno de: {", ".join(valid_tipos)}'
             })
         
         instance.agregar_resultado_examen(tipo_examen, resultado)
         
-        logger.info(f"Resultado de examen agregado para anamnesis {instance.id} por {request.user.username}")
+        logger.info(
+            f"Resultado de examen agregado para paciente {instance.paciente.id} "
+            f"por {request.user.username}"
+        )
         
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='pendientes')
+    def pendientes(self, request):
+        """Listar exámenes pendientes"""
+        examenes = self.get_queryset().filter(
+            pedido_examenes='SI',
+            informe_examenes='NINGUNO',
+            activo=True
+        )
+        
+        page = self.paginate_queryset(examenes)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(examenes, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'], url_path='resumen')
+    def resumen(self, request, pk=None):
+        """Obtener resumen de exámenes complementarios"""
+        instance = self.get_object()
+        return Response({
+            'paciente': instance.paciente.nombre_completo,
+            'tiene_pedido_examenes_pendiente': instance.tiene_pedido_examenes_pendiente,
+            'tiene_informe_examenes_completado': instance.tiene_informe_examenes_completado,
+            'resumen_examenes_complementarios': instance.resumen_examenes_complementarios,
+            'estado_examenes': instance.estado_examenes,
+        })
+    
+
