@@ -94,8 +94,8 @@ INSTALLED_APPS = [
     'api.clinical_files.apps.ClinicalFilesConfig',
     # AWS S3 Storage
     'storages',
-
-    'api.dashboard.apps.DashboardConfig'
+    'api.dashboard.apps.DashboardConfig',
+    'api.parameters.apps.ParametersConfig',
     
 ]
 

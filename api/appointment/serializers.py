@@ -1,6 +1,8 @@
 # api/appointment/serializers.py
 
 from rest_framework import serializers
+
+from api.parameters.models import ConfiguracionHorario
 from .models import Cita, HistorialCita, HorarioAtencion, RecordatorioCita, EstadoCita
 from api.patients.models.paciente import Paciente
 from api.users.models import Usuario
@@ -108,23 +110,17 @@ class CitaCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Cita
-        fields = [
-            'paciente', 'odontologo', 'fecha', 'hora_inicio', 'duracion',
-            'tipo_consulta', 'motivo_consulta', 'observaciones','estado' 
-        ]
+        fields = ['paciente', 'odontologo', 'fecha', 'hora_inicio', 'duracion', 
+                 'tipo_consulta', 'motivo_consulta', 'observaciones', 'estado']
         extra_kwargs = {
-            'estado': {'required': False}  # No requerido para crear nuevas citas normales
+            'estado': {'required': False}
         }
-
+    
     def create(self, validated_data):
-        #  Si no se especifica estado, usar PROGRAMADA por defecto
-        # Pero para reprogramación, el servicio establecerá REPROGRAMADA
         if 'estado' not in validated_data:
             validated_data['estado'] = EstadoCita.PROGRAMADA
         return super().create(validated_data)
     
-
-
     def validate_paciente(self, value):
         """Validar que el paciente existe y está activo"""
         if not value.activo:
@@ -140,59 +136,187 @@ class CitaCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, data):
-        """Validaciones generales"""
+        """✅ VALIDACIONES COMPLETAS CON HORARIOS"""
         fecha_cita = data['fecha']
         hora_cita = data['hora_inicio']
+        odontologo = data['odontologo']
         ahora = timezone.now()
         
-        # Solo validar si la fecha es HOY
-        if fecha_cita == ahora.date():
-            fecha_hora_cita = timezone.make_aware(
-                datetime.combine(fecha_cita, hora_cita)
-            )
-            
-            if fecha_hora_cita < (ahora - timedelta(minutes=5)):
-                raise serializers.ValidationError(
-                    {"hora_inicio": "La hora seleccionada ya pasó"}
-                )
+        # ✅ 1. Validar que no sea en el pasado
+        if fecha_cita < ahora.date():
+            raise serializers.ValidationError({
+                'fecha': 'No se pueden programar citas en fechas pasadas'
+            })
         
-        # Si la fecha es en el pasado (días anteriores)
-        elif fecha_cita < ahora.date():
-            raise serializers.ValidationError(
-                {"fecha": "No se pueden programar citas en fechas pasadas"}
+        if fecha_cita == ahora.date():
+            fecha_hora_cita = timezone.make_aware(datetime.combine(fecha_cita, hora_cita))
+            if fecha_hora_cita < ahora - timedelta(minutes=5):
+                raise serializers.ValidationError({
+                    'hora_inicio': 'La hora seleccionada ya pasó'
+                })
+        
+        # ✅ 2. VALIDAR HORARIO GLOBAL DE LA CLÍNICA
+        dia_semana = fecha_cita.weekday()  # 0=Lunes, 6=Domingo
+        
+        try:
+            horario_clinica = ConfiguracionHorario.objects.get(
+                dia_semana=dia_semana,
+                activo=True
             )
+        except ConfiguracionHorario.DoesNotExist:
+            dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+            raise serializers.ValidationError({
+                'fecha': f'La clínica no atiende los días {dias[dia_semana]}'
+            })
+        
+        # Validar que la hora esté dentro del horario de la clínica
+        if hora_cita < horario_clinica.apertura:
+            raise serializers.ValidationError({
+                'hora_inicio': f'La clínica abre a las {horario_clinica.apertura.strftime("%H:%M")}. '
+                             f'No puede agendar antes de ese horario.'
+            })
+        
+        # Calcular hora fin de la cita
+        duracion = data.get('duracion', 30)
+        hora_fin_cita = (datetime.combine(fecha_cita, hora_cita) + timedelta(minutes=duracion)).time()
+        
+        if hora_fin_cita > horario_clinica.cierre:
+            raise serializers.ValidationError({
+                'hora_inicio': f'La clínica cierra a las {horario_clinica.cierre.strftime("%H:%M")}. '
+                             f'Esta cita terminaría a las {hora_fin_cita.strftime("%H:%M")}.'
+            })
+        
+        # ✅ 3. VALIDAR HORARIO DEL ODONTÓLOGO
+        try:
+            horario_doctor = HorarioAtencion.objects.get(
+                odontologo=odontologo,
+                dia_semana=dia_semana,
+                activo=True
+            )
+        except HorarioAtencion.DoesNotExist:
+            dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+            raise serializers.ValidationError({
+                'hora_inicio': f'El Dr(a). {odontologo.get_full_name()} no atiende los días {dias[dia_semana]}. '
+                             f'Por favor configure su horario de atención primero.'
+            })
+        
+        # Validar que la hora esté dentro del horario del doctor
+        if hora_cita < horario_doctor.hora_inicio:
+            raise serializers.ValidationError({
+                'hora_inicio': f'El Dr(a). {odontologo.get_full_name()} inicia su atención a las '
+                             f'{horario_doctor.hora_inicio.strftime("%H:%M")} los {dias[dia_semana]}.'
+            })
+        
+        if hora_fin_cita > horario_doctor.hora_fin:
+            raise serializers.ValidationError({
+                'hora_inicio': f'El Dr(a). {odontologo.get_full_name()} termina su atención a las '
+                             f'{horario_doctor.hora_fin.strftime("%H:%M")} los {dias[dia_semana]}. '
+                             f'Esta cita terminaría a las {hora_fin_cita.strftime("%H:%M")}.'
+            })
         
         return data
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class CitaUpdateSerializer(serializers.ModelSerializer):
     """Serializer para actualizar citas"""
     
     class Meta:
         model = Cita
-        fields = [
-            'odontologo', 'fecha', 'hora_inicio', 'duracion',
-            'tipo_consulta', 'motivo_consulta', 'observaciones', 'estado'
-        ]
+        fields = ['odontologo', 'fecha', 'hora_inicio', 'duracion', 
+                 'tipo_consulta', 'motivo_consulta', 'observaciones', 'estado']
     
     def validate(self, data):
         """Validar que la cita puede ser actualizada"""
         instance = self.instance
+        
+        # Validar que la cita puede ser modificada
         if instance.estado in [EstadoCita.CANCELADA, EstadoCita.REPROGRAMADA]:
             raise serializers.ValidationError(
                 "No se puede modificar una cita cancelada o reprogramada"
             )
         
-        # Si se cambia la fecha u hora, validar que no sea en el pasado
+        # ✅ SI SE CAMBIA FECHA/HORA, VALIDAR HORARIOS
         if 'fecha' in data or 'hora_inicio' in data:
             fecha = data.get('fecha', instance.fecha)
             hora_inicio = data.get('hora_inicio', instance.hora_inicio)
+            odontologo = data.get('odontologo', instance.odontologo)
+            duracion = data.get('duracion', instance.duracion)
+            
+            # Validar que no sea en el pasado
             fecha_hora_cita = timezone.make_aware(datetime.combine(fecha, hora_inicio))
             if fecha_hora_cita < timezone.now():
-                raise serializers.ValidationError(
-                    {"fecha": "No se pueden programar citas en el pasado"}
+                raise serializers.ValidationError({
+                    'fecha': 'No se pueden programar citas en el pasado'
+                })
+            
+            # ✅ VALIDAR HORARIO CLÍNICA
+            dia_semana = fecha.weekday()
+            
+            try:
+                horario_clinica = ConfiguracionHorario.objects.get(
+                    dia_semana=dia_semana,
+                    activo=True
                 )
+            except ConfiguracionHorario.DoesNotExist:
+                dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+                raise serializers.ValidationError({
+                    'fecha': f'La clínica no atiende los días {dias[dia_semana]}'
+                })
+            
+            hora_fin_cita = (datetime.combine(fecha, hora_inicio) + timedelta(minutes=duracion)).time()
+            
+            if not (horario_clinica.apertura <= hora_inicio < horario_clinica.cierre):
+                raise serializers.ValidationError({
+                    'hora_inicio': f'La clínica atiende de {horario_clinica.apertura.strftime("%H:%M")} '
+                                 f'a {horario_clinica.cierre.strftime("%H:%M")}'
+                })
+            
+            # ✅ VALIDAR HORARIO ODONTÓLOGO
+            try:
+                horario_doctor = HorarioAtencion.objects.get(
+                    odontologo=odontologo,
+                    dia_semana=dia_semana,
+                    activo=True
+                )
+            except HorarioAtencion.DoesNotExist:
+                dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+                raise serializers.ValidationError({
+                    'hora_inicio': f'El Dr(a). {odontologo.get_full_name()} no atiende los {dias[dia_semana]}'
+                })
+            
+            if not (horario_doctor.hora_inicio <= hora_inicio < horario_doctor.hora_fin):
+                raise serializers.ValidationError({
+                    'hora_inicio': f'El Dr(a). {odontologo.get_full_name()} atiende de '
+                                 f'{horario_doctor.hora_inicio.strftime("%H:%M")} a '
+                                 f'{horario_doctor.hora_fin.strftime("%H:%M")} los {dias[dia_semana]}'
+                })
         
         return data
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class CitaCancelarSerializer(serializers.Serializer):
     """Serializer para cancelar una cita"""
@@ -216,14 +340,78 @@ class CitaReprogramarSerializer(serializers.Serializer):
     nueva_hora_inicio = serializers.TimeField(required=True)
     
     def validate(self, data):
-        fecha_hora_cita = timezone.make_aware(
-            datetime.combine(data['nueva_fecha'], data['nueva_hora_inicio'])
-        )
+        """✅ VALIDAR HORARIOS EN REPROGRAMACIÓN"""
+        nueva_fecha = data['nueva_fecha']
+        nueva_hora = data['nueva_hora_inicio']
+        
+        # Obtener la cita original del contexto
+        cita_original = self.context.get('cita')
+        if not cita_original:
+            raise serializers.ValidationError("No se proporcionó la cita original")
+        
+        odontologo = cita_original.odontologo
+        duracion = cita_original.duracion
+        
+        # Validar que no sea en el pasado
+        fecha_hora_cita = timezone.make_aware(datetime.combine(nueva_fecha, nueva_hora))
         if fecha_hora_cita < timezone.now():
             raise serializers.ValidationError(
                 "No se pueden programar citas en el pasado"
             )
+        
+        # ✅ VALIDAR HORARIO CLÍNICA
+        dia_semana = nueva_fecha.weekday()
+        
+        try:
+            horario_clinica = ConfiguracionHorario.objects.get(
+                dia_semana=dia_semana,
+                activo=True
+            )
+        except ConfiguracionHorario.DoesNotExist:
+            dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+            raise serializers.ValidationError({
+                'nueva_fecha': f'La clínica no atiende los días {dias[dia_semana]}'
+            })
+        
+        hora_fin = (datetime.combine(nueva_fecha, nueva_hora) + timedelta(minutes=duracion)).time()
+        
+        if not (horario_clinica.apertura <= nueva_hora < horario_clinica.cierre):
+            raise serializers.ValidationError({
+                'nueva_hora_inicio': f'La clínica atiende de {horario_clinica.apertura.strftime("%H:%M")} '
+                                    f'a {horario_clinica.cierre.strftime("%H:%M")}'
+            })
+        
+        # ✅ VALIDAR HORARIO ODONTÓLOGO
+        try:
+            horario_doctor = HorarioAtencion.objects.get(
+                odontologo=odontologo,
+                dia_semana=dia_semana,
+                activo=True
+            )
+        except HorarioAtencion.DoesNotExist:
+            dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+            raise serializers.ValidationError({
+                'nueva_hora_inicio': f'El Dr(a). {odontologo.get_full_name()} no atiende los {dias[dia_semana]}'
+            })
+        
+        if not (horario_doctor.hora_inicio <= nueva_hora < horario_doctor.hora_fin):
+            raise serializers.ValidationError({
+                'nueva_hora_inicio': f'El Dr(a). {odontologo.get_full_name()} atiende de '
+                                    f'{horario_doctor.hora_inicio.strftime("%H:%M")} a '
+                                    f'{horario_doctor.hora_fin.strftime("%H:%M")}'
+            })
+        
         return data
+
+
+
+
+
+
+
+
+
+
 
 class CitaEstadoSerializer(serializers.Serializer):
     """Serializer para cambiar estado de cita"""
