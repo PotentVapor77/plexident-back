@@ -381,3 +381,16 @@ class PlanTratamientoService:
 
         except Exception as e:
             raise ValidationError(f"Error obteniendo diagnósticos: {str(e)}")
+        
+        
+    @staticmethod
+    def obtener_plan_activo_paciente(paciente_id):
+        """Obtiene el plan de tratamiento activo de un paciente"""
+        from api.odontogram.models import PlanTratamiento
+        
+        return PlanTratamiento.objects.filter(
+            paciente_id=paciente_id,
+            activo=True,
+            estado='ACTIVO'
+        ).order_by('-fecha_creacion').first()
+

@@ -294,10 +294,10 @@ class Form033Service:
         try:
             paciente = Paciente.objects.get(id=UUID(paciente_id))
         except (Paciente.DoesNotExist, ValueError) as e:
-            logger.error(f"[Form033] Paciente no encontrado: {paciente_id}")
+            # logger.error(f"[Form033] Paciente no encontrado: {paciente_id}")
             raise ValueError(f"Paciente no encontrado: {paciente_id}") from e
 
-        logger.info(f"[Form033] Generando datos para paciente {paciente.get_full_name()}")
+        # logger.info(f"[Form033] Generando datos para paciente {paciente.get_full_name()}")
 
         # Obtener dientes con prefetch optimizado
         dientes = self._obtener_dientes_optimizado(paciente)
@@ -306,7 +306,7 @@ class Form033Service:
         permanentes = [d for d in dientes if self._es_permanente(d.codigo_fdi)]
         temporales = [d for d in dientes if not self._es_permanente(d.codigo_fdi)]
         
-        logger.info(f"[Form033] Dientes permanentes: {len(permanentes)}, Temporales: {len(temporales)}")
+        # logger.info(f"[Form033] Dientes permanentes: {len(permanentes)}, Temporales: {len(temporales)}")
 
         # Construir matrices
         odontograma_permanente = self._construir_matriz_permanente(permanentes)

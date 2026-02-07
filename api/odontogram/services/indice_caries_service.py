@@ -36,11 +36,11 @@ class IndiceCariesService:
         """
         Calcula índices CPO y CPO-CEO
         """
-        logger.info(f"[CPO] Calculando índices para paciente {paciente_id}")
+        
         dientes = Diente.objects.filter(
             paciente_id=paciente_id,
         )
-        logger.info(f"[CPO] Dientes activos encontrados: {dientes.count()}")
+        
         diagnosticos = (
             DiagnosticoDental.objects.filter(
                 superficie__diente__paciente_id=paciente_id,

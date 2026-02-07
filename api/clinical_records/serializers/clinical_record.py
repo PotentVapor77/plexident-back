@@ -17,6 +17,10 @@ from api.clinical_records.config import INSTITUCION_CONFIG
 from api.clinical_records.serializers.form033_snapshot_serializer import Form033SnapshotSerializer
 from api.clinical_records.serializers.oral_health_indicators import OralHealthIndicatorsSerializer
 from api.clinical_records.serializers.indices_caries_serializers import WritableIndicesCariesSerializer
+from api.clinical_records.serializers.diagnosticos_cie_serializers import WritableDiagnosticoCIEHistorialSerializer
+from api.clinical_records.services.diagnostico_cie_service import DiagnosticosCIEService
+from api.odontogram.serializers.plan_tratamiento_serializers import PlanTratamientoDetailSerializer
+from api.odontogram.models import PlanTratamiento
 
 from .base import DateFormatterMixin
 from .patient_data import PatientInfoMixin
@@ -75,6 +79,8 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
             'esta_completo',
             'indicadores_salud',
             'indices_caries',
+            
+            
         ]
         read_only_fields = (
             'id',
@@ -135,7 +141,59 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
             ).data
         else:
             data["indices_caries_data"] = None
+        
+        if instance.plan_tratamiento:
+            from api.odontogram.serializers.plan_tratamiento_serializers import PlanTratamientoDetailSerializer
             
+            plan_serializer = PlanTratamientoDetailSerializer(
+                instance.plan_tratamiento,
+                context={'include_sesiones': True, 'include_detalle_completo': True}
+            )
+            data['plan_tratamiento_data'] = plan_serializer.data
+            
+            # Consolidar procedimientos y prescripciones de todas las sesiones
+            procedimientos_consolidados = []
+            prescripciones_consolidadas = []
+            sesiones_detalle = []
+            
+            for sesion in plan_serializer.data.get('sesiones', []):
+                sesion_detalle = {
+                    'numero_sesion': sesion.get('numero_sesion'),
+                    'fecha_programada': sesion.get('fecha_programada'),
+                    'estado': sesion.get('estado'),
+                    'estado_display': sesion.get('estado_display'),
+                    'diagnosticos_complicaciones': sesion.get('diagnosticos_complicaciones', []),
+                    'procedimientos': sesion.get('procedimientos', []),
+                    'prescripciones': sesion.get('prescripciones', []),
+                    'notas': sesion.get('notas'),
+                    'observaciones': sesion.get('observaciones'),
+                }
+                sesiones_detalle.append(sesion_detalle)
+                
+                # Consolidar para vista general
+                if sesion.get('procedimientos'):
+                    procedimientos_consolidados.extend(sesion['procedimientos'])
+                
+                if sesion.get('prescripciones'):
+                    prescripciones_consolidadas.extend(sesion['prescripciones'])
+            
+            data['plan_tratamiento_sesiones_detalle'] = sesiones_detalle
+            data['plan_tratamiento_procedimientos_consolidados'] = procedimientos_consolidados
+            data['plan_tratamiento_prescripciones_consolidadas'] = prescripciones_consolidadas
+            
+            # Generar resumen de prescripciones (texto consolidado)
+            if prescripciones_consolidadas:
+                texto_prescripciones = "Prescripciones:\n"
+                for i, prescripcion in enumerate(prescripciones_consolidadas, 1):
+                    texto_prescripciones += f"{i}. {prescripcion.get('medicamento', '')} - "
+                    texto_prescripciones += f"{prescripcion.get('dosis', '')} - "
+                    texto_prescripciones += f"{prescripcion.get('frecuencia', '')}\n"
+                    if prescripcion.get('observaciones'):
+                        texto_prescripciones += f"   Obs: {prescripcion['observaciones']}\n"
+                data['plan_tratamiento_texto_prescripciones'] = texto_prescripciones
+            else:
+                data['plan_tratamiento_texto_prescripciones'] = "No hay prescripciones registradas."
+        
         # 4. Campos institucionales
         data['institucion_sistema'] = instance.institucion_sistema or "SISTEMA NACIONAL DE SALUD"
         data['unicodigo'] = instance.unicodigo or ""
@@ -180,7 +238,7 @@ class ClinicalRecordDetailSerializer(
         source='constantes_vitales',
         required=False,
         allow_null=True,
-        read_only=True,  # Solo lectura, usamos campos individuales
+        read_only=True, 
     )
     examen_estomatognatico_data = WritableExamenEstomatognaticoSerializer(
         source='examen_estomatognatico', 
@@ -203,6 +261,23 @@ class ClinicalRecordDetailSerializer(
         required=False,
         allow_null=True
     )
+    
+    diagnosticos_cie_data = WritableDiagnosticoCIEHistorialSerializer(
+        source='diagnosticos_cie',
+        required=False,
+        allow_null=True,
+        read_only=True
+    )
+    plan_tratamiento = serializers.PrimaryKeyRelatedField(
+        queryset=PlanTratamiento.objects.filter(activo=True),
+        required=False,
+        allow_null=True
+    )
+    diagnosticos_cie_cargados = serializers.BooleanField(read_only=True)
+    tipo_carga_diagnosticos = serializers.CharField(read_only=True)
+    
+    plan_tratamiento = PlanTratamientoDetailSerializer(read_only=True)
+    
     class Meta:
         model = ClinicalRecord
         fields = '__all__'
@@ -221,6 +296,7 @@ class ClinicalRecordDetailSerializer(
             'tiene_odontograma',
             'indices_caries',
             'indices_caries_data',
+            'plan_tratamiento',
         )
     
     def update(self, instance, validated_data):
@@ -355,6 +431,20 @@ class ClinicalRecordDetailSerializer(
                 examen_estomatognatico_data,
                 {'paciente': instance.paciente},
             )
+        nuevo_plan = validated_data.get('plan_tratamiento')
+        if 'plan_tratamiento' in validated_data:
+            if nuevo_plan is not None:
+                # Validar que el plan pertenezca al mismo paciente
+                if nuevo_plan.paciente_id != instance.paciente_id:
+                    raise serializers.ValidationError({
+                        'plan_tratamiento': 'El plan de tratamiento debe pertenecer al mismo paciente'
+                    })
+                
+                # Validar que el plan esté activo
+                if not nuevo_plan.activo:
+                    raise serializers.ValidationError({
+                        'plan_tratamiento': 'No se puede asociar un plan inactivo'
+                    })
         
         # 8. Actualizar campos directos
         for attr, value in validated_data.items():
@@ -403,10 +493,6 @@ class ClinicalRecordDetailSerializer(
         """
         data = super().to_representation(instance)
         
-        print(f"\n{'='*60}")
-        print(f"TO_REPRESENTATION - Historial ID: {instance.id}")
-        print(f"{'='*60}")
-        
         # 1. Formatear fechas
         date_fields = [
             'fecha_atencion',
@@ -430,25 +516,17 @@ class ClinicalRecordDetailSerializer(
                 data['constantes_vitales_data']['fecha_consulta'] = (
                     instance.constantes_vitales.fecha_consulta.isoformat()
                 )
-            print(f" Constantes vitales agregadas")
         
         # 3.  INDICADORES DE SALUD BUCAL - USAR FK PRIMERO
         print(f" Verificando indicadores para historial {instance.id}")
         
-        # PRIORIDAD 1: Usar los indicadores asociados a este historial (FK)
         if instance.indicadores_salud_bucal:
-            print(f" Usando indicadores asociados al historial (FK)")
-            print(f"   - ID FK: {instance.indicadores_salud_bucal.id}")
-            print(f"   - Fecha: {instance.indicadores_salud_bucal.fecha}")
             
             data['indicadores_salud_bucal_data'] = OralHealthIndicatorsSerializer(
                 instance.indicadores_salud_bucal
             ).data
             
         else:
-            # PRIORIDAD 2: Si no hay FK, buscar los últimos del paciente (solo para crear/preview)
-            print(f"  No hay indicadores asociados por FK, buscando últimos del paciente")
-            
             from api.clinical_records.services.indicadores_service import ClinicalRecordIndicadoresService
             
             indicadores_latest = ClinicalRecordIndicadoresService.obtener_indicadores_paciente(
@@ -488,7 +566,34 @@ class ClinicalRecordDetailSerializer(
                 instance.examen_estomatognatico
             )
             data['examen_estomatognatico_data'] = ee_serializer.data
-            print(f" Examen estomatognático agregado")
+            # print(f" Examen estomatognático agregado")
+            
+        diagnosticos_cie = DiagnosticosCIEService.obtener_diagnosticos_historial(str(instance.id))
+        if diagnosticos_cie:
+            data['diagnosticos_cie_data'] = {
+                'diagnosticos': diagnosticos_cie,
+                'tipo_carga': instance.tipo_carga_diagnosticos or 'nuevos'
+            }
+            print(f" Diagnósticos CIE agregados: {len(diagnosticos_cie)}")
+        else:
+            data['diagnosticos_cie_data'] = None
+            
+        
+            
+        diagnosticos_cie = DiagnosticosCIEService.obtener_diagnosticos_historial(str(instance.id))
+        if diagnosticos_cie:
+            # Filtrar solo activos
+            diagnosticos_activos = [d for d in diagnosticos_cie if d.get('activo', True)]
+            
+            data['diagnosticos_cie_data'] = {
+                'diagnosticos': diagnosticos_activos,
+                'tipo_carga': instance.tipo_carga_diagnosticos or 'nuevos',
+                'total': len(diagnosticos_activos),
+                'total_inactivos': len(diagnosticos_cie) - len(diagnosticos_activos)
+            }
+            print(f" Diagnósticos CIE activos: {len(diagnosticos_activos)}")
+        else:
+            data['diagnosticos_cie_data'] = None
         
         # 7. CAMPOS INSTITUCIONALES
         data['institucion_sistema'] = instance.institucion_sistema or "SISTEMA NACIONAL DE SALUD"
@@ -498,8 +603,6 @@ class ClinicalRecordDetailSerializer(
         data['numero_historia_clinica_unica'] = instance.numero_historia_clinica_unica or ""
         data['numero_archivo'] = instance.numero_archivo or ""
         
-        print(f" Campos institucionales agregados")
-        print(f"{'='*60}\n")
         
         return data
 
@@ -545,6 +648,23 @@ class ClinicalRecordCreateSerializer(serializers.ModelSerializer):
         help_text="Código institucional asignado manualmente"
     )
     
+    diagnosticos_cie = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        allow_empty=True,
+        help_text="Lista de diagnósticos CIE a guardar automáticamente"
+    )
+    
+    tipo_carga_diagnosticos = serializers.ChoiceField(
+        choices=[
+            ('nuevos', 'Solo nuevos diagnósticos'),
+            ('todos', 'Todos los diagnósticos'),
+        ],
+        required=False,
+        default='nuevos',
+        help_text="Tipo de carga de diagnósticos"
+    )
+    
     numero_hoja = serializers.IntegerField(read_only=True)
     numero_historia_clinica_unica = serializers.CharField(read_only=True)
     numero_archivo = serializers.CharField(read_only=True)
@@ -575,6 +695,11 @@ class ClinicalRecordCreateSerializer(serializers.ModelSerializer):
             'numero_hoja',
             'numero_historia_clinica_unica',
             'numero_archivo',
+                        'diagnosticos_cie',
+            'tipo_carga_diagnosticos',
+            'plan_tratamiento',
+
+            
         ]
         extra_kwargs = {
             'institucion_sistema': {
@@ -589,6 +714,9 @@ class ClinicalRecordCreateSerializer(serializers.ModelSerializer):
             'establecimiento_salud': {'required': False, 'allow_blank': True},
             'motivo_consulta': {'required': False, 'allow_blank': True},
             'enfermedad_actual': {'required': False, 'allow_blank': True},
+            'diagnosticos_cie': {'required': False, 'write_only': True},
+            'tipo_carga_diagnosticos': {'required': False},
+            'plan_tratamiento': {'required': False, 'allow_null': True},
         }
     
     def validate_paciente(self, value):

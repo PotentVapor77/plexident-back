@@ -17,8 +17,11 @@ from api.patients.serializers import (
 from api.clinical_records.config import INSTITUCION_CONFIG
 from api.clinical_records.serializers.indices_caries_serializers import IndicesCariesSerializer
 from api.clinical_records.services.indices_caries_service import ClinicalRecordIndicesCariesService
+from api.clinical_records.services.diagnostico_cie_service import DiagnosticosCIEService
+from api.odontogram.models import PlanTratamiento
+from api.odontogram.serializers.plan_tratamiento_serializers import PlanTratamientoDetailSerializer
 from .number_generator_service import NumberGeneratorService
-# AGREGAR ESTAS IMPORTACIONES:
+
 from .indicadores_service import ClinicalRecordIndicadoresService
 from api.clinical_records.serializers.oral_health_indicators import OralHealthIndicatorsSerializer
 
@@ -133,6 +136,34 @@ class RecordLoaderService:
             indices_caries,
             indices_caries_data,
         )
+        
+        diagnosticos_cie = DiagnosticosCIEService.obtener_diagnosticos_paciente(
+            paciente_id, 
+            'nuevos'
+        )
+        plan_tratamiento = None
+        plan = (
+            PlanTratamiento.objects
+            .filter(paciente_id=paciente_id, activo=True)
+            .order_by('-fecha_creacion')
+            .first()
+        )
+
+        if plan:
+            plan_tratamiento = PlanTratamientoDetailSerializer(
+                plan,
+                context={'include_sesiones': True}
+            ).data
+        if diagnosticos_cie:
+            diagnosticos_formatted = {
+                'id': diagnosticos_cie.get('version_id') if isinstance(diagnosticos_cie, dict) else None,
+                'fecha': diagnosticos_cie.get('fecha_snapshot') if isinstance(diagnosticos_cie, dict) else None,
+                'data': diagnosticos_cie,
+                'tipo_carga': 'nuevos'  
+            }
+        else:
+            diagnosticos_formatted = {'id': None, 'fecha': None, 'data': None}
+        
         return {
             # Información del paciente
             'paciente': {
@@ -186,6 +217,10 @@ class RecordLoaderService:
                 indicadores_salud_bucal_data
             ),
             'indices_caries': indices_caries_formatted,
+            
+            'diagnosticos_cie': diagnosticos_formatted,
+            'plan_tratamiento': plan_tratamiento,
+            
         }
     
     @staticmethod

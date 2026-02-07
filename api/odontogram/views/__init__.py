@@ -43,6 +43,7 @@ __all__ = [
     'AreaAfectadaViewSet',
     'TipoAtributoClinicoViewSet',
     'OdontogramaConfigViewSet',
+    'DiagnosticoCIEViewSet',
     
     # Odontograma ViewSets
     'PacienteViewSet',
@@ -62,4 +63,6 @@ __all__ = [
     # Indicadores endpoints
     'obtener_informacion_piezas_indice',
     'verificar_disponibilidad_piezas',
+    
+    
 ]

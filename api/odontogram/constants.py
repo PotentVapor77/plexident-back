@@ -160,13 +160,26 @@ ESCALA_CALCULO = {
     2: 'Cálculo supragingival que cubre más de 1/3 pero no más de 2/3 de la superficie expuesta, o presencia de cálculo subgingival en forma de tiras aisladas',
     3: 'Cálculo supragingival que cubre más de 2/3 de la superficie expuesta o banda continua de cálculo subgingival'
 }
+INTERPRETACION_OHI_S = {
+    'excelente': (0, 0.6),
+    'bueno': (0.7, 1.2),
+    'regular': (1.3, 1.8),
+    'deficiente': (1.9, 3.0),
+    'pesimo': (3.1, 6.0)
+}
 
+# Interpretación Índice Gingival
+INTERPRETACION_GI = {
+    'normal': (0, 0.1),
+    'leve': (0.2, 1.0),
+    'moderada': (1.1, 2.0),
+    'severa': (2.1, 3.0)
+}
 # Escala de gingivitis (Índice Gingival de Löe & Silness)
 ESCALA_GINGIVITIS = {
     0: 'Encía normal',
-    1: 'Leve inflamación, ligero cambio de color, ligero edema, no sangrado al sondaje',
-    2: 'Moderada inflamación, enrojecimiento, edema, sangrado al sondaje',
-    3: 'Inflamación severa, marcado enrojecimiento y edema, ulceración, tendencia al sangrado espontáneo'
+    1: 'Problemas gingivales presentes',
+
 }
 
 # Niveles de enfermedad periodontal

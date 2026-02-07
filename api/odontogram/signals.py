@@ -33,7 +33,13 @@ from api.odontogram.models import (
 from api.odontogram.services.indice_caries_service import IndiceCariesService
 from api.odontogram.services.context_service import OperacionContexto
 
-
+DIAGNOSTICOS_AUSENCIA = [
+    'ausente',
+    'perdida_caries',
+    'perdida_otra_causa',
+    'extraccion_indicada',
+    'extraccion_otra_causa'
+]
 logger = logging.getLogger(__name__)
 
 Usuario = get_user_model()
@@ -288,7 +294,19 @@ def validar_diagnostico_dental(sender, instance, **kwargs):
         if not 1 <= instance.prioridad_asignada <= 5:
             raise ValueError("Prioridad asignada debe estar entre 1 y 5")
 
-
+@receiver(pre_save, sender=DiagnosticoDental)
+def registrar_cambio_tipo_diagnostico(sender, instance, **kwargs):
+    """Registra cambios en el tipo de diagnóstico"""
+    if instance.pk:
+        try:
+            old_instance = DiagnosticoDental.objects.get(pk=instance.pk)
+            if old_instance.tipo_diagnostico != instance.tipo_diagnostico:
+                logger.info(
+                    f"Cambio de tipo diagnóstico: {old_instance.tipo_diagnostico} -> "
+                    f"{instance.tipo_diagnostico} en diagnóstico {instance.id}"
+                )
+        except DiagnosticoDental.DoesNotExist:
+            pass
 # =============================================================================
 # RECEIVERS PARA HISTORIAL Y AUDITORÍA
 # =============================================================================
@@ -509,4 +527,25 @@ def crear_snapshot_indices_despues_snapshot_completo(sender, instance, created, 
         logger.error(f"[SIGNAL] Error creando snapshot de índices: {str(e)}")
     
     
-    
+@receiver(post_save, sender=DiagnosticoDental)
+def actualizar_ausencia_en_guardar(sender, instance, created, **kwargs):
+    """
+    Signal que actualiza el estado de ausencia del diente
+    cuando se guarda un diagnóstico
+    """
+    if instance.diagnostico_catalogo.key in DIAGNOSTICOS_AUSENCIA:
+        diente = instance.superficie.diente
+        if not diente.ausente and instance.activo:
+            diente.ausente = True
+            diente.save(update_fields=['ausente'])
+
+
+@receiver(post_delete, sender=DiagnosticoDental)
+def actualizar_ausencia_en_eliminar(sender, instance, **kwargs):
+    """
+    Signal que verifica si el diente debe seguir marcado como ausente
+    cuando se elimina un diagnóstico
+    """
+    if instance.diagnostico_catalogo.key in DIAGNOSTICOS_AUSENCIA:
+        diente = instance.superficie.diente
+        diente.actualizar_estado_ausencia()

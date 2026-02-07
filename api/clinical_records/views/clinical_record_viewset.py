@@ -2,6 +2,7 @@
 """
 ViewSet principal para gestión de historiales clínicos
 """
+from django.conf import settings
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
@@ -10,6 +11,13 @@ from rest_framework.response import Response
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.exceptions import ValidationError
 
+from api.clinical_records.serializers.clinical_record_with_plan_serializer import (
+    ClinicalRecordWithPlanDetailSerializer,
+    ClinicalRecordListSerializer,
+    ClinicalRecordCreateSerializer as ClinicalRecordCreateSerializerNew
+)
+
+
 from api.clinical_records.models import ClinicalRecord
 from api.clinical_records.serializers import (
     ClinicalRecordSerializer,
@@ -17,6 +25,7 @@ from api.clinical_records.serializers import (
     ClinicalRecordCreateSerializer,
     ClinicalRecordCloseSerializer,
     ClinicalRecordReopenSerializer,
+    
 )
 from api.clinical_records.services.clinical_record_service import ClinicalRecordService
 from api.patients.models.paciente import Paciente
@@ -28,9 +37,19 @@ from api.clinical_records.serializers.stomatognathic_exam import WritableExamenE
 from api.clinical_records.serializers.vital_signs import WritableConstantesVitalesSerializer
 from api.clinical_records.services.vital_signs_service import VitalSignsService
 from api.clinical_records.serializers.oral_health_indicators import OralHealthIndicatorsSerializer
-from api.odontogram.models import IndiceCariesSnapshot
+from api.odontogram.models import IndiceCariesSnapshot, PlanTratamiento, SesionTratamiento
 from api.odontogram.serializers.indices_caries_serializers import WritableIndiceCariesSnapshotSerializer
 from api.clinical_records.serializers.indices_caries_serializers import WritableIndicesCariesSerializer
+from api.clinical_records.services.diagnostico_cie_service import DiagnosticosCIEService
+from api.odontogram.views.diagnostico_cie_views import DiagnosticoCIEViewSet
+from api.clinical_records.models.diagnostico_cie import DiagnosticoCIEHistorial
+from api.clinical_records.serializers.plan_tratamiento_serializers import (
+    PlanTratamientoCompletoSerializer,
+    PlanTratamientoResumenSerializer
+)
+
+
+
 
 from .base import (
     ClinicalRecordPagination,
@@ -54,16 +73,6 @@ class ClinicalRecordViewSet(
     """
     ViewSet para gestión completa de historiales clínicos
     
-    Endpoints:
-        - GET    /api/clinical-records/                  - Listar historiales
-        - GET    /api/clinical-records/{id}/             - Detalle de historial
-        - GET    /api/clinical-records/by-paciente/      - Historiales por paciente
-        - GET    /api/clinical-records/cargar-datos-iniciales/ - Pre-cargar datos
-        - POST   /api/clinical-records/                  - Crear historial
-        - POST   /api/clinical-records/{id}/cerrar/      - Cerrar historial
-        - POST   /api/clinical-records/{id}/reabrir/     - Reabrir historial
-        - PATCH  /api/clinical-records/{id}/             - Actualizar historial
-        - DELETE /api/clinical-records/{id}/             - Eliminar (lógico)
     """
     
     queryset = ClinicalRecord.objects.all()
@@ -99,17 +108,44 @@ class ClinicalRecordViewSet(
     def get_serializer_class(self):
         """Retorna el serializer apropiado según la acción"""
         if self.action == 'create':
-            return ClinicalRecordCreateSerializer
-        elif self.action in ['update', 'partial_update', 'retrieve']:
+            return ClinicalRecordCreateSerializerNew
+        elif self.action in ['retrieve', 'by_paciente']:
+            # CAMBIADO: Usar serializer con plan completo
+            return ClinicalRecordWithPlanDetailSerializer
+        elif self.action == 'list':
+            # NUEVO: Usar serializer de lista ligero
+            return ClinicalRecordListSerializer
+        elif self.action in ['update', 'partial_update']:
             return ClinicalRecordDetailSerializer
         return ClinicalRecordSerializer
     
     def get_queryset(self):
-        """Queryset optimizado con filtros y búsqueda"""
+        """
+        Queryset optimizado con prefetch de plan de tratamiento y sesiones
+        """
         qs = self.queryset.order_by('-fecha_atencion')
         
-        # Optimización con select_related
-        qs = self.get_optimized_queryset(qs, self.RELATED_FIELDS)
+        # Optimización base con select_related
+        qs = qs.select_related(
+            'paciente',
+            'odontologo_responsable',
+            'antecedentes_personales',
+            'antecedentes_familiares',
+            'constantes_vitales',
+            'examen_estomatognatico',
+            'indicadores_salud_bucal',
+            'indices_caries',  
+            'creado_por',
+            'plan_tratamiento',  
+            'plan_tratamiento__paciente', 
+            'plan_tratamiento__creado_por',  
+        )
+        
+        if self.action in ['retrieve', 'by_paciente']:
+            qs = qs.prefetch_related(
+                'plan_tratamiento__sesiones', 
+                'plan_tratamiento__sesiones__odontologo', 
+            )
         
         # Filtro de activo/inactivo
         qs = self.apply_active_filter(qs, self.request)
@@ -202,7 +238,7 @@ class ClinicalRecordViewSet(
                 historial.save()
             
             output_serializer = ClinicalRecordDetailSerializer(historial)
-            
+            ClinicalRecordDetailSerializer
             logger.info(
                 f"Historial clínico {pk} cerrado por {request.user.username}"
             )
@@ -261,34 +297,80 @@ class ClinicalRecordViewSet(
         
         GET: /api/clinical-records/by-paciente/?paciente_id={uuid}
         """
-        paciente_id = request.query_params.get('paciente_id')
-        
+        paciente_id = request.query_params.get('paciente_id') or request.query_params.get('pacienteid')
+
+    
         if not paciente_id:
             return Response(
-                {'detail': 'El parámetro paciente_id es requerido'},
+                {
+                    "success": False,
+                    "status_code": 400,
+                    "message": "El parámetro paciente_id es requerido",
+                    "data": None,
+                    "errors": {"paciente_id": ["Este campo es requerido"]}
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         try:
-            # Queryset optimizado
-            historiales = ClinicalRecord.objects.filter(
-                paciente_id=paciente_id,
-                activo=True
-            ).select_related(
-                *self.RELATED_FIELDS,
-                'actualizado_por'
-            ).order_by('-fecha_atencion')
+            # Validar que el paciente existe
+            from api.patients.models.paciente import Paciente
+            if not Paciente.objects.filter(id=paciente_id, activo=True).exists():
+                return Response(
+                    {
+                        "success": False,
+                        "status_code": 404,
+                        "message": "Paciente no encontrado",
+                        "data": None,
+                        "errors": {"paciente_id": ["Paciente no encontrado o inactivo"]}
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
             
-            serializer = ClinicalRecordDetailSerializer(historiales, many=True)
-            return Response(serializer.data)
-        except Exception as e:
-            logger.error(
-                f"Error obteniendo historiales del paciente {paciente_id}: "
-                f"{str(e)}"
-            )
+            # Obtener queryset optimizado
+            queryset = self.get_queryset().filter(paciente_id=paciente_id)
+            
+            # Aplicar filtro de activo si se especifica
+            activo_param = request.query_params.get('activo')
+            if activo_param is not None:
+                activo_value = activo_param.lower() == 'true'
+                queryset = queryset.filter(activo=activo_value)
+            
+            # Aplicar límite si se especifica
+            limit = request.query_params.get('limit')
+            if limit:
+                try:
+                    limit = int(limit)
+                    queryset = queryset[:limit]
+                except ValueError:
+                    pass
+            
+            # Serializar con datos completos del plan
+            serializer = self.get_serializer(queryset, many=True)
+            
             return Response(
-                {'detail': 'No se encontraron historiales para este paciente'},
-                status=status.HTTP_404_NOT_FOUND
+                {
+                    "success": True,
+                    "status_code": 200,
+                    "message": "Historiales clínicos obtenidos exitosamente",
+                    "count": queryset.count(),
+                    "data": serializer.data,
+                    "errors": None
+                },
+                status=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo historiales para paciente {paciente_id}: {str(e)}")
+            return Response(
+                {
+                    "success": False,
+                    "status_code": 500,
+                    "message": "Error interno al obtener historiales",
+                    "data": None,
+                    "errors": {"detail": [str(e)]}
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
     @action(detail=False, methods=['get'], url_path='cargar-datos-iniciales')
@@ -299,28 +381,76 @@ class ClinicalRecordViewSet(
         
         GET: /api/clinical-records/cargar-datos-iniciales/?paciente_id={uuid}
         """
-        paciente_id = request.query_params.get('paciente_id')
-        
+        paciente_id = request.query_params.get('paciente_id') or request.query_params.get('pacienteid')
+
+    
         if not paciente_id:
             return Response(
-                {'detail': 'El parámetro paciente_id es requerido'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "El parámetro pacienteid es requerido"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         
         try:
-            data = ClinicalRecordService.cargar_datos_iniciales_paciente(
-                paciente_id
-            )
-            return Response(data, status=status.HTTP_200_OK)
+            # Validar que el paciente existe
+            paciente = Paciente.objects.get(id=paciente_id, activo=True)
         except Paciente.DoesNotExist:
             return Response(
-                {'detail': 'Paciente no encontrado'},
-                status=status.HTTP_404_NOT_FOUND
+                {"detail": "Paciente no encontrado o inactivo"},
+                status=status.HTTP_404_NOT_FOUND,
             )
-        except Exception as e:
-            logger.error(f"Error cargando datos iniciales: {str(e)}")
+        
+        try:
+            # Cargar datos iniciales del paciente
+            datos_iniciales = ClinicalRecordService.cargar_datos_iniciales_paciente(
+                paciente_id
+            )
+            
+            from api.clinical_records.services.plan_tratamiento_service import PlanTratamientoLinkService
+            plan_activo = PlanTratamientoLinkService.obtener_plan_activo_paciente(
+                paciente_id
+            )
+            
+            if plan_activo:
+                from api.clinical_records.serializers.plan_tratamiento_serializers import (
+                    PlanTratamientoResumenSerializer
+                )
+                
+                datos_iniciales['plan_tratamiento'] = {
+                    'id': str(plan_activo.id),
+                    'existe': True,
+                    'resumen': PlanTratamientoResumenSerializer(plan_activo).data,
+                    'mensaje': 'Se vinculará automáticamente al crear el historial'
+                }
+            else:
+                datos_iniciales['plan_tratamiento'] = {
+                    'id': None,
+                    'existe': False,
+                    'resumen': None,
+                    'mensaje': 'No hay plan de tratamiento activo para este paciente'
+                }
+            
             return Response(
-                {'detail': str(e)},
+                {
+                    "success": True,
+                    "status_code": 200,
+                    "message": "Datos iniciales cargados correctamente",
+                    "data": datos_iniciales,
+                    "errors": None
+                }
+            )
+            
+        except Exception as e:
+            logger.error(
+                f"Error cargando datos iniciales para paciente {paciente_id}: {str(e)}"
+            )
+            return Response(
+                {
+                    "success": False,
+                    "status_code": 500,
+                    "message": "Error al cargar datos iniciales",
+                    "data": None,
+                    "errors": {"detail": [str(e)]}
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
             
@@ -453,23 +583,22 @@ class ClinicalRecordViewSet(
             )
             
             
-    def _validar_puede_recargar(self, paciente_id):
+    def _validar_puede_recargar(self, pacienteid):
         """
         Busca el historial más reciente y valida que sea BORRADOR.
         """
-        # Usamos filter().first() para evitar errores si no existe
-        ultimo_historial = ClinicalRecord.objects.filter(
-            paciente__id=paciente_id, # Usamos la relación paciente__id
+        ultimohistorial = ClinicalRecord.objects.filter(
+            paciente_id=pacienteid,  
             activo=True
         ).order_by('-fecha_creacion').first()
-        
-        if not ultimo_historial:
-            return None, "No se encontró un historial clínico activo para este paciente."
-        
-        if ultimo_historial.estado != 'BORRADOR':
-            return None, f"El historial debe estar en BORRADOR (Actual: {ultimo_historial.estado})"
-            
-        return ultimo_historial, None
+
+        if not ultimohistorial:
+            return None, None  
+
+        if ultimohistorial.estado != 'BORRADOR':
+            return None, f"El historial debe estar en BORRADOR. Actual: {ultimohistorial.estado}"
+
+        return ultimohistorial, None
     
     @action(detail=True, methods=['get'], url_path='indicadores-salud-bucal')
     def obtener_indicadores_historial(self, request, pk=None):
@@ -521,6 +650,9 @@ class ClinicalRecordViewSet(
         
         POST: /api/clinical-records/{id}/guardar-indicadores-salud-bucal/
         Body: { ...datos de indicadores... }
+        
+        FIX BRECHA 1: Ahora llama a PiezasIndiceService para registrar
+        trazabilidad de piezas usadas (originales y suplentes).
         """
         historial = self.get_object()
         
@@ -532,16 +664,60 @@ class ClinicalRecordViewSet(
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            from odontogram.models import IndicadoresSaludBucal
+            from api.odontogram.models import IndicadoresSaludBucal
+            from api.odontogram.services.piezas_service import PiezasIndiceService
+            from django.utils import timezone
             
             # Validar datos
             serializer = OralHealthIndicatorsSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             
-            # Crear nuevos indicadores
+            # ===== FIX BRECHA 1: Obtener info de piezas y registrar trazabilidad =====
+            paciente_id = str(historial.paciente_id)
+            info_piezas = PiezasIndiceService.obtener_informacion_piezas(paciente_id)
+            
+            # Construir mapeo de piezas usadas con datos del registro
+            piezas_mapeo = info_piezas.get('piezas_mapeo') or info_piezas.get('piezas', {})
+            mapeo_piezas_usadas = {}
+            
+            for pieza_original, info in piezas_mapeo.items():
+                pieza_usada = info.get('codigo_usado', pieza_original)
+                
+                # Verificar si hay datos para esta pieza en los validated_data
+                tiene_datos = False
+                datos_pieza = {}
+                
+                for campo in ['placa', 'calculo', 'gingivitis']:
+                    campo_entrada = f"pieza_{pieza_original}_{campo}"
+                    valor = serializer.validated_data.get(campo_entrada)
+                    if valor is not None:
+                        tiene_datos = True
+                        datos_pieza[campo] = valor
+                
+                if tiene_datos:
+                    mapeo_piezas_usadas[pieza_original] = {
+                        'codigo_usado': pieza_usada,
+                        'es_alternativa': info.get('es_alternativa', pieza_usada != pieza_original),
+                        'codigo_original': pieza_original,
+                        'disponible': info.get('disponible', True),
+                        'diente_id': info.get('diente_id'),
+                        'ambos_ausentes': info.get('ambos_ausentes', False),
+                        'datos': datos_pieza
+                    }
+            
+            piezas_usadas_en_registro = {
+                'piezas_mapeo': mapeo_piezas_usadas,
+                'denticion': info_piezas.get('denticion'),
+                'estadisticas': info_piezas.get('estadisticas'),
+                'fecha_registro': str(timezone.now())
+            }
+            # ===== FIN FIX BRECHA 1 =====
+            
+            # Crear nuevos indicadores CON trazabilidad de piezas
             indicadores = IndicadoresSaludBucal.objects.create(
                 paciente=historial.paciente,
                 creado_por=request.user,
+                piezas_usadas_en_registro=piezas_usadas_en_registro,
                 **serializer.validated_data
             )
             
@@ -583,6 +759,9 @@ class ClinicalRecordViewSet(
         """
         Actualiza los indicadores de salud bucal asociados a este historial.
         PATCH: /api/clinical-records/{id}/actualizar-indicadores-salud-bucal/
+        
+        FIX BRECHA 1 (parte 2): Actualiza piezas_usadas_en_registro si se
+        modifican campos de piezas dentales.
         """
         historial = self.get_object()
         
@@ -619,6 +798,51 @@ class ClinicalRecordViewSet(
         try:
             indicadores = serializer.save()
             
+            # ===== FIX BRECHA 1 (parte 2): Actualizar trazabilidad si cambian piezas =====
+            campos_pieza = any(
+                field.startswith('pieza_') for field in request.data.keys()
+            )
+            
+            if campos_pieza:
+                from api.odontogram.services.piezas_service import PiezasIndiceService
+                from django.utils import timezone
+                
+                paciente_id = str(historial.paciente_id)
+                info_piezas = PiezasIndiceService.obtener_informacion_piezas(paciente_id)
+                piezas_mapeo = info_piezas.get('piezas_mapeo') or info_piezas.get('piezas', {})
+                
+                mapeo_piezas_usadas = {}
+                for pieza_original, info in piezas_mapeo.items():
+                    pieza_usada = info.get('codigo_usado', pieza_original)
+                    tiene_datos = False
+                    datos_pieza = {}
+                    
+                    for campo in ['placa', 'calculo', 'gingivitis']:
+                        valor = getattr(indicadores, f"pieza_{pieza_original}_{campo}", None)
+                        if valor is not None:
+                            tiene_datos = True
+                            datos_pieza[campo] = valor
+                    
+                    if tiene_datos:
+                        mapeo_piezas_usadas[pieza_original] = {
+                            'codigo_usado': pieza_usada,
+                            'es_alternativa': info.get('es_alternativa', pieza_usada != pieza_original),
+                            'codigo_original': pieza_original,
+                            'disponible': info.get('disponible', True),
+                            'diente_id': info.get('diente_id'),
+                            'ambos_ausentes': info.get('ambos_ausentes', False),
+                            'datos': datos_pieza
+                        }
+                
+                indicadores.piezas_usadas_en_registro = {
+                    'piezas_mapeo': mapeo_piezas_usadas,
+                    'denticion': info_piezas.get('denticion'),
+                    'estadisticas': info_piezas.get('estadisticas'),
+                    'fecha_registro': str(timezone.now()),
+                    'tipo_operacion': 'actualizacion'
+                }
+                indicadores.save(update_fields=['piezas_usadas_en_registro'])
+            # ===== FIN FIX =====
             
             return Response({
                 'success': True,
@@ -828,7 +1052,7 @@ class ClinicalRecordViewSet(
             return Response({'detail': 'No hay odontograma previo'}, status=404)
             
         return Response(Form033SnapshotSerializer(snapshot).data)
-    
+        
     # lastes de Indicadores de Salud Bucal
     @action(detail=False, methods=['get'], url_path=r'indicadores-salud-bucal/(?P<paciente_id>[^/]+)/latest')
     def latest_indicadores_salud(self, request, paciente_id=None):
@@ -879,6 +1103,757 @@ class ClinicalRecordViewSet(
         
         serializer_data = WritableIndicesCariesSerializer(instancia).data
         
-        logger.info(f"Retornando datos: {serializer_data}")
+        # logger.info(f"Retornando datos: {serializer_data}")
         
         return Response(serializer_data)
+    
+    @action(detail=False, methods=['get'], url_path='diagnosticos-cie')
+    def latest_diagnosticos_cie(self, request):
+        """
+        Obtiene diagnósticos CIE-10 desde la base de datos para un paciente.
+        """
+        pacienteid = request.query_params.get('pacienteid') or request.query_params.get('paciente_id')
+        tipo_carga = request.query_params.get('tipo_carga', 'nuevos')
+        mostrar_inactivos = request.query_params.get('mostrar_inactivos', 'false').lower() == 'true'
+
+        if not pacienteid:
+            return Response(
+                {"detail": "El parámetro 'pacienteid' es requerido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if tipo_carga not in ['nuevos', 'todos']:
+            return Response(
+                {"detail": "tipo_carga debe ser 'nuevos' o 'todos'"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Verificar paciente
+        from api.patients.models.paciente import Paciente
+        try:
+            paciente = Paciente.objects.get(id=pacienteid, activo=True)
+        except Paciente.DoesNotExist:
+            return Response(
+                {"detail": "Paciente no encontrado o inactivo"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Usar el servicio actualizado - Asegurar que siempre retorne una lista
+        try:
+            diagnosticos = DiagnosticosCIEService.obtener_diagnosticos_paciente(
+                str(pacienteid), tipo_carga
+            )
+            
+            # Asegurar que diagnosticos es siempre una lista
+            if diagnosticos is None:
+                diagnosticos = []
+            
+            # logger.info(f"Obtenidos {len(diagnosticos)} diagnósticos para paciente {pacienteid}, tipo: {tipo_carga}")
+            
+            # Filtrar inactivos si no se solicitan
+            if not mostrar_inactivos:
+                diagnosticos = [d for d in diagnosticos if d.get('activo', True)]
+            
+            return Response({
+                "success": True,
+                "disponible": len(diagnosticos) > 0,
+                "total": len(diagnosticos),
+                "tipo_carga": tipo_carga,
+                "diagnosticos": diagnosticos,
+                "paciente_nombre": f"{paciente.apellidos}, {paciente.nombres}",
+                "paciente_cedula": paciente.cedula_pasaporte,
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo diagnósticos CIE para paciente {pacienteid}: {str(e)}")
+            return Response({
+                "success": False,
+                "status_code": 500,
+                "message": "Error interno del servidor al obtener diagnósticos",
+                "data": None,
+                "errors": {
+                    "detail": [str(e)]
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'], url_path='cargar-diagnosticos-cie')
+    def cargar_diagnosticos_cie(self, request, pk=None):
+        """
+        Carga diagnósticos CIE-10 al historial clínico {pk}.
+        Body:
+        {
+            "tipo_carga": "nuevos" | "todos",
+            "diagnosticos": [
+                {
+                    "diagnostico_dental_id": "<uuid>",
+                    "tipo_cie": "PRE" | "DEF"  # opcional, por defecto PRE
+                },
+                ...
+            ]
+        }
+        """
+        historial = self.get_object()
+
+        if historial.estado == 'CERRADO':
+            return Response(
+                {"success": False, "message": "No se pueden agregar diagnósticos a un historial cerrado"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        tipo_carga = request.data.get('tipo_carga', 'nuevos')
+        diagnosticos_data = request.data.get('diagnosticos', [])
+
+        if tipo_carga not in ['nuevos', 'todos']:
+            return Response(
+                {"success": False, "message": "tipo_carga debe ser 'nuevos' o 'todos'"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Asegurar tipo PRE por defecto cuando no venga
+        for d in diagnosticos_data:
+            if 'tipo_cie' not in d or not d['tipo_cie']:
+                d['tipo_cie'] = 'PRE'
+
+        resultado = DiagnosticosCIEService.cargar_diagnosticos_a_historial(
+            historial_clinico=historial,
+            diagnosticos_data=diagnosticos_data,
+            tipo_carga=tipo_carga,
+            usuario=request.user,
+        )
+
+        status_code = status.HTTP_200_OK if resultado.get('success') else status.HTTP_400_BAD_REQUEST
+        return Response(resultado, status=status_code)
+    
+    @action(detail=True, methods=['get'], url_path='obtener-diagnosticos-cie')
+    def obtener_diagnosticos_cie(self, request, pk=None):
+        """
+        Obtiene los diagnósticos CIE-10 cargados en este historial
+        GET /api/clinical-records/{id}/obtener-diagnosticos-cie/
+        """
+        historial = self.get_object()
+        diagnosticos = DiagnosticosCIEService.obtener_diagnosticos_historial(str(historial.id))
+
+        if not diagnosticos and not historial.diagnosticos_cie_cargados:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Este historial no tiene diagnósticos CIE-10 cargados",
+                    "data": None,
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(
+            {
+                "success": True,
+                "message": "Diagnósticos CIE-10 del historial",
+                "tipo_carga": historial.tipo_carga_diagnosticos or "nuevos",
+                "total_diagnosticos": len(diagnosticos),
+                "diagnosticos": diagnosticos,
+            }
+        )
+        
+    @action(detail=True, methods=['delete'], 
+            url_path='eliminar-diagnosticos-cie')
+    def eliminar_diagnosticos_cie(self, request, pk=None):
+        """
+        Elimina todos los diagnósticos CIE-10 del historial
+        
+        DELETE: /api/clinical-records/{id}/eliminar-diagnosticos-cie/
+        """
+        historial = self.get_object()
+        
+        # Validar que el historial no esté cerrado
+        if historial.estado == 'CERRADO':
+            return Response({
+                'success': False,
+                'message': 'No se pueden modificar diagnósticos de un historial cerrado'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from api.clinical_records.models import DiagnosticoCIEHistorial
+            
+            # Eliminar todos los diagnósticos CIE de este historial
+            eliminados, _ = DiagnosticoCIEHistorial.objects.filter(
+                historial_clinico=historial
+            ).delete()
+            
+            # Actualizar tracking
+            historial.diagnosticos_cie_cargados = False
+            historial.tipo_carga_diagnosticos = None
+            historial.save()
+            
+            logger.info(f"{eliminados} diagnósticos CIE eliminados del historial {pk}")
+            
+            return Response({
+                'success': True,
+                'message': f'{eliminados} diagnósticos CIE eliminados del historial',
+                'eliminados': eliminados
+            })
+            
+        except Exception as e:
+            logger.error(f"Error eliminando diagnósticos CIE del historial {pk}: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error eliminando diagnósticos: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            
+    @action(detail=True, methods=['delete'], 
+            url_path='diagnosticos-cie/(?P<diagnostico_id>[^/]+)')
+    def eliminar_diagnostico_cie(self, request, pk=None, diagnostico_id=None):
+        """
+        Elimina un diagnóstico CIE individual del historial
+        
+        DELETE: /api/clinical-records/{historial_id}/diagnosticos-cie/{diagnostico_id}/
+        """
+        try:
+            resultado = DiagnosticosCIEService.eliminar_diagnostico_individual(
+                diagnostico_cie_id=diagnostico_id,
+                usuario=request.user
+            )
+            
+            if resultado['success']:
+                return Response(resultado, status=status.HTTP_200_OK)
+            else:
+                return Response(resultado, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"Error eliminando diagnóstico CIE {diagnostico_id}: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error eliminando diagnóstico: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['patch'], 
+            url_path='diagnosticos-cie/(?P<diagnostico_id>[^/]+)/actualizar-tipo')
+    def actualizar_tipo_cie(self, request, pk=None, diagnostico_id=None):
+        """
+        Actualiza el tipo CIE (PRE/DEF) de un diagnóstico individual
+        
+        PATCH: /api/clinical-records/{historial_id}/diagnosticos-cie/{diagnostico_id}/actualizar-tipo/
+        Body: {"tipo_cie": "DEF"}
+        """
+        from api.clinical_records.serializers.diagnosticos_cie_individual_serializers import (
+            DiagnosticoCIEUpdateSerializer
+        )
+        
+        serializer = DiagnosticoCIEUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'success': False,
+                'message': 'Error de validación',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            resultado = DiagnosticosCIEService.actualizar_tipo_cie_individual(
+                diagnostico_cie_id=diagnostico_id,
+                nuevo_tipo_cie=serializer.validated_data['tipo_cie'],
+                usuario=request.user
+            )
+            
+            if resultado['success']:
+                return Response(resultado, status=status.HTTP_200_OK)
+            else:
+                return Response(resultado, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"Error actualizando tipo CIE para {diagnostico_id}: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error actualizando tipo CIE: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'], 
+            url_path='sincronizar-diagnosticos-cie')
+    def sincronizar_diagnosticos_cie(self, request, pk=None):
+        """
+        Sincroniza los diagnósticos CIE de un historial
+        
+        POST: /api/clinical-records/{historial_id}/sincronizar-diagnosticos-cie/
+        Body: {
+          "diagnosticos_finales": [...],
+          "tipo_carga": "nuevos"
+        }
+        """
+        from api.clinical_records.serializers.diagnosticos_cie_individual_serializers import (
+            SincronizarDiagnosticosSerializer
+        )
+        
+        serializer = SincronizarDiagnosticosSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'success': False,
+                'message': 'Error de validación',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            resultado = DiagnosticosCIEService.sincronizar_diagnosticos_historial(
+                historial_id=pk,
+                diagnosticos_finales=serializer.validated_data['diagnosticos_finales'],
+                tipo_carga=serializer.validated_data['tipo_carga'],
+                usuario=request.user
+            )
+            
+            if resultado['success']:
+                return Response(resultado, status=status.HTTP_200_OK)
+            else:
+                return Response(resultado, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"Error sincronizando diagnósticos CIE para historial {pk}: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error sincronizando diagnósticos: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            
+    @action(detail=True, methods=['post'], url_path='cambiar-tipo-cie')
+    def cambiar_tipo_cie(self, request, pk=None):
+        """
+        Cambia el tipo CIE (PRE/DEF) de uno o más diagnósticos
+        y actualiza su estado activo
+        
+        POST: /api/clinical-records/{id}/cambiar-tipo-cie/
+        Body: {
+            "diagnosticos": [
+                {
+                    "diagnostico_cie_id": "uuid",
+                    "tipo_cie": "DEF",
+                    "activo": true
+                }
+            ]
+        }
+        """
+        historial = self.get_object()
+        
+        # Validar que el historial no esté cerrado
+        if historial.estado == 'CERRADO':
+            return Response({
+                'success': False,
+                'message': 'No se pueden modificar diagnósticos de un historial cerrado'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        diagnosticos_data = request.data.get('diagnosticos', [])
+        
+        if not diagnosticos_data:
+            return Response({
+                'success': False,
+                'message': 'Se requiere lista de diagnósticos a modificar'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        resultados = []
+        actualizados = 0
+        errores = 0
+        
+        for diag_data in diagnosticos_data:
+            diagnostico_cie_id = diag_data.get('diagnostico_cie_id')
+            nuevo_tipo_cie = diag_data.get('tipo_cie')
+            nuevo_activo = diag_data.get('activo')
+            
+            if not diagnostico_cie_id:
+                errores += 1
+                resultados.append({
+                    'diagnostico_cie_id': diagnostico_cie_id,
+                    'success': False,
+                    'error': 'ID requerido'
+                })
+                continue
+            
+            try:
+                diagnostico = DiagnosticoCIEHistorial.objects.get(
+                    id=diagnostico_cie_id,
+                    historial_clinico=historial
+                )
+                
+                # Verificar permisos
+                if diagnostico.historial_clinico.id != historial.id:
+                    errores += 1
+                    resultados.append({
+                        'diagnostico_cie_id': diagnostico_cie_id,
+                        'success': False,
+                        'error': 'El diagnóstico no pertenece a este historial'
+                    })
+                    continue
+                
+                # Actualizar tipo CIE si se proporciona
+                if nuevo_tipo_cie:
+                    if nuevo_tipo_cie not in [c[0] for c in DiagnosticoCIEHistorial.TipoCIE.choices]:
+                        raise ValidationError(f"Tipo CIE inválido: {nuevo_tipo_cie}")
+                    diagnostico.tipo_cie = nuevo_tipo_cie
+                
+                # Actualizar estado activo si se proporciona
+                if nuevo_activo is not None:
+                    diagnostico.activo = bool(nuevo_activo)
+                
+                diagnostico.actualizado_por = request.user
+                diagnostico.save()
+                
+                actualizados += 1
+                resultados.append({
+                    'diagnostico_cie_id': diagnostico_cie_id,
+                    'success': True,
+                    'tipo_cie': diagnostico.tipo_cie,
+                    'activo': diagnostico.activo,
+                    'message': 'Diagnóstico actualizado'
+                })
+                
+            except DiagnosticoCIEHistorial.DoesNotExist:
+                errores += 1
+                resultados.append({
+                    'diagnostico_cie_id': diagnostico_cie_id,
+                    'success': False,
+                    'error': 'Diagnóstico no encontrado'
+                })
+            except ValidationError as e:
+                errores += 1
+                resultados.append({
+                    'diagnostico_cie_id': diagnostico_cie_id,
+                    'success': False,
+                    'error': str(e)
+                })
+            except Exception as e:
+                errores += 1
+                resultados.append({
+                    'diagnostico_cie_id': diagnostico_cie_id,
+                    'success': False,
+                    'error': f'Error interno: {str(e)}'
+                })
+        
+        logger.info(
+            f"Tipo CIE cambiado para {actualizados} diagnósticos en historial {pk}. "
+            f"Errores: {errores}"
+        )
+        
+        return Response({
+            'success': True,
+            'message': f'{actualizados} diagnósticos actualizados, {errores} errores',
+            'resultados': resultados,
+            'total_actualizados': actualizados,
+            'total_errores': errores
+        })
+        
+    @action(detail=True, methods=['get'], url_path='plan-tratamiento')
+    def obtener_plan_tratamiento(self, request, pk=None):
+        historial = self.get_object()
+        
+        if historial.plan_tratamiento:
+            from api.odontogram.serializers.plan_tratamiento_serializers import (
+                PlanTratamientoDetailSerializer
+            )
+            
+            serializer = PlanTratamientoDetailSerializer(
+                historial.plan_tratamiento,
+                context={'include_sesiones': True}  
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        planes_activos = PlanTratamiento.objects.filter(
+            paciente=historial.paciente,
+            activo=True
+        ).order_by('-fecha_creacion')
+        
+        if planes_activos.exists():
+            serializer = PlanTratamientoDetailSerializer(
+                planes_activos, 
+                many=True,
+                context={'include_sesiones': True}
+            )
+            return Response({
+                "detail": "Este historial no tiene plan asociado",
+                "planes_disponibles": serializer.data
+            }, status=status.HTTP_200_OK)
+        
+        return Response(
+            {"detail": "No hay planes de tratamiento activos para este paciente"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    def _validar_puede_recargar(self, pacienteid):
+        """
+        Busca el historial más reciente y valida que sea BORRADOR.
+        """
+        ultimo_historial = ClinicalRecord.objects.filter(
+            paciente_id=pacienteid,  
+            activo=True
+        ).order_by('-fecha_creacion').first()
+
+        if not ultimo_historial:
+            return None, None 
+
+        if ultimo_historial.estado != 'BORRADOR':
+            return None, f"El historial debe estar en BORRADOR. Actual: {ultimo_historial.estado}"
+
+        return ultimo_historial, None
+    
+    # GET /api/clinical-records/planes-tratamiento?pacienteid=...&latest
+    @action(detail=False, methods=['get'], url_path='planes-tratamiento')
+    def latest_planes_tratamiento(self, request, pacienteid=None):
+        """
+        Obtiene los planes de tratamiento activos de un paciente CON SESIONES
+        GET: /api/clinical-records/planes-tratamiento/?pacienteid={uuid}
+        """
+        pacienteid = pacienteid or request.query_params.get('pacienteid')
+        if not pacienteid:
+            return Response(
+                {"detail": "El parámetro pacienteid es requerido"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        historial, error = self._validar_puede_recargar(pacienteid)
+        if error:
+            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            planes = (
+                PlanTratamiento.objects.filter(paciente_id=pacienteid, activo=True)
+                .select_related('paciente', 'creado_por')
+                .prefetch_related('sesiones', 'sesiones__odontologo')
+                .order_by('-fecha_creacion')
+            )
+
+            # Serializar manualmente para incluir sesiones
+            from api.clinical_records.serializers.plan_tratamiento_serializers import (
+                SesionTratamientoDetalleCompletoSerializer
+            )
+            
+            planes_data = []
+            for plan in planes:
+                # Obtener sesiones del plan
+                sesiones = plan.sesiones.filter(activo=True).order_by('numero_sesion')
+                sesiones_serializer = SesionTratamientoDetalleCompletoSerializer(
+                    sesiones, 
+                    many=True
+                )
+                
+                planes_data.append({
+                    'id': str(plan.id),
+                    'titulo': plan.titulo,
+                    'notas_generales': plan.notas_generales,
+                    'fecha_creacion': plan.fecha_creacion.isoformat() if plan.fecha_creacion else None,
+                    'activo': plan.activo,
+                    'sesiones': sesiones_serializer.data,  # ← Incluir sesiones
+                    'total_sesiones': sesiones.count(),
+                    'paciente_info': {
+                        'id': str(plan.paciente.id),
+                        'nombres': plan.paciente.nombres,
+                        'apellidos': plan.paciente.apellidos,
+                    } if plan.paciente else None,
+                })
+            
+            return Response(planes_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error obteniendo planes para paciente {pacienteid}: {str(e)}")
+            return Response(
+                {"detail": f"Error obteniendo planes: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+    @action(detail=True, methods=['get'], url_path='sesiones-plan-tratamiento')
+    def obtener_sesiones_plan(self, request, pk=None):
+        """
+        Obtiene las sesiones del plan de tratamiento asociado a este historial
+        GET: /api/clinical-records/{id}/sesiones-plan-tratamiento/
+        """
+        historial = self.get_object()
+        
+        if not historial.plan_tratamiento:
+            return Response(
+                {"detail": "Este historial no tiene plan de tratamiento asociado"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            # Obtener sesiones del plan asociado
+            sesiones = SesionTratamiento.objects.filter(
+                plan_tratamiento=historial.plan_tratamiento,
+                activo=True
+            ).order_by('numero_sesion')
+            from api.clinical_records.serializers.plan_tratamiento_serializers import SesionTratamientoDetalleCompletoSerializer
+            serializer = SesionTratamientoDetalleCompletoSerializer(sesiones, many=True)
+
+            
+            return Response({
+                "success": True,
+                "plan_id": str(historial.plan_tratamiento.id),
+                "plan_titulo": historial.plan_tratamiento.titulo,
+                "sesiones": serializer.data,
+                "total_sesiones": sesiones.count()
+            })
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo sesiones para historial {pk}: {str(e)}")
+            return Response(
+                {"detail": f"Error obteniendo sesiones: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+    @action(detail=True, methods=['get'], url_path='resumen-plan-tratamiento')
+    def obtener_resumen_plan_tratamiento(self, request, pk=None):
+        """
+        Obtiene un resumen detallado del plan de tratamiento asociado al historial
+        Incluye procedimientos y prescripciones consolidadas
+        """
+        historial = self.get_object()
+        
+        if not historial.plan_tratamiento:
+            return Response(
+                {"detail": "Este historial no tiene plan de tratamiento asociado"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            plan = historial.plan_tratamiento
+            sesiones = SesionTratamiento.objects.filter(
+                plan_tratamiento=plan,
+                activo=True
+            ).order_by('numero_sesion')
+            
+            # Consolidar información
+            procedimientos_consolidados = []
+            prescripciones_consolidadas = []
+            sesiones_detalle = []
+            
+            for sesion in sesiones:
+                # Detalle de la sesión
+                sesion_detalle = {
+                    'numero_sesion': sesion.numero_sesion,
+                    'fecha_programada': sesion.fecha_programada.isoformat() if sesion.fecha_programada else None,
+                    'fecha_realizacion': sesion.fecha_realizacion.isoformat() if sesion.fecha_realizacion else None,
+                    'estado': sesion.estado,
+                    'estado_display': sesion.get_estado_display(),
+                    'diagnosticos_complicaciones': sesion.diagnosticos_complicaciones or [],
+                    'procedimientos': sesion.procedimientos or [],
+                    'prescripciones': sesion.prescripciones or [],
+                    'notas': sesion.notas,
+                    'observaciones': sesion.observaciones,
+                }
+                sesiones_detalle.append(sesion_detalle)
+                
+                # Consolidar procedimientos
+                if sesion.procedimientos:
+                    for proc in sesion.procedimientos:
+                        proc['sesion'] = sesion.numero_sesion
+                        procedimientos_consolidados.append(proc)
+                
+                # Consolidar prescripciones
+                if sesion.prescripciones:
+                    for pres in sesion.prescripciones:
+                        pres['sesion'] = sesion.numero_sesion
+                        prescripciones_consolidadas.append(pres)
+            
+            # Generar texto de prescripciones
+            texto_prescripciones = "PRESCRIPCIONES MÉDICAS\n"
+            texto_prescripciones += "=" * 30 + "\n"
+            
+            if prescripciones_consolidadas:
+                for i, pres in enumerate(prescripciones_consolidadas, 1):
+                    texto_prescripciones += f"\n{i}. {pres.get('medicamento', 'Medicamento no especificado')}\n"
+                    texto_prescripciones += f"   Dosis: {pres.get('dosis', 'No especificada')}\n"
+                    texto_prescripciones += f"   Frecuencia: {pres.get('frecuencia', 'No especificada')}\n"
+                    texto_prescripciones += f"   Duración: {pres.get('duracion', 'No especificada')}\n"
+                    if pres.get('observaciones'):
+                        texto_prescripciones += f"   Observaciones: {pres['observaciones']}\n"
+                    texto_prescripciones += f"   (Sesión #{pres.get('sesion', 'N/A')})\n"
+            else:
+                texto_prescripciones += "\nNo hay prescripciones registradas.\n"
+            
+            return Response({
+                'success': True,
+                'plan_id': str(plan.id),
+                'plan_titulo': plan.titulo,
+                'plan_notas_generales': plan.notas_generales,
+                'fecha_creacion': plan.fecha_creacion.isoformat(),
+                'total_sesiones': len(sesiones_detalle),
+                'sesiones_detalle': sesiones_detalle,
+                'procedimientos_consolidados': procedimientos_consolidados,
+                'prescripciones_consolidadas': prescripciones_consolidadas,
+                'texto_prescripciones_completo': texto_prescripciones,
+                'resumen': {
+                    'total_diagnosticos': sum(len(s['diagnosticos_complicaciones']) for s in sesiones_detalle),
+                    'total_procedimientos': len(procedimientos_consolidados),
+                    'total_prescripciones': len(prescripciones_consolidadas),
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo resumen del plan para historial {pk}: {str(e)}")
+            return Response(
+                {"detail": f"Error obteniendo resumen del plan: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            
+    @action(detail=True, methods=['get'], url_path='datos-completos-plan')
+    def obtener_datos_completos_plan(self, request, pk=None):
+        """
+        Endpoint alternativo para obtener SOLO los datos del plan de tratamiento
+        de un historial específico (para lazy loading si se prefiere)
+        
+        GET: /api/clinical-records/{id}/datos-completos-plan/
+        
+        Response:
+            {
+                "success": true,
+                "historial_id": "...",
+                "tiene_plan": true,
+                "plan_tratamiento": {
+                    "id": "...",
+                    "titulo": "...",
+                    "sesiones": [...],
+                    "resumen_estadistico": {...},
+                    "procedimientos_consolidados": [...],
+                    "prescripciones_consolidadas": [...],
+                    "diagnosticos_consolidados": [...]
+                }
+            }
+        """
+        historial = self.get_object()
+        
+        if not historial.plan_tratamiento:
+            return Response(
+                {
+                    "success": True,
+                    "historial_id": str(historial.id),
+                    "tiene_plan": False,
+                    "plan_tratamiento": None,
+                    "message": "Este historial no tiene plan de tratamiento asociado"
+                },
+                status=status.HTTP_200_OK
+            )
+        
+        try:
+            from api.clinical_records.serializers.plan_tratamiento_serializers import (
+                PlanTratamientoCompletoSerializer
+            )
+            
+            serializer = PlanTratamientoCompletoSerializer(
+                historial.plan_tratamiento,
+                context={'request': request}
+            )
+            
+            return Response(
+                {
+                    "success": True,
+                    "historial_id": str(historial.id),
+                    "tiene_plan": True,
+                    "plan_tratamiento": serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            logger.error(
+                f"Error obteniendo plan completo para historial {pk}: {str(e)}"
+            )
+            return Response(
+                {
+                    "success": False,
+                    "historial_id": str(historial.id),
+                    "message": f"Error obteniendo datos del plan: {str(e)}"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

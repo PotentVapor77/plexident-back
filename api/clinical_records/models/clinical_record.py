@@ -7,6 +7,7 @@ from api.patients.models.antecedentes_familiares import AntecedentesFamiliares
 from api.patients.models.constantes_vitales import ConstantesVitales
 from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
 from api.users.models import Usuario
+from api.odontogram.models import PlanTratamiento
 from .constants import ESTADO_HISTORIAL_CHOICES
 
 
@@ -169,7 +170,23 @@ class ClinicalRecord(BaseModel):
         blank=True,
         verbose_name='Índices de Caries (CPO/ceo)'
     )
+    diagnosticos_cie_cargados = models.BooleanField(
+        default=False,
+        verbose_name='Diagnósticos CIE Cargados',
+        help_text='Indica si se han cargado diagnósticos CIE-10 en este historial'
+    )
     
+    tipo_carga_diagnosticos = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        choices=[
+            ('nuevos', 'Nuevos'),
+            ('previos', 'Previos'),
+            ('todos', 'Todos'),
+        ],
+        verbose_name='Tipo de Carga de Diagnósticos'
+    )
 
     class Meta:
         verbose_name = 'Historial Clínico'
@@ -274,5 +291,14 @@ class ClinicalRecord(BaseModel):
         default=False,
         verbose_name='¿Enfermedad actual nueva?'
     )
+    plan_tratamiento = models.ForeignKey(
+        PlanTratamiento,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historiales_clinicos',
+        verbose_name='Plan de Tratamiento'
+    )
+    
     
     

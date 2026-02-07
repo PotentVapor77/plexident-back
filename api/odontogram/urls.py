@@ -62,7 +62,16 @@ from api.odontogram.views.odontograma_views import (
     obtener_definiciones_superficies,
 )
 
+# Diagnósticos CIE-10
+from api.odontogram.views.diagnostico_cie_views import (
+    DiagnosticoCIEViewSet,
+    DiagnosticoCIEActionsViewSet,
+)
+
+
 from api.odontogram.views import plan_tratamiento_views
+
+
 
 # ==================== ROUTER SETUP ====================
 
@@ -118,6 +127,12 @@ router.register(
     r"indicadores-salud-bucal",
     IndicadoresSaludBucalViewSet,
     basename="indicadores-salud-bucal",
+)
+
+router.register(
+    r"diagnosticos-cie",
+    DiagnosticoCIEViewSet,
+    basename="diagnostico-cie"
 )
 
 # ==================== APP NAME ====================
@@ -293,5 +308,63 @@ urlpatterns = [
         PacienteViewSet.as_view({'get': 'ultimo_snapshot'}),
         name="paciente-ultimo-snapshot",
     ),
+    
+    # PATCH   /api/odontogram/diagnosticos-cie/{id}/actualizar-tipo/
+    path(
+        "diagnosticos-cie/<uuid:pk>/actualizar-tipo/",
+        DiagnosticoCIEActionsViewSet.as_view({'patch': 'actualizar_tipo'}),
+        name="diagnostico-cie-actualizar-tipo",
+    ),
+    
+    # POST  /api/odontogram/diagnosticos-cie/actualizar-multiples/ 
+    path(
+        "diagnosticos-cie/actualizar-multiples/",
+        DiagnosticoCIEActionsViewSet.as_view({'post': 'actualizar_multiples'}),
+        name="diagnostico-cie-actualizar-multiples",
+    ),
+    
+    # GET   /api/odontogram/diagnosticos-cie/por-paciente/{paciente_id
+    path(
+        "diagnosticos-cie/por-paciente/<uuid:paciente_id>/",
+        DiagnosticoCIEViewSet.as_view({'get': 'por_paciente'}),
+        name="diagnostico-cie-por-paciente",
+    ),
+    
+    # GET   /api/odontogram/diagnosticos-cie/estadisticas/
+    path(
+        "diagnosticos-cie/estadisticas/",
+        DiagnosticoCIEViewSet.as_view({'get': 'estadisticas'}),
+        name="diagnostico-cie-estadisticas",
+    ),
+    
+    # GET   /api/odontogram/diagnosticos-cie/codigos-cie10/    
+    path(
+        "diagnosticos-cie/codigos-cie10/",
+        DiagnosticoCIEViewSet.as_view({'get': 'codigos_cie10'}),
+        name="diagnostico-cie-codigos-cie10",
+    ),
+    
+    # GET /api/odontogram/diagnosticos-cie/ultimo-snapshot/{paciente_id}/
+    path(
+        "diagnosticos-cie/ultimo-snapshot/<uuid:paciente_id>/",
+        DiagnosticoCIEViewSet.as_view({'get': 'ultimo_snapshot_diagnosticos'}),
+        name="diagnosticos-ultimo-snapshot",
+    ),
+    
+    # GET /api/odontogram/diagnosticos-cie/por-version/{version_id}/
+    path(
+        "diagnosticos-cie/por-version/<uuid:version_id>/",
+        DiagnosticoCIEViewSet.as_view({'get': 'diagnosticos_por_version'}),
+        name="diagnosticos-por-version",
+    ),
+    
+    # GET /api/odontogram/diagnosticos-cie/cambios-version/{version_id}/
+    path(
+        "diagnosticos-cie/cambios-version/<uuid:version_id>/",
+        DiagnosticoCIEViewSet.as_view({'get': 'cambios_por_version'}),
+        name="diagnosticos-cambios-version",
+    ),
+    
+    
     
 ]

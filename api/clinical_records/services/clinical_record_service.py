@@ -1,5 +1,6 @@
 """
-Servicio principal para lógica de negocio de Historiales Clínicos
+Servicio mejorado para lÃ³gica de negocio de Historiales ClÃ­nicos
+Incluye vinculaciÃ³n automÃ¡tica del Plan de Tratamiento
 """
 import logging
 from django.utils import timezone
@@ -13,25 +14,35 @@ from api.clinical_records.services.form033_storage_service import Form033Storage
 from api.clinical_records.services.indicadores_service import ClinicalRecordIndicadoresService
 
 from typing import Optional, Dict, Any
+
+from api.clinical_records.services.diagnostico_cie_service import DiagnosticosCIEService
+from api.odontogram.services.plan_tratamiento_service import PlanTratamientoService
+from api.clinical_records.services.plan_tratamiento_service import PlanTratamientoLinkService
+
+
 from .number_generator_service import NumberGeneratorService
 from .vital_signs_service import VitalSignsService
 from .record_loader_service import RecordLoaderService
+
+
 
 logger = logging.getLogger(__name__)
 
 
 class ClinicalRecordService:
-    """Servicio para la lógica de negocio de Historiales Clínicos"""
+    """Servicio para la lÃ³gica de negocio de Historiales ClÃ­nicos"""
     
     @classmethod
     def crear_historial(cls, data):
         """
-        Crea un nuevo historial clínico con datos pre-cargados
+        Crea un nuevo historial clÃ­nico con datos pre-cargados
+        NUEVO: Vincula automÃ¡ticamente el plan de tratamiento activo del paciente
         """
         paciente = data.get('paciente')
         paciente_id = paciente.id
+        creado_por = data.get('creado_por')
         
-        # === GENERAR NÚMEROS ÚNICOS ===
+        # === GENERAR NÃšMEROS ÃšNICOS ===
         numero_historia_unica = (
             NumberGeneratorService.generar_numero_historia_clinica_unica()
         )
@@ -43,21 +54,20 @@ class ClinicalRecordService:
         if len(numero_archivo) > 50:
             raise ValidationError({
                 'numero_archivo': (
-                    f'Número de archivo muy largo: {len(numero_archivo)} caracteres. '
-                    f'Máximo permitido: 50'
+                    f'NÃºmero de archivo muy largo: {len(numero_archivo)} caracteres. '
+                    f'MÃ¡ximo permitido: 50'
                 )
             })
         
         if len(numero_historia_unica) > 50:
             raise ValidationError({
                 'numero_historia_clinica_unica': (
-                    f'Número de historia clínica muy largo: {len(numero_historia_unica)} caracteres. '
-                    f'Máximo permitido: 50'
+                    f'NÃºmero de historia clÃ­nica muy largo: {len(numero_historia_unica)} caracteres. '
+                    f'MÃ¡ximo permitido: 50'
                 )
             })
         
-        
-        # Asignar números generados
+        # Asignar nÃºmeros generados
         data['numero_historia_clinica_unica'] = numero_historia_unica
         data['numero_archivo'] = numero_archivo
         data['numero_hoja'] = NumberGeneratorService.generar_numero_hoja(paciente_id)
@@ -100,7 +110,7 @@ class ClinicalRecordService:
             if data.get('enfermedad_actual'):
                 enfermedad_actual_nueva = True
         else:
-            # Usar última constante vital existente
+            # Usar Ãºltima constante vital existente
             ultima_constante = VitalSignsService.obtener_ultima_constante(paciente_id)
             if ultima_constante:
                 data['constantes_vitales'] = ultima_constante
@@ -130,31 +140,42 @@ class ClinicalRecordService:
             'antecedentes_personales',
             'antecedentes_familiares',
             'examen_estomatognatico',
-            'indices_caries'
+            'indices_caries',
         ]
         for seccion in secciones:
             if not data.get(seccion) and ultimos_datos.get(seccion):
                 data[seccion] = ultimos_datos[seccion]
+        
+        # === CARGAR INDICADORES ===
         if not data.get('indicadores_salud_bucal'):
-            print(f"\n{'='*60}")
-            print(f"BUSCANDO INDICADORES PARA ASOCIAR AL NUEVO HISTORIAL")
-            print(f"Paciente ID: {paciente_id}")
-        indicadores = ClinicalRecordIndicadoresService.obtener_indicadores_paciente(
-            str(paciente_id)
-        )
+            logger.info(f"Buscando indicadores para paciente {paciente_id}")
+            indicadores = ClinicalRecordIndicadoresService.obtener_indicadores_paciente(
+                str(paciente_id)
+            )
+            
+            if indicadores:
+                data['indicadores_salud_bucal'] = indicadores
+                logger.info(f"Indicadores {indicadores.id} encontrados y asociados")
+            else:
+                logger.info("No hay indicadores previos para este paciente")
         
-        if indicadores:
-            data['indicadores_salud_bucal'] = indicadores
-            print(f" Indicadores encontrados y listos para asociar:")
-            print(f"   - ID: {indicadores.id}")
-            print(f"   - Fecha: {indicadores.fecha}")
-        else:
-            print(f" No hay indicadores previos para este paciente")
-        
-        print(f"{'='*60}\n")
+        # === NUEVO: VINCULAR PLAN DE TRATAMIENTO ACTIVO ===
+        if not data.get('plan_tratamiento'):
+            logger.info(f"Buscando plan de tratamiento activo para paciente {paciente_id}")
+            plan_activo = PlanTratamientoLinkService.obtener_plan_activo_paciente(paciente_id)
+            
+            if plan_activo:
+                data['plan_tratamiento'] = plan_activo
+                logger.info(
+                    f"Plan de tratamiento {plan_activo.id} vinculado automÃ¡ticamente "
+                    f"al historial para paciente {paciente_id}"
+                )
+            else:
+                logger.warning(
+                    f"No se encontrÃ³ plan de tratamiento activo para paciente {paciente_id}"
+                )
         
         # === LIMPIEZA DE DATOS ===
-        # Remover campos que no pertenecen al modelo ClinicalRecord
         motivo_consulta_valor = data.get('motivo_consulta')
         enfermedad_actual_valor = data.get('enfermedad_actual')
         VitalSignsService.limpiar_campos_del_dict(data)
@@ -175,143 +196,29 @@ class ClinicalRecordService:
         historial.full_clean()
         historial.save()
         
-        logger.info(
-            f"Historial creado: {numero_historia_unica} "
-            f"para paciente {paciente.nombre_completo}"
-        )
+        # === GUARDAR DIAGNÃ“STICOS CIE SI SE PROPORCIONAN ===
+        diagnosticos_data = data.get('diagnosticos_cie', [])
+        tipo_carga = data.get('tipo_carga_diagnosticos', 'nuevos')
         
-        return historial
-    
-    @classmethod
-    def actualizar_historial(cls, historial_id, data):
-        """
-        Actualiza un historial clínico existente
-        Crea nuevos registros si se envían datos editables
-        
-        Args:
-            historial_id: UUID del historial
-            data: Diccionario con datos a actualizar
-            
-        Returns:
-            Instancia de ClinicalRecord actualizada
-        """
-        historial = ClinicalRecordRepository.obtener_por_id(historial_id)
-        
-        # Validar estado
-        if historial.estado == 'CERRADO':
-            raise ValidationError('No se puede editar un historial cerrado.')
-        
-        # Eliminar campos prohibidos
-        campos_prohibidos = [
-            'numero_historia_clinica_unica',
-            'numero_archivo',
-            'numero_hoja',
-            'paciente',
-            'fecha_atencion',
-            'fecha_cierre'
-        ]
-        for campo in campos_prohibidos:
-            data.pop(campo, None)
-        
-        # Flags de actualización
-        actualizo_constantes = False
-        actualizo_motivo = False
-        actualizo_enfermedad = False
-        
-        # === MANEJAR CONSTANTES VITALES ===
-        tiene_datos_vitales = VitalSignsService.tiene_datos_vitales(data)
-        tiene_datos_texto = VitalSignsService.tiene_datos_texto(data)
-        
-        if tiene_datos_vitales or tiene_datos_texto:
-            constante_actual = historial.constantes_vitales
-            
-            # Preparar datos para nueva constante vital
-            constante_vital_data = {
-                'paciente': historial.paciente,
-                'temperatura': data.get(
-                    'temperatura',
-                    constante_actual.temperatura if constante_actual else None
-                ),
-                'pulso': data.get(
-                    'pulso',
-                    constante_actual.pulso if constante_actual else None
-                ),
-                'frecuencia_respiratoria': data.get(
-                    'frecuencia_respiratoria',
-                    constante_actual.frecuencia_respiratoria if constante_actual else None
-                ),
-                'presion_arterial': data.get(
-                    'presion_arterial',
-                    constante_actual.presion_arterial if constante_actual else ''
-                ),
-                'motivo_consulta': data.get(
-                    'motivo_consulta',
-                    constante_actual.motivo_consulta if constante_actual else ''
-                ),
-                'enfermedad_actual': data.get(
-                    'enfermedad_actual',
-                    constante_actual.enfermedad_actual if constante_actual else ''
-                ),
-                'creado_por': data.get('creado_por', historial.creado_por),
-            }
-            
-            # Crear nueva constante vital
-            nueva_constante = VitalSignsService.crear_constantes_vitales(
-                paciente=historial.paciente,
-                data=constante_vital_data,
-                creado_por=constante_vital_data['creado_por']
-            )
-            
-            # Asociar al historial
-            historial.constantes_vitales = nueva_constante
-            historial.constantes_vitales_nuevas = True
-            actualizo_constantes = True
-            
-            # Actualizar flags de texto
-            if data.get('motivo_consulta') is not None:
-                historial.motivo_consulta = data['motivo_consulta']
-                historial.motivo_consulta_nuevo = True
-                actualizo_motivo = True
-            
-            if data.get('enfermedad_actual') is not None:
-                historial.enfermedad_actual = data['enfermedad_actual']
-                historial.enfermedad_actual_nueva = True
-                actualizo_enfermedad = True
-        
-        # Limpiar campos de constantes vitales del diccionario
-        VitalSignsService.limpiar_campos_del_dict(data)
-        
-        # === ACTUALIZAR CAMPOS DIRECTOS ===
-        campos_permitidos = [
-            'motivo_consulta', 'embarazada', 'enfermedad_actual',
-            'observaciones', 'estado', 'odontologo_responsable',
-            'unicodigo', 'establecimiento_salud', 'numero_hoja',
-            'institucion_sistema', 'antecedentes_personales',
-            'antecedentes_familiares', 'examen_estomatognatico'
-        ]
-        
-        for key, value in data.items():
-            if key in campos_permitidos and hasattr(historial, key):
-                setattr(historial, key, value)
+        if diagnosticos_data and creado_por:
+            try:
+                resultado = DiagnosticosCIEService.cargar_diagnosticos_a_historial(
+                    historial_clinico=historial,
+                    diagnosticos_data=diagnosticos_data,
+                    tipo_carga=tipo_carga,
+                    usuario=creado_por
+                )
                 
-                # Marcar flags si no se marcaron antes
-                if key == 'motivo_consulta' and not actualizo_motivo:
-                    historial.motivo_consulta_nuevo = True
-                if key == 'enfermedad_actual' and not actualizo_enfermedad:
-                    historial.enfermedad_actual_nueva = True
-        
-        # === VALIDACIONES ADICIONALES ===
-        cls._validar_datos_historial(historial)
-        
-        # Guardar cambios
-        historial.full_clean()
-        historial.save()
+                if resultado.get('success'):
+                    logger.info(
+                        f"DiagnÃ³sticos CIE cargados: {resultado.get('total_diagnosticos')} "
+                        f"en historial {historial.id}"
+                    )
+            except Exception as e:
+                logger.error(f"Error cargando diagnÃ³sticos CIE: {str(e)}")
         
         logger.info(
-            f"Historial {historial_id} actualizado: "
-            f"constantes={actualizo_constantes}, "
-            f"motivo={actualizo_motivo}, "
-            f"enfermedad={actualizo_enfermedad}"
+            f"Historial clÃ­nico {historial.id} creado exitosamente para paciente {paciente_id}"
         )
         
         return historial
@@ -319,16 +226,16 @@ class ClinicalRecordService:
     @staticmethod
     def _validar_datos_historial(historial):
         """Validaciones de negocio del historial"""
-        # Validar embarazo según sexo
+        # Validar embarazo segÃºn sexo
         if historial.embarazada == 'SI' and historial.paciente.sexo == 'M':
             raise ValidationError(
                 'Un paciente masculino no puede estar embarazado.'
             )
         
-        # Validar rol del odontólogo
+        # Validar rol del odontÃ³logo
         if (historial.odontologo_responsable and 
             historial.odontologo_responsable.rol != 'Odontologo'):
-            raise ValidationError('El responsable debe ser un odontólogo.')
+            raise ValidationError('El responsable debe ser un odontÃ³logo.')
         
         # Validar cambio de estado desde CERRADO
         if historial.pk:
@@ -342,16 +249,7 @@ class ClinicalRecordService:
     
     @staticmethod
     def cerrar_historial(historial_id, usuario):
-        """
-        Cierra un historial clínico, impidiendo futuras ediciones
-        
-        Args:
-            historial_id: UUID del historial
-            usuario: Usuario que cierra el historial
-            
-        Returns:
-            Instancia de ClinicalRecord cerrada
-        """
+        """Cierra un historial clÃ­nico"""
         historial = ClinicalRecordRepository.obtener_por_id(historial_id)
         historial.cerrar_historial(usuario)
         
@@ -361,16 +259,7 @@ class ClinicalRecordService:
     
     @staticmethod
     def reabrir_historial(historial_id, usuario):
-        """
-        Reabre un historial cerrado (acción sensible)
-        
-        Args:
-            historial_id: UUID del historial
-            usuario: Usuario que reabre el historial
-            
-        Returns:
-            Instancia de ClinicalRecord reabierta
-        """
+        """Reabre un historial cerrado"""
         historial = ClinicalRecordRepository.obtener_por_id(historial_id)
         historial.reabrir_historial(usuario)
         
@@ -382,15 +271,7 @@ class ClinicalRecordService:
     
     @staticmethod
     def eliminar_historial(historial_id):
-        """
-        Eliminación lógica de un historial
-        
-        Args:
-            historial_id: UUID del historial
-            
-        Returns:
-            Instancia de ClinicalRecord desactivada
-        """
+        """EliminaciÃ³n lÃ³gica de un historial"""
         historial = ClinicalRecordRepository.obtener_por_id(historial_id)
         historial.activo = False
         historial.save()
@@ -401,30 +282,13 @@ class ClinicalRecordService:
     
     @staticmethod
     def obtener_historial_con_datos_completos(historial_id):
-        """
-        Obtiene un historial con todas sus relaciones cargadas
-        
-        Args:
-            historial_id: UUID del historial
-            
-        Returns:
-            Instancia de ClinicalRecord con relaciones cargadas
-        """
+        """Obtiene un historial con todas sus relaciones cargadas"""
         return ClinicalRecordRepository.obtener_por_id(historial_id)
     
     @staticmethod
     def cargar_datos_iniciales_paciente(paciente_id):
-        """
-        Carga los datos iniciales de un paciente para crear historial
-        
-        Args:
-            paciente_id: UUID del paciente
-            
-        Returns:
-            Diccionario con datos pre-cargados
-        """
+        """Carga los datos iniciales de un paciente para crear historial"""
         return RecordLoaderService.cargar_datos_iniciales_paciente(paciente_id)
-    
     
     @classmethod
     def agregar_form033_a_historial(
@@ -434,54 +298,36 @@ class ClinicalRecordService:
         usuario,
         observaciones=''
     ):
-        """
-        Agrega o actualiza el snapshot del Form033 a un historial existente
-        
-        Args:
-            historial_id: UUID del historial
-            form033_data: Datos del Form033
-            usuario: Usuario que realiza la acción
-            observaciones: Observaciones opcionales
-        
-        Returns:
-            Form033Snapshot creado o actualizado
-        """
+        """Agrega o actualiza el snapshot del Form033"""
         historial = ClinicalRecordRepository.obtener_por_id(historial_id)
         
-        # Verificar si ya existe un snapshot
         snapshot_existente = Form033StorageService.obtener_snapshot_por_historial(
             historial_id
         )
         
         if snapshot_existente:
-            # Actualizar snapshot existente
             snapshot = Form033StorageService.actualizar_snapshot(
                 snapshot_id=snapshot_existente.id,
                 datos_form033=form033_data,
                 observaciones=observaciones
             )
-            logger.info(
-                f"Snapshot Form033 actualizado para historial {historial_id}"
-            )
+            logger.info(f"Snapshot Form033 actualizado para historial {historial_id}")
         else:
-            # Crear nuevo snapshot
             snapshot = Form033StorageService.crear_snapshot_desde_datos(
                 historial_clinico=historial,
                 datos_form033=form033_data,
                 usuario=usuario,
                 observaciones=observaciones
             )
-            logger.info(
-                f"Snapshot Form033 creado para historial {historial_id}"
-            )
+            logger.info(f"Snapshot Form033 creado para historial {historial_id}")
         
         return snapshot
     
     @staticmethod
     def obtener_indicadores_historial(historial_id: str) -> Optional[Dict[str, Any]]:
+        """Obtiene indicadores del historial"""
         try:
             historial = ClinicalRecordRepository.obtener_por_id(historial_id)
-            
             indicadores = historial.indicadores_salud_bucal
             
             if not indicadores:
@@ -493,4 +339,24 @@ class ClinicalRecordService:
         except Exception as e:
             logger.error(f"Error obteniendo indicadores para historial {historial_id}: {str(e)}")
             return None
-
+    
+    @staticmethod
+    def cargar_diagnosticos_cie_historial(historial_id, diagnosticos_data, tipo_carga, usuario):
+        """Carga diagnÃ³sticos CIE-10 al historial"""
+        try:
+            historial = ClinicalRecord.objects.get(id=historial_id, activo=True)
+            
+            if historial.estado == 'CERRADO':
+                raise ValidationError('No se pueden agregar diagnÃ³sticos a un historial cerrado')
+            
+            resultado = DiagnosticosCIEService.cargar_diagnosticos_a_historial(
+                historial_clinico=historial,
+                diagnosticos_data=diagnosticos_data,
+                tipo_carga=tipo_carga,
+                usuario=usuario
+            )
+            
+            return resultado
+            
+        except ClinicalRecord.DoesNotExist:
+            raise ValidationError('Historial clÃ­nico no encontrado')

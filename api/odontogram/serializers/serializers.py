@@ -1,8 +1,8 @@
 # api/odontogram/serializers.py
 from rest_framework import serializers
-
+from django.utils import timezone
 from django.contrib.auth import get_user_model
-
+from django.db import transaction
 from django.db.models import Q
 
 
@@ -20,9 +20,10 @@ from api.odontogram.models import (
     CategoriaDiagnostico,
     TipoAtributoClinico,
 )
-from api.odontogram.constants import ESCALA_CALCULO, ESCALA_GINGIVITIS, ESCALA_PLACA, NIVELES_FLUOROSIS, NIVELES_PERIODONTAL, TIPOS_OCLUSION    
-
-
+from api.odontogram.constants import ESCALA_CALCULO, ESCALA_GINGIVITIS, ESCALA_PLACA, NIVELES_FLUOROSIS, NIVELES_PERIODONTAL, TIPOS_OCLUSION
+from api.odontogram.services.piezas_service import PiezasIndiceService    
+import logging
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 # =============================================================================
@@ -922,7 +923,7 @@ class IndicadoresSaludBucalDetailSerializer(IndicadoresSaludBucalSerializer):
     tipo_oclusion_display = serializers.SerializerMethodField()
     nivel_fluorosis_display = serializers.SerializerMethodField()
     nivel_gingivitis_display = serializers.SerializerMethodField()
-    
+    informacion_piezas_usadas = serializers.SerializerMethodField()
     class Meta:
         model = IndicadoresSaludBucal
         fields = [
@@ -963,6 +964,9 @@ class IndicadoresSaludBucalDetailSerializer(IndicadoresSaludBucalSerializer):
             # Información de cálculo (JSON)
             'informacion_calculo',
             
+            # Información de piezas
+            'informacion_piezas_usadas',
+            'piezas_usadas_en_registro',
             # Campos calculados
             'valores_por_pieza',
             'calculos_completos',
@@ -1032,9 +1036,14 @@ class IndicadoresSaludBucalDetailSerializer(IndicadoresSaludBucalSerializer):
         return None
     
     def get_valores_por_pieza(self, obj):
-        """Organiza valores por pieza dental"""
+        """Organiza valores por pieza dental con información de alternativas"""
         piezas = ['16', '11', '26', '36', '31', '46']
         resultado = []
+        
+        # Obtener mapeo de piezas usadas si existe
+        piezas_mapeo = {}
+        if obj.piezas_usadas_en_registro:
+            piezas_mapeo = obj.piezas_usadas_en_registro.get('piezas_mapeo', {})
         
         for pieza in piezas:
             placa = getattr(obj, f'pieza_{pieza}_placa', None)
@@ -1051,8 +1060,22 @@ class IndicadoresSaludBucalDetailSerializer(IndicadoresSaludBucalSerializer):
             if placa is not None and calculo is not None:
                 subtotal_ohi = placa + calculo
             
+            # Obtener información de pieza usada (original o alternativa)
+            info_pieza = piezas_mapeo.get(pieza, {})
+            pieza_usada = info_pieza.get('codigo_usado', pieza)
+            es_alternativa = info_pieza.get('es_alternativa', False)
+            
+            # Construir mensaje de alternativa si aplica
+            mensaje_alternativa = None
+            if es_alternativa and pieza_usada != pieza:
+                mensaje_alternativa = f"Usando pieza {pieza_usada} como alternativa de {pieza}"
+            
             resultado.append({
                 'pieza': pieza,
+                'pieza_original': pieza,  # Siempre la pieza del índice estándar
+                'pieza_usada': pieza_usada,  # La pieza que realmente se evaluó
+                'es_alternativa': es_alternativa,
+                'mensaje_alternativa': mensaje_alternativa,
                 'placa': {
                     'valor': placa,
                     'descripcion': placa_desc,
@@ -1073,7 +1096,37 @@ class IndicadoresSaludBucalDetailSerializer(IndicadoresSaludBucalSerializer):
             })
         
         return resultado
-    
+    def get_informacion_piezas_usadas(self, obj):
+        """
+        Retorna información estructurada de las piezas usadas
+        """
+        if not obj.piezas_usadas_en_registro:
+            return {}
+        
+        piezas_estructuradas = []
+        mapeo = obj.piezas_usadas_en_registro.get('piezas_mapeo', {})
+        
+        for pieza_original, info in mapeo.items():
+            pieza_usada = info.get('codigo_usado', pieza_original)
+            es_alternativa = info.get('es_alternativa', False)
+            
+            # Obtener valores de los campos del modelo
+            datos = {
+                'pieza_original': pieza_original,
+                'pieza_usada': pieza_usada,
+                'es_alternativa': es_alternativa,
+                'placa': getattr(obj, f"pieza_{pieza_original}_placa", None),
+                'calculo': getattr(obj, f"pieza_{pieza_original}_calculo", None),
+                'gingivitis': getattr(obj, f"pieza_{pieza_original}_gingivitis", None),
+            }
+            
+            piezas_estructuradas.append(datos)
+        
+        return {
+            'piezas': piezas_estructuradas,
+            'denticion': obj.piezas_usadas_en_registro.get('denticion'),
+            'estadisticas': obj.piezas_usadas_en_registro.get('estadisticas')
+        }
     def get_calculos_completos(self, obj):
         """
         Obtiene cálculos completos desde informacion_calculo
@@ -1096,7 +1149,7 @@ class IndicadoresSaludBucalDetailSerializer(IndicadoresSaludBucalSerializer):
             valores_calculo = {}
             valores_gingivitis = {}
             
-            for pieza_original in info_piezas['piezas'].keys():
+            for pieza_original in info_piezas.get('piezas_mapeo', {}) or info_piezas.get('piezas', {}).keys():
                 placa = getattr(obj, f"pieza_{pieza_original}_placa", None)
                 calculo = getattr(obj, f"pieza_{pieza_original}_calculo", None)
                 gingivitis = getattr(obj, f"pieza_{pieza_original}_gingivitis", None)
@@ -1146,14 +1199,14 @@ class IndicadoresSaludBucalDetailSerializer(IndicadoresSaludBucalSerializer):
         }
 
 
-class IndicadoresSaludBucalCreateSerializer(IndicadoresSaludBucalSerializer):
+class IndicadoresSaludBucalCreateSerializer(serializers.ModelSerializer):
     """
     Serializer especializado para creación de indicadores
-    Usa el servicio modular para manejar piezas disponibles
+    con validación completa y manejo de transacciones
     """
     
-    class Meta(IndicadoresSaludBucalSerializer.Meta):
-        # No heredar read_only_fields, definir explícitamente
+    class Meta:
+        model = IndicadoresSaludBucal
         fields = "__all__"
         read_only_fields = (
             "id", 
@@ -1163,38 +1216,172 @@ class IndicadoresSaludBucalCreateSerializer(IndicadoresSaludBucalSerializer):
             "ohi_promedio_placa", 
             "ohi_promedio_calculo",
             "gi_promedio_gingivitis", 
-            "informacion_calculo"
+            "informacion_calculo",
+            "piezas_usadas_en_registro"
         )
     
+    def validate(self, attrs):
+        """
+        Validar que al menos 3 piezas tengan datos completos
+        """
+        piezas = ['16', '11', '26', '36', '31', '46']
+        piezas_completas = 0
+        piezas_con_datos = []
+        
+        for pieza in piezas:
+            placa = attrs.get(f'pieza_{pieza}_placa')
+            calculo = attrs.get(f'pieza_{pieza}_calculo')
+            gingivitis = attrs.get(f'pieza_{pieza}_gingivitis')
+            
+            # Verificar que todos los valores estén presentes
+            if all(v is not None for v in [placa, calculo, gingivitis]):
+                piezas_completas += 1
+                piezas_con_datos.append(pieza)
+                
+                # Validar rangos (0-3)
+                for nombre, valor in [('placa', placa), ('calculo', calculo), ('gingivitis', gingivitis)]:
+                    if not (0 <= valor <= 3):
+                        raise serializers.ValidationError({
+                            f'pieza_{pieza}_{nombre}': f'El valor debe estar entre 0 y 3. Recibido: {valor}'
+                        })
+        
+        if piezas_completas < 3:
+            raise serializers.ValidationError({
+                'non_field_errors': [
+                    f'Se requieren al menos 3 piezas con datos completos (placa, cálculo y gingivitis). '
+                    f'Actualmente hay {piezas_completas} piezas completas: {piezas_con_datos}'
+                ]
+            })
+        
+        logger.info(f"Validación exitosa: {piezas_completas} piezas con datos completos")
+        return attrs
+    
+    @transaction.atomic
     def create(self, validated_data):
         """
-        Override create para usar el servicio modular
+        Override create para usar el servicio modular con manejo de transacciones.
+        
+        FIX: piezas_usadas_en_registro estaba en read_only_fields, por lo que
+        el serializer lo descartaba de validated_data. Ahora se construye
+        internamente y se persiste con save() directo tras la creación,
+        garantizando que siempre se guarde sin importar qué haga el servicio.
         """
         from api.odontogram.services.indicadores_service import IndicadoresSaludBucalService
+        from api.odontogram.services.piezas_service import PiezasIndiceService
         
         # Extraer datos necesarios
         paciente_id = str(validated_data['paciente'].id)
         usuario_id = self.context['request'].user.id
         
+        # ===== PASO 1: Construir piezas_usadas_en_registro SIEMPRE =====
+        info_piezas = None
+        piezas_registro = {}
+        
         try:
-            # Usar el servicio modular para crear indicadores completos
+            info_piezas = PiezasIndiceService.obtener_informacion_piezas(paciente_id)
+        except Exception as e:
+            logger.warning(
+                f"No se pudo obtener info de piezas para {paciente_id}: {str(e)}. "
+                f"Se creará el registro sin trazabilidad de piezas."
+            )
+        
+        if info_piezas:
+            piezas_mapeo = info_piezas.get('piezas_mapeo') or info_piezas.get('piezas', {})
+            
+            mapeo_piezas_usadas = {}
+            for pieza_original, info in piezas_mapeo.items():
+                pieza_usada = info.get('codigo_usado', pieza_original)
+                
+                tiene_datos = False
+                datos_pieza = {}
+                
+                for campo in ['placa', 'calculo', 'gingivitis']:
+                    campo_entrada = f"pieza_{pieza_original}_{campo}"
+                    if campo_entrada in validated_data and validated_data[campo_entrada] is not None:
+                        tiene_datos = True
+                        datos_pieza[campo] = validated_data[campo_entrada]
+                
+                if tiene_datos:
+                    mapeo_piezas_usadas[pieza_original] = {
+                        'codigo_usado': pieza_usada,
+                        'es_alternativa': info.get('es_alternativa', pieza_usada != pieza_original),
+                        'codigo_original': pieza_original,
+                        'disponible': info.get('disponible', True),
+                        'diente_id': info.get('diente_id'),
+                        'ambos_ausentes': info.get('ambos_ausentes', False),
+                        'datos': datos_pieza
+                    }
+            
+            piezas_registro = {
+                'piezas_mapeo': mapeo_piezas_usadas,
+                'denticion': info_piezas.get('denticion'),
+                'estadisticas': info_piezas.get('estadisticas'),
+                'fecha_registro': str(timezone.now())
+            }
+        # ===== FIN PASO 1 =====
+        
+        try:
+            # PASO 2: Intentar crear con el servicio modular
+            datos_para_servicio = validated_data.copy()
+            datos_para_servicio['piezas_usadas_en_registro'] = piezas_registro
+            
             indicadores = IndicadoresSaludBucalService.crear_indicadores_completos(
                 paciente_id=paciente_id,
                 usuario_id=usuario_id,
-                datos=validated_data
+                datos=datos_para_servicio
+            )
+            
+            # PASO 3: Garantizar persistencia de piezas_usadas_en_registro
+            # El servicio puede no haber guardado este campo, así que lo forzamos.
+            if not indicadores.piezas_usadas_en_registro and piezas_registro:
+                indicadores.piezas_usadas_en_registro = piezas_registro
+                indicadores.save(update_fields=['piezas_usadas_en_registro'])
+            
+            logger.info(
+                f"Indicadores creados exitosamente para paciente {paciente_id} "
+                f"(ID: {indicadores.id})"
             )
             return indicadores
             
+        except serializers.ValidationError:
+            raise
+            
         except Exception as e:
-            # Si falla el servicio modular, crear básico
-            validated_data['creado_por_id'] = usuario_id
-            indicadores = super().create(validated_data)
+            logger.error(
+                f"Error en create de indicadores para paciente {paciente_id}: {str(e)}",
+                exc_info=True
+            )
             
-            # Calcular promedios básicos
-            from api.odontogram.services.indicadores_service import IndicadoresSaludBucalService as Service
-            Service.calcular_y_guardar_promedios(indicadores)
-            
-            return indicadores
+            # Fallback: crear registro básico INCLUYENDO piezas_usadas_en_registro
+            try:
+                validated_data['creado_por_id'] = usuario_id
+                indicadores = super().create(validated_data)
+                
+                # Persistir piezas_usadas_en_registro que el serializer descartó
+                if piezas_registro:
+                    indicadores.piezas_usadas_en_registro = piezas_registro
+                    indicadores.save(update_fields=['piezas_usadas_en_registro'])
+                
+                # Calcular promedios básicos
+                from api.odontogram.services.indicadores_service import (
+                    IndicadoresSaludBucalService as Service
+                )
+                Service.calcular_y_guardar_promedios(indicadores)
+                
+                logger.warning(
+                    f"Se creó registro básico de indicadores (fallback) "
+                    f"para paciente {paciente_id}"
+                )
+                return indicadores
+                
+            except Exception as fallback_error:
+                logger.error(
+                    f"Error en fallback de creación: {str(fallback_error)}",
+                    exc_info=True
+                )
+                raise serializers.ValidationError(
+                    f"Error al crear indicadores: {str(e)}"
+                )
 
 
 class IndicadoresSaludBucalUpdateSerializer(IndicadoresSaludBucalSerializer):

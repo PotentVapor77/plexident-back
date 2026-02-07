@@ -17,6 +17,7 @@ from api.odontogram.models import (
     SuperficieDental,
     DiagnosticoDental,
     HistorialOdontograma,
+    IndiceCariesSnapshot,
 )
 from django.core.cache import cache
 from rest_framework.pagination import CursorPagination
@@ -210,7 +211,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
         GET /api/odontogram/historial/estadisticas/?paciente_id=...
         
         """
-        paciente_id = request.query_params.get('paciente_id')
+        paciente_id = request.query_params.get('paciente_id') or request.query_params.get('pacienteid')
         
         if not paciente_id:
             return Response(
@@ -247,7 +248,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
         Retorna lista de versiones únicas (guardados completos)
         con caché de 5 minutos
         """
-        paciente_id = request.query_params.get('paciente_id')
+        paciente_id = request.query_params.get('paciente_id') or request.query_params.get('pacienteid')
         
         if not paciente_id:
             return Response(
@@ -808,7 +809,7 @@ class IndicadoresSaludBucalViewSet(viewsets.ModelViewSet):
         GET /api/indicadores-salud-bucal/eliminados/?paciente_id=...
         Lista todos los indicadores eliminados lógicamente.
         """
-        paciente_id = request.query_params.get('paciente_id')
+        paciente_id = request.query_params.get('paciente_id') or request.query_params.get('pacienteid')
         
         logger.info(f"[IndicadoresSaludBucalViewSet] ELIMINADOS")
         logger.info(f" → paciente_id: {paciente_id}")

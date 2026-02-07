@@ -1,246 +1,253 @@
 # api/clinical_records/serializers/oral_health_indicators.py
 """
-Serializers para indicadores de salud bucal dentro del historial clínico
+Serializer para Indicadores de Salud Bucal con mapeo correcto de piezas suplentes
 """
 from rest_framework import serializers
 from api.odontogram.models import IndicadoresSaludBucal
-from api.odontogram.constants import (
-    ESCALA_PLACA, 
-    ESCALA_CALCULO, 
-    ESCALA_GINGIVITIS,
-    NIVELES_FLUOROSIS,
-    NIVELES_PERIODONTAL,
-    TIPOS_OCLUSION
-)
 
 
 class OralHealthIndicatorsSerializer(serializers.ModelSerializer):
-    paciente_nombre = serializers.SerializerMethodField()
-    creado_por_nombre = serializers.SerializerMethodField()
-    fecha_formateada = serializers.SerializerMethodField()
-    valores_por_pieza = serializers.SerializerMethodField()
-    informacion_calculo_json = serializers.SerializerMethodField()
+    """
+    Serializer para Indicadores de Salud Bucal
     
-    # Textos descriptivos (calculados)
+    FUNCIÓN CRÍTICA: Mapea correctamente los valores almacenados en campos de piezas
+    principales (16, 11, 26, 36, 31, 46) a las piezas realmente usadas (ej: 21 como suplente de 11).
+    
+    Ejemplo:
+        BD almacena: pieza_11_placa = 1.2
+        piezas_mapeo dice: pieza 11 usa código 21 como suplente
+        Serializer retorna: {pieza_usada: "21", placa: {valor: 1.2}}
+    """
+    
+    # Campos calculados
     enfermedad_periodontal_display = serializers.SerializerMethodField()
     tipo_oclusion_display = serializers.SerializerMethodField()
     nivel_fluorosis_display = serializers.SerializerMethodField()
     nivel_gingivitis_display = serializers.SerializerMethodField()
-    
-    # Resúmenes (los que te daban error)
-    resumen_higiene = serializers.SerializerMethodField()
-    resumen_gingival = serializers.SerializerMethodField()
-    informacion_calculo_json = serializers.SerializerMethodField()
+    valores_por_pieza = serializers.SerializerMethodField()
+    informacion_piezas = serializers.SerializerMethodField()
     
     class Meta:
         model = IndicadoresSaludBucal
         fields = [
-            'id', 'fecha', 'fecha_formateada', 'paciente_nombre', 'creado_por_nombre',
-            'enfermedad_periodontal', 'enfermedad_periodontal_display',
-            'tipo_oclusion', 'tipo_oclusion_display',
-            'nivel_fluorosis', 'nivel_fluorosis_display',
-            'gi_promedio_gingivitis', 'nivel_gingivitis_display',
-            'observaciones', 'informacion_calculo_json',
-            'valores_por_pieza', 'ohi_promedio_placa', 'ohi_promedio_calculo',
-            'gi_promedio_gingivitis', 'resumen_higiene', 'resumen_gingival', 'informacion_calculo_json','activo',
+            'id',
+            'paciente',
+            'fecha',
+            'fecha_modificacion',
+            
+            # Promedios
+            'ohi_promedio_placa',
+            'ohi_promedio_calculo',
+            'gi_promedio_gingivitis',
+            
+            # Diagnósticos
+            'enfermedad_periodontal',
+            'enfermedad_periodontal_display',
+            'tipo_oclusion',
+            'tipo_oclusion_display',
+            'nivel_fluorosis',
+            'nivel_fluorosis_display',
+            'nivel_gingivitis_display',
+            
+            # Información estructurada
+            'valores_por_pieza',
+            'informacion_piezas',
+            'piezas_usadas_en_registro',
+            
+            # Metadata
+            'observaciones',
+            'activo',
         ]
-        read_only_fields = fields  
-    
-    def get_paciente_nombre(self, obj):
-        """Nombre completo del paciente"""
-        if obj.paciente:
-            return f"{obj.paciente.nombres} {obj.paciente.apellidos}"
-        return None
-    
-    def get_creado_por_nombre(self, obj):
-        """Nombre del odontólogo que creó los indicadores"""
-        if obj.creado_por:
-            return f"{obj.creado_por.nombres} {obj.creado_por.apellidos}"
-        return "N/A"
-    
-    def get_fecha_formateada(self, obj):
-        """Fecha formateada para mostrar"""
-        if obj.fecha:
-            return obj.fecha.strftime("%d/%m/%Y %H:%M")
-        return None
+        read_only_fields = ['id', 'fecha', 'fecha_modificacion']
     
     def get_enfermedad_periodontal_display(self, obj):
-        """Descripción de enfermedad periodontal"""
-        if obj.enfermedad_periodontal:
-            return NIVELES_PERIODONTAL.get(obj.enfermedad_periodontal, obj.enfermedad_periodontal)
-        return None
+        """Retorna la descripción legible de la enfermedad periodontal"""
+        return obj.get_enfermedad_periodontal_display() if obj.enfermedad_periodontal else None
     
     def get_tipo_oclusion_display(self, obj):
-        """Descripción de tipo de oclusión"""
-        if obj.tipo_oclusion:
-            return TIPOS_OCLUSION.get(obj.tipo_oclusion, obj.tipo_oclusion)
-        return None
+        """Retorna la descripción legible del tipo de oclusión"""
+        return obj.get_tipo_oclusion_display() if obj.tipo_oclusion else None
     
     def get_nivel_fluorosis_display(self, obj):
-        """Descripción de nivel de fluorosis"""
-        if obj.nivel_fluorosis:
-            return NIVELES_FLUOROSIS.get(obj.nivel_fluorosis, obj.nivel_fluorosis)
-        return None
+        """Retorna la descripción legible del nivel de fluorosis"""
+        return obj.get_nivel_fluorosis_display() if obj.nivel_fluorosis else None
     
     def get_nivel_gingivitis_display(self, obj):
-        """Descripción de nivel de gingivitis"""
-        return obj.get_nivel_gingivitis_display() if obj.gi_promedio_gingivitis else "N/A"
+        """
+        Determina el nivel de gingivitis basado en el promedio
+        Escala: 0 = Ninguna, 0-0.3 = Leve, 0.3-0.6 = Moderada, >0.6 = Severa
+        """
+        gi = obj.gi_promedio_gingivitis
+        if gi is None:
+            return None
+        elif gi == 0:
+            return "No presenta"
+        elif 0 < gi <= 0.3:
+            return "Leve"
+        elif 0.3 < gi <= 0.6:
+            return "Moderada"
+        else:
+            return "Severa"
     
     def get_valores_por_pieza(self, obj):
-        """Organiza valores por pieza dental con descripciones"""
-        piezas = ['16', '11', '26', '36', '31', '46']
-        resultado = []
+        """
+        ⚡ FUNCIÓN CRÍTICA: Mapea correctamente los valores almacenados
         
-        for pieza in piezas:
-            placa = getattr(obj, f'pieza_{pieza}_placa', None)
-            calculo = getattr(obj, f'pieza_{pieza}_calculo', None)
-            gingivitis = getattr(obj, f'pieza_{pieza}_gingivitis', None)
+        El modelo tiene campos FIJOS: pieza_16_placa, pieza_11_placa, etc.
+        Cuando se usa una pieza suplente (ej: 21 en lugar de 11):
+        - Los valores están en pieza_11_placa (almacenamiento)
+        - Pero debemos retornar pieza_usada: "21" (presentación)
+        
+        Esta función hace ese mapeo leyendo de los campos originales
+        pero presentando con el código usado real.
+        """
+        valores = []
+        
+        # Obtener el mapeo de piezas del registro
+        piezas_mapeo = obj.piezas_usadas_en_registro.get('piezas_mapeo', {})
+        
+        # Las 6 piezas principales del sistema (campos fijos del modelo)
+        piezas_principales = ['16', '11', '26', '36', '31', '46']
+        
+        for pieza_original in piezas_principales:
+            # 1. Obtener información del mapeo
+            pieza_info = piezas_mapeo.get(pieza_original, {})
+            codigo_usado = pieza_info.get('codigo_usado', pieza_original)
+            es_alternativa = pieza_info.get('es_alternativa', False)
+            disponible = pieza_info.get('disponible', True)
             
-            # Obtener descripciones de escalas
-            placa_desc = ESCALA_PLACA.get(placa) if placa is not None else None
-            calculo_desc = ESCALA_CALCULO.get(calculo) if calculo is not None else None
-            gingivitis_desc = ESCALA_GINGIVITIS.get(gingivitis) if gingivitis is not None else None
+            # 2. LEER VALORES del campo de la pieza ORIGINAL
+            # Esto es CRÍTICO: aunque usemos la pieza 21, los valores
+            # están guardados en pieza_11_placa (porque son los únicos campos que existen)
+            placa = getattr(obj, f'pieza_{pieza_original}_placa', None)
+            calculo = getattr(obj, f'pieza_{pieza_original}_calculo', None)
+            gingivitis = getattr(obj, f'pieza_{pieza_original}_gingivitis', None)
             
-            resultado.append({
-                'pieza': pieza,
+            # 3. Crear objeto con la pieza USADA
+            # Aquí es donde hacemos el mapeo: presentamos como si fuera la pieza 21
+            # aunque los datos vienen de pieza_11_*
+            valores.append({
+                'pieza_original': pieza_original,
+                'pieza_usada': codigo_usado,  # ← Aquí está el mapeo
+                'es_alternativa': es_alternativa,
+                'disponible': disponible,
                 'placa': {
                     'valor': placa,
-                    'descripcion': placa_desc,
-                    'escala': 'Índice de Placa de Silness & Löe (0-3)'
+                    'descripcion': self._get_descripcion_valor(placa, 'placa'),
+                    'escala': '0-3'
                 },
                 'calculo': {
                     'valor': calculo,
-                    'descripcion': calculo_desc,
-                    'escala': 'Índice de Cálculo de Greene & Vermillion (0-3)'
+                    'descripcion': self._get_descripcion_valor(calculo, 'calculo'),
+                    'escala': '0-3'
                 },
                 'gingivitis': {
                     'valor': gingivitis,
-                    'descripcion': gingivitis_desc,
-                    'escala': 'Índice Gingival de Löe & Silness (0-1)'
+                    'descripcion': self._get_descripcion_gingivitis(gingivitis),
+                    'escala': '0-1'
                 },
-                'completo': all(v is not None for v in [placa, calculo, gingivitis])
+                'completo': all(v is not None for v in [placa, calculo, gingivitis]),
+                'mensaje_alternativa': pieza_info.get('motivo') if es_alternativa else None
             })
         
-        return resultado
+        return valores
     
-    def get_resumen_higiene(self, obj):
-        """Resumen de higiene oral basado en OHI-S"""
-        if obj.ohi_promedio_placa is not None and obj.ohi_promedio_calculo is not None:
-            total_ohi = obj.ohi_promedio_placa + obj.ohi_promedio_calculo
-            
-            if total_ohi <= 0.6:
-                return {
-                    'nivel': 'Excelente',
-                    'valor': total_ohi,
-                    'rango': '0 - 0.6',
-                    'recomendacion': 'Mantener excelentes hábitos de higiene oral'
-                }
-            elif total_ohi <= 1.2:
-                return {
-                    'nivel': 'Bueno',
-                    'valor': total_ohi,
-                    'rango': '0.7 - 1.2',
-                    'recomendacion': 'Continuar con buena higiene, mejorar técnica de cepillado'
-                }
-            elif total_ohi <= 1.8:
-                return {
-                    'nivel': 'Regular',
-                    'valor': total_ohi,
-                    'rango': '1.3 - 1.8',
-                    'recomendacion': 'Mejorar frecuencia y técnica de cepillado, considerar uso de hilo dental'
-                }
-            elif total_ohi <= 3.0:
-                return {
-                    'nivel': 'Deficiente',
-                    'valor': total_ohi,
-                    'rango': '1.9 - 3.0',
-                    'recomendacion': 'Instrucción detallada de higiene oral, evaluación de técnica'
-                }
-            else:
-                return {
-                    'nivel': 'Pésimo',
-                    'valor': total_ohi,
-                    'rango': '> 3.0',
-                    'recomendacion': 'Urgente: educación en higiene oral y posible tratamiento profesional'
-                }
+    def get_informacion_piezas(self, obj):
+        """
+        Retorna información estructurada sobre las piezas usadas en el registro
+        
+        Incluye:
+        - Dentición (permanente/temporal)
+        - Estadísticas (total, originales, alternativas)
+        - Mapeo completo de piezas
+        - Mensajes y advertencias
+        """
+        piezas_registro = obj.piezas_usadas_en_registro or {}
+        piezas_mapeo = piezas_registro.get('piezas_mapeo', {})
+        estadisticas = piezas_registro.get('estadisticas', {})
+        
+        # Generar mensaje descriptivo
+        total_piezas = estadisticas.get('total_piezas', 0)
+        piezas_originales = estadisticas.get('piezas_originales', 0)
+        piezas_alternativas = estadisticas.get('piezas_alternativas', 0)
+        
+        mensaje = f"Registro realizado con {total_piezas} piezas"
+        if piezas_alternativas > 0:
+            mensaje += f" ({piezas_originales} originales, {piezas_alternativas} suplentes)"
+        
+        # Generar advertencias para piezas suplentes
+        advertencias = []
+        for pieza_original, info in piezas_mapeo.items():
+            if info.get('es_alternativa', False):
+                advertencias.append(
+                    f"Pieza {info.get('codigo_usado')} usada como suplente de {pieza_original}"
+                )
         
         return {
-            'nivel': 'Sin datos',
-            'valor': None,
-            'rango': None,
-            'recomendacion': 'Completar evaluación de indicadores'
+            'tiene_metadata': bool(piezas_mapeo),
+            'denticion': piezas_registro.get('denticion', 'permanente'),
+            'estadisticas': estadisticas,
+            'piezas_mapeo': piezas_mapeo,  # ← Frontend usa esto para badges
+            'mensaje': mensaje,
+            'advertencia': '; '.join(advertencias) if advertencias else None
         }
     
-    def get_resumen_gingival(self, obj):
-        """Resumen de salud gingival basado en GI"""
-        if obj.gi_promedio_gingivitis is not None:
-            if obj.gi_promedio_gingivitis <= 0.1:
-                return {
-                    'nivel': 'Normal',
-                    'valor': obj.gi_promedio_gingivitis,
-                    'rango': '0 - 0.1',
-                    'recomendacion': 'Encías saludables, mantener hábitos actuales'
-                }
-            elif obj.gi_promedio_gingivitis <= 1.0:
-                return {
-                    'nivel': 'Leve',
-                    'valor': obj.gi_promedio_gingivitis,
-                    'rango': '0.2 - 1.0',
-                    'recomendacion': 'Mejorar higiene oral, evaluar técnica de cepillado'
-                }
-            elif obj.gi_promedio_gingivitis <= 2.0:
-                return {
-                    'nivel': 'Moderada',
-                    'valor': obj.gi_promedio_gingivitis,
-                    'rango': '1.1 - 2.0',
-                    'recomendacion': 'Evaluación periodontal, posible tratamiento profesional'
-                }
-            else:
-                return {
-                    'nivel': 'Severa',
-                    'valor': obj.gi_promedio_gingivitis,
-                    'rango': '> 2.0',
-                    'recomendacion': 'Urgente: evaluación y tratamiento periodontal profesional'
-                }
-        
-        return {
-            'nivel': 'Sin datos',
-            'valor': None,
-            'rango': None,
-            'recomendacion': 'Completar evaluación gingival'
-        }
-        
-    
-    def get_informacion_calculo_json(self, obj):
-        """Información de cálculo estructurada"""
-        if obj.informacion_calculo:
-            return obj.informacion_calculo
-        return None
-    def get_nivel_gingivitis_display(self, obj):
+    def _get_descripcion_valor(self, valor, tipo):
         """
-        Traducción manual de valor numérico a etiqueta de texto
-        basada en los rangos de salud bucal.
-        """
-        valor = obj.gi_promedio_gingivitis
+        Obtiene descripción legible para valores de placa/cálculo
         
+        Escala 0-3:
+        0 = Ausente
+        1 = Leve
+        2 = Moderado
+        3 = Severo
+        """
         if valor is None:
-            return "N/A"
+            return None
         
-        # Lógica basada en la escala de Loe y Silness (común en odontología)
+        if tipo in ['placa', 'calculo']:
+            descripciones = {
+                0: "Ausente",
+                1: "Leve",
+                2: "Moderado",
+                3: "Severo"
+            }
+            return descripciones.get(valor, "Desconocido")
+        return None
+    
+    def _get_descripcion_gingivitis(self, valor):
+        """
+        Obtiene descripción legible para gingivitis
+        
+        Escala 0-1:
+        0 = Sin sangrado
+        1 = Con sangrado
+        """
+        if valor is None:
+            return None
+        
         if valor == 0:
-            return "Sano"
-        elif 0.1 <= valor <= 1.0:
-            return "Gingivitis Leve"
-        elif 1.1 <= valor <= 2.0:
-            return "Gingivitis Moderada"
-        elif 2.1 <= valor <= 3.0:
-            return "Gingivitis Severa"
-            
-        return "N/A"
+            return "Sin sangrado"
+        elif valor == 1:
+            return "Con sangrado"
+        return "Desconocido"
+
 
 class OralHealthIndicatorsRefreshSerializer(serializers.Serializer):
     """
-    Serializer para la operación de refresh de indicadores
+    Serializer para la respuesta del endpoint de recarga de indicadores
+    
+    Usado en: GET /api/clinical-records/indicadores-salud-bucal/{paciente_id}/recargar/
     """
-    paciente_id = serializers.UUIDField(required=True)
-    incluir_historial = serializers.BooleanField(default=False, required=False)
+    valores = serializers.DictField(
+        help_text="Valores prellenados de las piezas"
+    )
+    metadata_registro = serializers.DictField(
+        help_text="Metadata del registro anterior"
+    )
+    estado_actual_piezas = serializers.DictField(
+        help_text="Estado actual de las piezas del paciente"
+    )
+    advertencias = serializers.ListField(
+        help_text="Advertencias sobre cambios en disponibilidad de piezas"
+    )

@@ -342,6 +342,28 @@ class Diente(models.Model):
     def info_completa(self):
         """Retorna toda la información del diente de forma estructurada"""
         return FDIConstants.obtener_info_fdi(self.codigo_fdi)
+    
+    def actualizar_estado_ausencia(self):
+        """
+            Actualiza el flag 'ausente' basándose en diagnósticos
+        """
+        tiene_diagnostico_ausencia = self.superficies.filter(
+            diagnosticos__diagnostico_catalogo__key__in=[
+                'ausente',
+                'perdida_caries',
+                'perdida_otra_causa',
+                'extraccion_otra_causa'
+            ],
+            diagnosticos__activo=True
+        ).exists()
+        
+        if tiene_diagnostico_ausencia and not self.ausente:
+            self.ausente = True
+            self.save(update_fields=['ausente'])
+        elif not tiene_diagnostico_ausencia and self.ausente:
+            # Solo desmarcar si no hay diagnósticos de ausencia
+            self.ausente = False
+            self.save(update_fields=['ausente'])
 
 
 class SuperficieDental(models.Model):
@@ -506,6 +528,16 @@ class DiagnosticoDental(models.Model):
         help_text="Define la coloración en el Formulario 033"
     )
     
+    class TipoDiagnostico(models.TextChoices):
+        PRESUNTIVO = 'presuntivo', 'Presuntivo'
+        DEFINITIVO = 'definitivo', 'Definitivo'
+    
+    tipo_diagnostico = models.CharField(
+        max_length=20,
+        choices=TipoDiagnostico.choices,
+        default=TipoDiagnostico.PRESUNTIVO,
+        help_text="Tipo de diagnóstico: Presuntivo o Definitivo"
+    )
     
     # Estado del tratamiento
     class EstadoTratamiento(models.TextChoices):
@@ -802,10 +834,28 @@ class IndicadoresSaludBucal(models.Model):
         help_text="Fecha y hora de eliminación lógica"
     )
     piezas_usadas_en_registro = models.JSONField(
-        default=dict,
+        default=dict, 
         blank=True,
-        help_text="Información de las piezas dentales usadas en este registro específico"
+        help_text="""
+        Información de las piezas dentales usadas en este registro específico.
+        Estructura:
+        {
+            'denticion': 'permanente' | 'temporal',
+            'piezas_mapeo': {
+                '16': {
+                    'codigo_usado': '16',
+                    'es_alternativa': False,
+                    'codigo_original': '16',
+                    'disponible': True,
+                    'diente_id': 'uuid',
+                    'ausente': False
+                }
+            },
+            'estadisticas': {...}
+        }
+        """
     )
+    
     # ================================
 
     # Higiene oral simplificada: piezas índice + puntajes 0–3
@@ -898,6 +948,8 @@ class IndicadoresSaludBucal(models.Model):
         default=True,
         help_text="False indica que el registro fue eliminado lógicamente"
     )
+    objects = IndicadoresSaludBucalManager() 
+    all_objects = IndicadoresSaludBucalAllManager()
     # ==========================
 
     class Meta:
@@ -914,7 +966,21 @@ class IndicadoresSaludBucal(models.Model):
         estado = " (ELIMINADO)" if not self.activo else ""
         return f"Indicadores {self.paciente.nombres} - {self.fecha.date()}{estado}"
     
-    
+    @property
+    def tiene_datos_completos(self):
+        """Verifica si al menos 3 piezas tienen datos completos"""
+        piezas = ['16', '11', '26', '36', '31', '46']
+        completas = 0
+        
+        for pieza in piezas:
+            placa = getattr(self, f'pieza_{pieza}_placa', None)
+            calculo = getattr(self, f'pieza_{pieza}_calculo', None)
+            gingivitis = getattr(self, f'pieza_{pieza}_gingivitis', None)
+            
+            if all([placa is not None, calculo is not None, gingivitis is not None]):
+                completas += 1
+        
+        return completas >= 3
     
 class PlanTratamiento(models.Model):
     """
