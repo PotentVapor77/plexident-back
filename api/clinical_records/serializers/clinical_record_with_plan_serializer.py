@@ -7,11 +7,17 @@ procedimientos y prescripciones
 from rest_framework import serializers
 from api.clinical_records.models import ClinicalRecord
 from api.odontogram.models import PlanTratamiento, SesionTratamiento
+from api.patients.models.examenes_complementarios import ExamenesComplementarios
 
 # Importar el nuevo serializer completo del plan
 from api.clinical_records.serializers.plan_tratamiento_serializers import (
     PlanTratamientoCompletoSerializer,
     PlanTratamientoResumenSerializer
+)
+
+# Importar serializer de exámenes complementarios
+from api.clinical_records.serializers.examenes_complementarios import (
+    ExamenesComplementariosResumenSerializer
 )
 
 
@@ -33,6 +39,7 @@ class ClinicalRecordWithPlanDetailSerializer(serializers.ModelSerializer):
     antecedentes_familiares_data = serializers.SerializerMethodField()
     constantes_vitales_data = serializers.SerializerMethodField()
     examen_estomatognatico_data = serializers.SerializerMethodField()
+    examenes_complementarios_data = serializers.SerializerMethodField()
     
     plan_tratamiento_completo = serializers.SerializerMethodField()
     
@@ -79,6 +86,8 @@ class ClinicalRecordWithPlanDetailSerializer(serializers.ModelSerializer):
             'constantes_vitales_data',
             'examen_estomatognatico',
             'examen_estomatognatico_data',
+            'examenes_complementarios',
+            'examenes_complementarios_data',
             
             
             # Indicadores y diagnósticos
@@ -176,6 +185,12 @@ class ClinicalRecordWithPlanDetailSerializer(serializers.ModelSerializer):
         if obj.examen_estomatognatico:
             from api.clinical_records.serializers.stomatognathic_exam import ExamenEstomatognaticoSerializer
             return ExamenEstomatognaticoSerializer(obj.examen_estomatognatico).data
+        return None
+    
+    def get_examenes_complementarios_data(self, obj):
+        """Datos de exámenes complementarios"""
+        if obj.examenes_complementarios:
+            return ExamenesComplementariosResumenSerializer(obj.examenes_complementarios).data
         return None
     
     def get_tiene_plan_tratamiento(self, obj):
@@ -344,6 +359,13 @@ class ClinicalRecordCreateSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     
+    # Permitir especificar exámenes complementarios (opcional)
+    examenes_complementarios = serializers.PrimaryKeyRelatedField(
+        queryset=ExamenesComplementarios.objects.filter(activo=True),
+        required=False,
+        allow_null=True
+    )
+    
     class Meta:
         model = ClinicalRecord
         fields = [
@@ -358,7 +380,8 @@ class ClinicalRecordCreateSerializer(serializers.ModelSerializer):
             'examen_estomatognatico',
             'indicadores_salud_bucal',
             'indices_caries',
-            'plan_tratamiento', 
+            'plan_tratamiento',
+            'examenes_complementarios',
             'observaciones',
             'establecimiento_salud',
             'unicodigo',

@@ -175,6 +175,23 @@ class ClinicalRecordService:
                     f"No se encontrÃ³ plan de tratamiento activo para paciente {paciente_id}"
                 )
         
+        # === NUEVO: VINCULAR EXÁMENES COMPLEMENTARIOS ===
+        if not data.get('examenes_complementarios'):
+            logger.info(f"Buscando exámenes complementarios para paciente {paciente_id}")
+            from api.clinical_records.services.examenes_complementarios_service import ExamenesComplementariosLinkService
+            ultimo_examen = ExamenesComplementariosLinkService.obtener_ultimo_examen_paciente(paciente_id)
+            
+            if ultimo_examen:
+                data['examenes_complementarios'] = ultimo_examen
+                logger.info(
+                    f"Exámenes complementarios {ultimo_examen.id} vinculados automáticamente "
+                    f"al historial para paciente {paciente_id}"
+                )
+            else:
+                logger.info(
+                    f"No se encontraron exámenes complementarios para paciente {paciente_id}"
+                )
+        
         # === LIMPIEZA DE DATOS ===
         motivo_consulta_valor = data.get('motivo_consulta')
         enfermedad_actual_valor = data.get('enfermedad_actual')

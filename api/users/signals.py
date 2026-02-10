@@ -67,7 +67,7 @@ def crear_permisos_default_odontologo(sender, instance, created, **kwargs):
         },
         {
             'modelo': 'diente',
-            'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH']
+            'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
         },
         {
             'modelo': 'diagnosticodental',
@@ -76,7 +76,7 @@ def crear_permisos_default_odontologo(sender, instance, created, **kwargs):
         # Agregar más modelos según sea necesario
         {
             'modelo': 'superficie',
-            'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH']
+            'metodos_permitidos': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
         },
         {
             'modelo': 'clinicalfile',

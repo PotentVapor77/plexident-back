@@ -47,6 +47,8 @@ from api.clinical_records.serializers.plan_tratamiento_serializers import (
     PlanTratamientoCompletoSerializer,
     PlanTratamientoResumenSerializer
 )
+from api.clinical_records.serializers.examenes_complementarios import WritableExamenesComplementariosSerializer
+from api.clinical_records.services.examenes_complementarios_service import ExamenesComplementariosLinkService
 
 
 
@@ -54,6 +56,7 @@ from api.clinical_records.serializers.plan_tratamiento_serializers import (
 from .base import (
     ClinicalRecordPagination,
     BasePermissionMixin,
+    DateRangeFilterMixin,
     QuerysetOptimizationMixin,
     SearchFilterMixin,
     ActiveFilterMixin,
@@ -67,6 +70,7 @@ class ClinicalRecordViewSet(
     QuerysetOptimizationMixin,
     SearchFilterMixin,
     ActiveFilterMixin,
+    DateRangeFilterMixin,
     LoggingMixin,
     viewsets.ModelViewSet,
 ):
@@ -84,17 +88,24 @@ class ClinicalRecordViewSet(
     ordering = ['-fecha_atencion']
     
     # Campos para optimización de queryset
-    RELATED_FIELDS = [
-        'paciente',
-        'odontologo_responsable',
-        'antecedentes_personales',
-        'antecedentes_familiares',
-        'constantes_vitales',
-        'examen_estomatognatico',
-        'indicadores_salud_bucal', 
-        'creado_por',
+    SEARCH_FIELDS = [
+        # Paciente
+        'paciente__nombres',
+        'paciente__apellidos',
+        'paciente__nombre_completo',
+        'paciente__cedula_pasaporte',
+        
+        # Campos del historial
+        'motivo_consulta',
+        'enfermedad_actual',
+        'observaciones',
+        'numero_historia_clinica_unica',
+        'numero_archivo',
+        
+        # Odontólogo
+        'odontologo_responsable__nombres',
+        'odontologo_responsable__apellidos',
     ]
-    
     # Campos para búsqueda
     SEARCH_FIELDS = [
         'paciente__nombres',
@@ -109,11 +120,11 @@ class ClinicalRecordViewSet(
         """Retorna el serializer apropiado según la acción"""
         if self.action == 'create':
             return ClinicalRecordCreateSerializerNew
-        elif self.action in ['retrieve', 'by_paciente']:
-            # CAMBIADO: Usar serializer con plan completo
+        elif self.action == 'retrieve':
             return ClinicalRecordWithPlanDetailSerializer
+        elif self.action == 'by_paciente':
+            return ClinicalRecordDetailSerializer  
         elif self.action == 'list':
-            # NUEVO: Usar serializer de lista ligero
             return ClinicalRecordListSerializer
         elif self.action in ['update', 'partial_update']:
             return ClinicalRecordDetailSerializer
@@ -138,7 +149,8 @@ class ClinicalRecordViewSet(
             'creado_por',
             'plan_tratamiento',  
             'plan_tratamiento__paciente', 
-            'plan_tratamiento__creado_por',  
+            'plan_tratamiento__creado_por', 
+            'examenes_complementarios',
         )
         
         if self.action in ['retrieve', 'by_paciente']:
@@ -148,7 +160,7 @@ class ClinicalRecordViewSet(
             )
         
         # Filtro de activo/inactivo
-        qs = self.apply_active_filter(qs, self.request)
+        qs = self.filter_by_active_status(qs, self.request)
         
         # Búsqueda
         search = self.request.query_params.get('search', '').strip()
@@ -156,6 +168,32 @@ class ClinicalRecordViewSet(
             qs = self.apply_search_filter(qs, search, self.SEARCH_FIELDS)
         
         return qs
+    
+
+    def filter_by_active_status(self, queryset, request):
+        """
+        Filtra el queryset según el parámetro 'activo' en los query params.
+        
+        Args:
+            queryset: QuerySet a filtrar
+            request: Request object con query_params
+            
+        Returns:
+            QuerySet filtrado
+            
+        Parámetros de query:
+            - activo=true: Solo registros activos (activo=True)
+            - activo=false: Solo registros inactivos (activo=False)
+            - sin parámetro: Todos los registros
+        """
+        activo_param = request.query_params.get('activo', None)
+        
+        if activo_param is not None:
+            # Convertir a booleano
+            activo_value = activo_param.lower() in ('true', '1', 'yes', 'si')
+            queryset = queryset.filter(activo=activo_value)
+        
+        return queryset
     
     def create(self, request, *args, **kwargs):
         """Crear nuevo historial clínico con datos pre-cargados"""
@@ -227,18 +265,20 @@ class ClinicalRecordViewSet(
         serializer.is_valid(raise_exception=True)
         
         try:
+            # Obtener observaciones de cierre antes de cerrar
+            observaciones_cierre = serializer.validated_data.get('observaciones_cierre')
+            
+            # Añadir observaciones al historial ANTES de cerrarlo
+            if observaciones_cierre:
+                historial = ClinicalRecordRepository.obtener_por_id(pk)
+                historial.observaciones += f"\n\nObservaciones de cierre: {observaciones_cierre}"
+                # Guardar solo el campo observaciones para evitar conflictos
+                historial.save(update_fields=['observaciones'])
+            
+            # Ahora cerrar el historial
             historial = ClinicalRecordService.cerrar_historial(pk, request.user)
             
-            # Guardar observaciones de cierre si se proporcionan
-            observaciones = serializer.validated_data.get('observaciones_cierre')
-            if observaciones:
-                historial.observaciones += (
-                    f"\n\nObservaciones de cierre: {observaciones}"
-                )
-                historial.save()
-            
             output_serializer = ClinicalRecordDetailSerializer(historial)
-            ClinicalRecordDetailSerializer
             logger.info(
                 f"Historial clínico {pk} cerrado por {request.user.username}"
             )
@@ -252,6 +292,15 @@ class ClinicalRecordViewSet(
             return Response(
                 {'detail': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(
+                f"Error inesperado cerrando historial {pk}: {str(e)}",
+                exc_info=True
+            )
+            return Response(
+                {'detail': 'Error al cerrar el historial clínico'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
     @action(detail=True, methods=['post'], url_path='reabrir')
@@ -427,6 +476,26 @@ class ClinicalRecordViewSet(
                     'existe': False,
                     'resumen': None,
                     'mensaje': 'No hay plan de tratamiento activo para este paciente'
+                }
+            
+            # === EXÁMENES COMPLEMENTARIOS ===
+            ultimo_examen = ExamenesComplementariosLinkService.obtener_ultimo_examen_paciente(
+                paciente_id
+            )
+            
+            if ultimo_examen:
+                datos_iniciales['examenes_complementarios'] = {
+                    'id': str(ultimo_examen.id),
+                    'existe': True,
+                    'data': WritableExamenesComplementariosSerializer(ultimo_examen).data,
+                    'mensaje': 'Se vinculará automáticamente al crear el historial'
+                }
+            else:
+                datos_iniciales['examenes_complementarios'] = {
+                    'id': None,
+                    'existe': False,
+                    'data': None,
+                    'mensaje': 'No hay exámenes complementarios previos para este paciente'
                 }
             
             return Response(
@@ -1857,3 +1926,390 @@ class ClinicalRecordViewSet(
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+            
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path=r'examenes-complementarios/(?P<paciente_id>[^/]+)/latest',
+    )
+    def latest_examenes_complementarios(self, request, paciente_id=None):
+        """
+        Obtiene los exámenes complementarios más recientes del paciente.
+        Endpoint de recarga/refresh para el formulario del historial.
+
+        GET: /api/clinical-records/examenes-complementarios/{paciente_id}/latest/
+
+        Respuesta exitosa:
+        {
+            "id": "uuid",
+            "pedido_examenes": "SI",
+            "pedido_examenes_detalle": "...",
+            "informe_examenes": "BIOMETRIA",
+            "informe_examenes_detalle": "...",
+            "estado_examenes": "completado",
+            ...
+        }
+        """
+        historial, error = self._validar_puede_recargar(paciente_id)
+        if error:
+            return Response(
+                {'detail': error},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Buscar último examen complementario del paciente
+        instancia = (
+            ExamenesComplementariosLinkService
+            .obtener_ultimo_examen_paciente(paciente_id)
+        )
+
+        if not instancia:
+            return Response(
+                {
+                    'detail': 'No hay exámenes complementarios previos',
+                    'disponible': False,
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = WritableExamenesComplementariosSerializer(instancia)
+        return Response(serializer.data)
+
+
+    # ================================================================
+    # EXÁMENES COMPLEMENTARIOS - OBTENER (LECTURA DESDE HISTORIAL)
+    # ================================================================
+
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='examenes-complementarios',
+    )
+    def obtener_examenes_complementarios(self, request, pk=None):
+        """
+        Obtiene los exámenes complementarios asociados a este historial.
+
+        GET: /api/clinical-records/{id}/examenes-complementarios/
+
+        Respuesta:
+        {
+            "success": true,
+            "message": "...",
+            "data": { ...serialized examenes... },
+            "source": "historial_fk" | "paciente_latest"
+        }
+        """
+        historial = self.get_object()
+
+        # 1) Buscar por FK directa en el historial
+        if historial.examenes_complementarios:
+            serializer = WritableExamenesComplementariosSerializer(
+                historial.examenes_complementarios
+            )
+            return Response({
+                'success': True,
+                'message': 'Exámenes complementarios del historial',
+                'data': serializer.data,
+                'source': 'historial_fk',
+            })
+
+        # 2) Fallback: buscar el más reciente del paciente
+        instancia = (
+            ExamenesComplementariosLinkService
+            .obtener_ultimo_examen_paciente(str(historial.paciente_id))
+        )
+
+        if instancia:
+            serializer = WritableExamenesComplementariosSerializer(instancia)
+            return Response({
+                'success': True,
+                'message': (
+                    'Exámenes complementarios más recientes del paciente '
+                    '(no asociados a este historial)'
+                ),
+                'data': serializer.data,
+                'source': 'paciente_latest',
+                'warning': (
+                    'Este historial no tiene exámenes complementarios '
+                    'asociados específicamente'
+                ),
+            })
+
+        return Response(
+            {
+                'success': False,
+                'message': (
+                    'No hay exámenes complementarios para este historial '
+                    'ni para el paciente'
+                ),
+                'data': None,
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+
+    # ================================================================
+    # EXÁMENES COMPLEMENTARIOS - GUARDAR (CREAR Y VINCULAR)
+    # ================================================================
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='guardar-examenes-complementarios',
+    )
+    def guardar_examenes_complementarios(self, request, pk=None):
+        """
+        Crea nuevos exámenes complementarios y los asocia al historial.
+
+        POST: /api/clinical-records/{id}/guardar-examenes-complementarios/
+        Body:
+        {
+            "pedido_examenes": "SI",
+            "pedido_examenes_detalle": "Radiografía panorámica, hemograma completo",
+            "informe_examenes": "NINGUNO",
+            "informe_examenes_detalle": ""
+        }
+
+        También acepta vincular un examen existente:
+        {
+            "examenes_complementarios_id": "<uuid>"
+        }
+        """
+        historial = self.get_object()
+
+        # Validar que el historial no esté cerrado
+        if historial.estado == 'CERRADO':
+            return Response(
+                {
+                    'success': False,
+                    'message': (
+                        'No se pueden agregar exámenes complementarios '
+                        'a un historial cerrado'
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # Opción A: Vincular examen existente por ID
+            examenes_id = request.data.get('examenes_complementarios_id')
+            if examenes_id:
+                try:
+                    examen = ExamenesComplementarios.objects.get(
+                        id=examenes_id,
+                        paciente=historial.paciente,
+                        activo=True,
+                    )
+                    historial.examenes_complementarios = examen
+                    historial.save(
+                        update_fields=['examenes_complementarios']
+                    )
+
+                    logger.info(
+                        f"Exámenes {examen.id} asociados al historial {pk}"
+                    )
+
+                    return Response(
+                        {
+                            'success': True,
+                            'message': 'Exámenes asociados exitosamente',
+                            'data': WritableExamenesComplementariosSerializer(
+                                examen
+                            ).data,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+                except ExamenesComplementarios.DoesNotExist:
+                    return Response(
+                        {
+                            'detail': (
+                                'Los exámenes especificados no existen '
+                                'o no pertenecen al paciente'
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            # Opción B: Crear nuevos exámenes
+            data = request.data.copy()
+            data['paciente'] = str(historial.paciente_id)
+
+            serializer = WritableExamenesComplementariosSerializer(data=data)
+            serializer.is_valid(raise_exception=True)
+
+            examen = ExamenesComplementarios.objects.create(
+                paciente=historial.paciente,
+                creado_por=request.user,
+                **{
+                    k: v
+                    for k, v in serializer.validated_data.items()
+                    if k != 'paciente'
+                },
+            )
+
+            # Vincular al historial
+            historial.examenes_complementarios = examen
+            historial.save(update_fields=['examenes_complementarios'])
+
+            logger.info(
+                f"Exámenes {examen.id} creados y asociados "
+                f"al historial {pk} por {request.user.username}"
+            )
+
+            return Response(
+                {
+                    'success': True,
+                    'message': (
+                        'Exámenes complementarios creados y asociados '
+                        'al historial exitosamente'
+                    ),
+                    'data': WritableExamenesComplementariosSerializer(
+                        examen
+                    ).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ValidationError as e:
+            logger.error(
+                f"Error validando exámenes para historial {pk}: {str(e)}"
+            )
+            return Response(
+                {
+                    'success': False,
+                    'message': 'Error de validación',
+                    'errors': e.detail,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error guardando exámenes para historial {pk}: {str(e)}"
+            )
+            return Response(
+                {
+                    'success': False,
+                    'message': f'Error guardando exámenes: {str(e)}',
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    # ================================================================
+    # EXÁMENES COMPLEMENTARIOS - ACTUALIZAR
+    # ================================================================
+
+    @action(
+        detail=True,
+        methods=['patch'],
+        url_path='actualizar-examenes-complementarios',
+    )
+    def actualizar_examenes_complementarios(self, request, pk=None):
+        """
+        Actualiza los exámenes complementarios asociados al historial.
+
+        PATCH: /api/clinical-records/{id}/actualizar-examenes-complementarios/
+        Body (parcial):
+        {
+            "informe_examenes": "BIOMETRIA",
+            "informe_examenes_detalle": "Resultados normales..."
+        }
+        """
+        historial = self.get_object()
+
+        # Validar que el historial no esté cerrado
+        if historial.estado == 'CERRADO':
+            return Response(
+                {'detail': 'No se puede modificar un historial cerrado'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Verificar que el historial tenga exámenes asociados
+        if not historial.examenes_complementarios:
+            return Response(
+                {
+                    'detail': (
+                        'Este historial no tiene exámenes complementarios '
+                        'asociados. Use guardar-examenes-complementarios '
+                        'para crear nuevos.'
+                    ),
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = WritableExamenesComplementariosSerializer(
+            historial.examenes_complementarios,
+            data=request.data,
+            partial=True,
+        )
+
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            examen = serializer.save()
+
+            logger.info(
+                f"Exámenes {examen.id} actualizados "
+                f"para historial {pk} por {request.user.username}"
+            )
+
+            return Response(
+                {
+                    'success': True,
+                    'message': 'Exámenes complementarios actualizados exitosamente',
+                    'data': WritableExamenesComplementariosSerializer(
+                        examen
+                    ).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error actualizando exámenes para historial {pk}: {str(e)}"
+            )
+            return Response(
+                {
+                    'detail': f'Error al actualizar exámenes: {str(e)}',
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+    # ================================================================
+    # EXÁMENES COMPLEMENTARIOS - HISTORIAL COMPLETO DEL PACIENTE
+    # ================================================================
+
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='todos-examenes-complementarios',
+    )
+    def todos_examenes_complementarios(self, request, pk=None):
+        """
+        Obtiene TODOS los exámenes complementarios del paciente
+        del historial (para ver historial completo de exámenes).
+
+        GET: /api/clinical-records/{id}/todos-examenes-complementarios/
+        """
+        historial = self.get_object()
+
+        examenes = (
+            ExamenesComplementariosLinkService
+            .obtener_todos_examenes_paciente(str(historial.paciente_id))
+        )
+
+        serializer = WritableExamenesComplementariosSerializer(
+            examenes, many=True
+        )
+
+        return Response({
+            'success': True,
+            'total': examenes.count(),
+            'paciente_id': str(historial.paciente_id),
+            'examenes': serializer.data,
+        })

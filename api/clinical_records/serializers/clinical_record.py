@@ -3,6 +3,7 @@
 """
 Serializers principales para Clinical Record
 """
+from jsonschema import ValidationError
 from rest_framework import serializers
 from django.utils import timezone
 import logging
@@ -21,6 +22,9 @@ from api.clinical_records.serializers.diagnosticos_cie_serializers import Writab
 from api.clinical_records.services.diagnostico_cie_service import DiagnosticosCIEService
 from api.odontogram.serializers.plan_tratamiento_serializers import PlanTratamientoDetailSerializer
 from api.odontogram.models import PlanTratamiento
+from api.clinical_records.services.vital_signs_service import VitalSignsService
+from api.clinical_records.serializers.examenes_complementarios import ExamenesComplementariosResumenSerializer, WritableExamenesComplementariosSerializer
+from api.clinical_records.serializers import examenes_complementarios
 
 from .base import DateFormatterMixin
 from .patient_data import PatientInfoMixin
@@ -59,6 +63,7 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
     puede_editar = serializers.BooleanField(read_only=True)
     esta_completo = serializers.BooleanField(read_only=True)
     indicadores_salud = OralHealthIndicatorsSerializer(read_only=True)
+    
     class Meta:
         model = ClinicalRecord
         fields = [
@@ -193,6 +198,13 @@ class ClinicalRecordSerializer(serializers.ModelSerializer):
                 data['plan_tratamiento_texto_prescripciones'] = texto_prescripciones
             else:
                 data['plan_tratamiento_texto_prescripciones'] = "No hay prescripciones registradas."
+                
+        
+        if examenes_complementarios:
+            data['examenes_complementarios_data'] = WritableExamenesComplementariosSerializer(
+                examenes_complementarios
+            ).data
+
         
         # 4. Campos institucionales
         data['institucion_sistema'] = instance.institucion_sistema or "SISTEMA NACIONAL DE SALUD"
@@ -278,6 +290,12 @@ class ClinicalRecordDetailSerializer(
     
     plan_tratamiento = PlanTratamientoDetailSerializer(read_only=True)
     
+    examenes_complementarios_data = ExamenesComplementariosResumenSerializer(
+        source='examenes_complementarios',
+        read_only=True,
+        allow_null=True,
+    )
+    
     class Meta:
         model = ClinicalRecord
         fields = '__all__'
@@ -297,195 +315,219 @@ class ClinicalRecordDetailSerializer(
             'indices_caries',
             'indices_caries_data',
             'plan_tratamiento',
+            'examenes_complementarios_data',
         )
     
     def update(self, instance, validated_data):
-        """Manejar actualizaciones con lógica de versionado"""
+        """
+        Actualiza un historial clínico existente.
+        Maneja actualización de relaciones anidadas.
+        """
+        from api.patients.models.antecedentes_personales import AntecedentesPersonales
+        from api.patients.models.antecedentes_familiares import AntecedentesFamiliares
+        from api.patients.models.constantes_vitales import ConstantesVitales
+        from api.patients.models.examen_estomatognatico import ExamenEstomatognatico
+        from api.odontogram.models import IndiceCariesSnapshot
         
-        # 1. Extraer campos individuales de constantes vitales
-        temperatura = validated_data.pop('temperatura', None)
-        pulso = validated_data.pop('pulso', None)
-        frecuencia_respiratoria = validated_data.pop('frecuencia_respiratoria', None)
-        presion_arterial = validated_data.pop('presion_arterial', None)
-        motivo_consulta_texto = validated_data.pop('motivo_consulta_texto', None)
-        enfermedad_actual_texto = validated_data.pop('enfermedad_actual_texto', None)
+        usuario = self.context['request'].user
+        paciente = instance.paciente
         
-        # 2. Extraer campos directos
-        motivo_consulta_directo = validated_data.pop('motivo_consulta', None)
-        enfermedad_actual_directo = validated_data.pop('enfermedad_actual', None)
+        # ============================================================================
+        # CORRECCIÓN: Verificar el tipo de dato antes de procesar
+        # ============================================================================
         
-        # 3. Extraer datos anidados
-        antecedentes_personales_data = validated_data.pop(
-            'antecedentes_personales', None
-        )
-        antecedentes_familiares_data = validated_data.pop(
-            'antecedentes_familiares', None
-        )
-        examen_estomatognatico_data = validated_data.pop(
-            'examen_estomatognatico', None
-        )
-        
-        # 4. Determinar valores finales
-        motivo_final = (
-            motivo_consulta_texto 
-            if motivo_consulta_texto is not None 
-            else motivo_consulta_directo
-        )
-        enfermedad_final = (
-            enfermedad_actual_texto 
-            if enfermedad_actual_texto is not None 
-            else enfermedad_actual_directo
-        )
-        
-        # 5. Verificar cambios en constantes vitales
-        hay_cambios_constantes = any([
-            temperatura is not None,
-            pulso is not None,
-            frecuencia_respiratoria is not None,
-            presion_arterial is not None,
-            motivo_final is not None,
-            enfermedad_final is not None,
-        ])
-        
-        # 6. Crear nuevas constantes vitales si hay cambios
-        if hay_cambios_constantes:
-            cv_actual = instance.constantes_vitales
-            
-            nueva_cv_data = {
-                'paciente': instance.paciente,
-                'temperatura': (
-                    temperatura 
-                    if temperatura is not None 
-                    else getattr(cv_actual, 'temperatura', None)
-                ),
-                'pulso': (
-                    pulso 
-                    if pulso is not None 
-                    else getattr(cv_actual, 'pulso', None)
-                ),
-                'frecuencia_respiratoria': (
-                    frecuencia_respiratoria
-                    if frecuencia_respiratoria is not None
-                    else getattr(cv_actual, 'frecuencia_respiratoria', None)
-                ),
-                'presion_arterial': (
-                    presion_arterial
-                    if presion_arterial is not None
-                    else getattr(cv_actual, 'presion_arterial', '')
-                ),
-                'fecha_consulta': timezone.now().date(),
-                'creado_por': self.context['request'].user,
-                'activo': True,
-            }
-            
-            if motivo_final is not None:
-                nueva_cv_data['motivo_consulta'] = motivo_final
-                instance.motivo_consulta = motivo_final
-                instance.motivo_consulta_nuevo = True
-            elif cv_actual and hasattr(cv_actual, 'motivo_consulta'):
-                nueva_cv_data['motivo_consulta'] = cv_actual.motivo_consulta
-            
-            if enfermedad_final is not None:
-                nueva_cv_data['enfermedad_actual'] = enfermedad_final
-                instance.enfermedad_actual = enfermedad_final
-                instance.enfermedad_actual_nueva = True
-            elif cv_actual and hasattr(cv_actual, 'enfermedad_actual'):
-                nueva_cv_data['enfermedad_actual'] = cv_actual.enfermedad_actual
-            
-            # Crear y asociar
-            nueva_cv = ConstantesVitales(**nueva_cv_data)
-            nueva_cv.full_clean()
-            nueva_cv.save()
-            instance.constantes_vitales = nueva_cv
-            instance.constantes_vitales_nuevas = True
-        else:
-            # Actualizar solo motivo/enfermedad en historial
-            if motivo_final is not None:
-                instance.motivo_consulta = motivo_final
-                instance.motivo_consulta_nuevo = True
-            if enfermedad_final is not None:
-                instance.enfermedad_actual = enfermedad_final
-                instance.enfermedad_actual_nueva = True
-        
-        # 7. Manejar otros datos anidados
-        if antecedentes_personales_data:
+        # ANTECEDENTES PERSONALES
+        if 'antecedentes_personales' in validated_data:
+            ap_data = validated_data.pop('antecedentes_personales')
             instance.antecedentes_personales = self._update_or_create_nested(
                 AntecedentesPersonales,
-                instance.antecedentes_personales,
-                antecedentes_personales_data,
-                {'paciente': instance.paciente},
+                WritableAntecedentesPersonalesSerializer,
+                ap_data,
+                paciente,
+                usuario
             )
         
-        if antecedentes_familiares_data:
+        # ANTECEDENTES FAMILIARES
+        if 'antecedentes_familiares' in validated_data:
+            af_data = validated_data.pop('antecedentes_familiares')
             instance.antecedentes_familiares = self._update_or_create_nested(
                 AntecedentesFamiliares,
-                instance.antecedentes_familiares,
-                antecedentes_familiares_data,
-                {'paciente': instance.paciente},
+                WritableAntecedentesFamiliaresSerializer,
+                af_data,
+                paciente,
+                usuario
             )
         
-        if examen_estomatognatico_data:
+        # CONSTANTES VITALES
+        if 'constantes_vitales' in validated_data:
+            cv_data = validated_data.pop('constantes_vitales')
+            
+            # Manejar constantes vitales (puede ser nueva o actualización)
+            if VitalSignsService.tiene_datos_vitales({'constantes_vitales': cv_data}):
+                nueva_constante = VitalSignsService.crear_constantes_vitales(
+                    paciente=paciente,
+                    data={'constantes_vitales': cv_data},
+                    creado_por=usuario
+                )
+                instance.constantes_vitales = nueva_constante
+                instance.constantes_vitales_nuevas = True
+            else:
+                # Actualizar constante existente si se proporciona ID
+                instance.constantes_vitales = self._update_or_create_nested(
+                    ConstantesVitales,
+                    WritableConstantesVitalesSerializer,
+                    cv_data,
+                    paciente,
+                    usuario
+                )
+        
+        # EXAMEN ESTOMATOGNÁTICO (Línea 428 del error original)
+        if 'examen_estomatognatico' in validated_data:
+            ee_data = validated_data.pop('examen_estomatognatico')
             instance.examen_estomatognatico = self._update_or_create_nested(
                 ExamenEstomatognatico,
-                instance.examen_estomatognatico,
-                examen_estomatognatico_data,
-                {'paciente': instance.paciente},
+                WritableExamenEstomatognaticoSerializer,
+                ee_data,  # Ahora se maneja correctamente si es dict o instancia
+                paciente,
+                usuario
             )
-        nuevo_plan = validated_data.get('plan_tratamiento')
-        if 'plan_tratamiento' in validated_data:
-            if nuevo_plan is not None:
-                # Validar que el plan pertenezca al mismo paciente
-                if nuevo_plan.paciente_id != instance.paciente_id:
-                    raise serializers.ValidationError({
-                        'plan_tratamiento': 'El plan de tratamiento debe pertenecer al mismo paciente'
-                    })
-                
-                # Validar que el plan esté activo
-                if not nuevo_plan.activo:
-                    raise serializers.ValidationError({
-                        'plan_tratamiento': 'No se puede asociar un plan inactivo'
-                    })
+
         
-        # 8. Actualizar campos directos
+        # ÍNDICES DE CARIES
+        if 'indices_caries' in validated_data:
+            ic_data = validated_data.pop('indices_caries')
+            instance.indices_caries = self._update_or_create_nested(
+                IndiceCariesSnapshot,
+                WritableIndicesCariesSerializer,
+                ic_data,
+                paciente,
+                usuario
+            )
+        
+        # MOTIVO CONSULTA Y ENFERMEDAD ACTUAL
+        if 'motivo_consulta' in validated_data:
+            instance.motivo_consulta = validated_data.pop('motivo_consulta')
+            instance.motivo_consulta_nuevo = True
+        
+        if 'enfermedad_actual' in validated_data:
+            instance.enfermedad_actual = validated_data.pop('enfermedad_actual')
+            instance.enfermedad_actual_nueva = True
+        
+        # Actualizar campos restantes
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         
-        # 9. Guardar
-        instance.save()
+        # Actualizar metadata
+        instance.actualizado_por = usuario
         
-        logger.info(
-            f"Historial {instance.id} actualizado. "
-            f"Motivo: {motivo_final is not None}, "
-            f"Enfermedad: {enfermedad_final is not None}"
-        )
+        # Guardar
+        instance.save()
         
         return instance
     
-    def _update_or_create_nested(self, model_class, current_instance, data, defaults):
-        """Helper para actualizar o crear instancias anidadas"""
-        if not data:
-            return current_instance
+    def _update_or_create_nested(self, related_model, serializer_class, data, paciente, usuario):
+        """
+        Crea o actualiza un objeto relacionado (nested).
         
-        nested_id = data.pop('id', None)
+        Args:
+            related_model: Clase del modelo relacionado
+            serializer_class: Clase del serializer a usar
+            data: Diccionario con datos O instancia ya deserializada
+            paciente: Instancia de Paciente
+            usuario: Usuario que realiza la operación
         
+        Returns:
+            Instancia del modelo relacionado
+        """
+        # ============================================================================
+        # CORRECCIÓN DEL BUG: Verificar si data ya es una instancia del modelo
+        # ============================================================================
+        
+        # Si data ya es una instancia del modelo (ya fue deserializado por el serializer),
+        # simplemente retornarlo
+        if isinstance(data, related_model):
+            return data
+        
+        # Si data no es un diccionario, convertirlo (por si es OrderedDict u otro tipo)
+        if not isinstance(data, dict):
+            try:
+                data = dict(data)
+            except (TypeError, ValueError):
+                # Si no se puede convertir a dict, asumir que es una instancia
+                if hasattr(data, 'id'):
+                    return data
+                raise ValidationError(
+                    f"Datos inválidos para {related_model.__name__}: "
+                    f"se esperaba un diccionario o instancia, se recibió {type(data)}"
+                )
+        
+        # ============================================================================
+        # Ahora sí, data es un diccionario y podemos procesarlo
+        # ============================================================================
+        
+        # Extraer el ID si existe (sin mutar el diccionario original)
+        nested_id = data.get('id', None)
+        
+        # Caso 1: Tiene ID - Actualizar existente
         if nested_id:
             try:
-                nested_obj = model_class.objects.get(id=nested_id)
-                for attr, value in data.items():
-                    setattr(nested_obj, attr, value)
-                nested_obj.save()
-                return nested_obj
-            except model_class.DoesNotExist:
-                pass
+                instance = related_model.objects.get(id=nested_id, activo=True)
+                
+                # Crear una copia del diccionario para no mutar el original
+                data_copy = data.copy()
+                data_copy.pop('id', None)  # Remover ID de la copia
+                
+                # Actualizar con el serializer
+                serializer = serializer_class(
+                    instance,
+                    data=data_copy,
+                    partial=True,
+                    context=self.context
+                )
+                serializer.is_valid(raise_exception=True)
+                return serializer.save(actualizado_por=usuario)
+                
+            except related_model.DoesNotExist:
+                # Si el ID no existe, crear uno nuevo
+                logger.warning(
+                    f"ID {nested_id} para {related_model.__name__} no encontrado. "
+                    f"Creando nuevo registro."
+                )
+                # Continuar al caso 2 (crear nuevo)
+                nested_id = None
         
-        if current_instance:
-            for attr, value in data.items():
-                setattr(current_instance, attr, value)
-            current_instance.save()
-            return current_instance
-        
-        data.update(defaults)
-        return model_class.objects.create(**data)
+        # Caso 2: No tiene ID o el ID no existe - Crear nuevo
+        if not nested_id:
+            # Verificar si ya existe uno para este paciente (relación OneToOne)
+            try:
+                instance = related_model.objects.get(paciente=paciente, activo=True)
+                
+                # Ya existe, actualizarlo
+                data_copy = data.copy()
+                data_copy.pop('id', None)
+                
+                serializer = serializer_class(
+                    instance,
+                    data=data_copy,
+                    partial=True,
+                    context=self.context
+                )
+                serializer.is_valid(raise_exception=True)
+                return serializer.save(actualizado_por=usuario)
+                
+            except related_model.DoesNotExist:
+                # No existe, crear uno nuevo
+                data_copy = data.copy()
+                data_copy.pop('id', None)
+                data_copy['paciente'] = paciente.id
+                
+                serializer = serializer_class(
+                    data=data_copy,
+                    context=self.context
+                )
+                serializer.is_valid(raise_exception=True)
+                return serializer.save(creado_por=usuario)
+
     
     def to_representation(self, instance):
         """
@@ -602,6 +644,16 @@ class ClinicalRecordDetailSerializer(
         data['numero_hoja'] = instance.numero_hoja or 1
         data['numero_historia_clinica_unica'] = instance.numero_historia_clinica_unica or ""
         data['numero_archivo'] = instance.numero_archivo or ""
+        if instance.examenes_complementarios:
+            data['examenes_complementarios_data'] = (
+                WritableExamenesComplementariosSerializer(
+                    instance.examenes_complementarios
+                ).data
+            )
+            print(f"✓ Exámenes complementarios incluidos: {instance.examenes_complementarios.id}")
+        else:
+            data['examenes_complementarios_data'] = None
+            print(f"✗ No hay exámenes complementarios para historial {instance.id}")
         
         
         return data

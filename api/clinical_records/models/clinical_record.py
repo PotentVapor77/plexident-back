@@ -216,11 +216,30 @@ class ClinicalRecord(BaseModel):
         """Validaciones del modelo"""
         super().clean()
         
-        # No permitir edición si está cerrado
+        # No permitir edición si está cerrado (excepto observaciones)
         if self.pk and self.estado == 'CERRADO':
-            old_instance = ClinicalRecord.objects.get(pk=self.pk)
-            if old_instance.estado == 'CERRADO':
-                raise ValidationError('No se puede editar un historial clínico cerrado.')
+            try:
+                old_instance = ClinicalRecord.objects.get(pk=self.pk)
+                if old_instance.estado == 'CERRADO':
+                    # Verificar qué campos han cambiado
+                    campos_modificados = []
+                    for field in self._meta.fields:
+                        field_name = field.name
+                        # Permitir cambios en estos campos específicos
+                        if field_name in ['observaciones', 'actualizado_por', 'fecha_actualizacion']:
+                            continue
+                        old_value = getattr(old_instance, field_name)
+                        new_value = getattr(self, field_name)
+                        if old_value != new_value:
+                            campos_modificados.append(field_name)
+                    
+                    if campos_modificados:
+                        raise ValidationError(
+                            f'No se puede editar un historial clínico cerrado. '
+                            f'Campos modificados: {", ".join(campos_modificados)}'
+                        )
+            except ClinicalRecord.DoesNotExist:
+                pass
         
         # Validar que el odontólogo responsable tenga el rol correcto
         if self.odontologo_responsable and self.odontologo_responsable.rol != 'Odontologo':
@@ -299,6 +318,11 @@ class ClinicalRecord(BaseModel):
         related_name='historiales_clinicos',
         verbose_name='Plan de Tratamiento'
     )
-    
-    
-    
+    examenes_complementarios = models.ForeignKey(
+        'patients.ExamenesComplementarios',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historiales_clinicos',
+        verbose_name='Exámenes Complementarios (Sección L)'
+    )

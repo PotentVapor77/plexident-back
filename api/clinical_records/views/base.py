@@ -1,127 +1,207 @@
+# api/clinical_records/views/base.py
 """
-Mixins y utilidades compartidas para ViewSets
+Mixins y configuración base para ViewSets de historiales clínicos
 """
-import logging
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
-from api.users.permissions import UserBasedPermission
+from rest_framework.filters import SearchFilter
+from django.db.models import Q
+import logging
 
 logger = logging.getLogger(__name__)
 
 
 class ClinicalRecordPagination(PageNumberPagination):
-    """Configuración de paginación para módulos clínicos"""
-    
-    page_size = 10
+    """
+    Paginación personalizada para historiales clínicos
+    - 35 elementos por página por defecto
+    - Permite al cliente ajustar el tamaño
+    - Incluye información detallada de paginación
+    """
+    page_size = 35 
     page_size_query_param = 'page_size'
     max_page_size = 100
+    
+    def get_paginated_response(self, data):
+        """
+        Respuesta paginada con información adicional
+        """
+        return Response({
+            'count': self.page.paginator.count,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'total_pages': self.page.paginator.num_pages,
+            'current_page': self.page.number,
+            'page_size': self.page_size,
+            'results': data
+        })
 
 
 class BasePermissionMixin:
-    """Mixin para permisos estándar de módulos clínicos"""
-    
-    permission_classes = [IsAuthenticated, UserBasedPermission]
+    """
+    Mixin para permisos base
+    """
+    permission_classes = [IsAuthenticated]
 
 
 class QuerysetOptimizationMixin:
-    """Mixin para optimización de querysets con select_related"""
+    """
+    Optimiza queries con select_related y prefetch_related
+    """
+    RELATED_FIELDS = []
+    PREFETCH_FIELDS = []
     
-    def get_optimized_queryset(self, queryset, related_fields):
+    def get_queryset(self):
         """
-        Optimiza el queryset con select_related
+        Optimiza el queryset con relaciones precargadas
+        """
+        queryset = super().get_queryset()
         
-        Args:
-            queryset: QuerySet base
-            related_fields: Lista de campos relacionados
-            
-        Returns:
-            QuerySet optimizado
-        """
-        return queryset.select_related(*related_fields)
+        if self.RELATED_FIELDS:
+            queryset = queryset.select_related(*self.RELATED_FIELDS)
+        
+        if self.PREFETCH_FIELDS:
+            queryset = queryset.prefetch_related(*self.PREFETCH_FIELDS)
+        
+        return queryset
 
 
 class SearchFilterMixin:
-    """Mixin para búsqueda en campos comunes"""
+    """
+    Permite buscar por:
+    - Nombre del paciente (nombres, apellidos, nombre completo)
+    - Cédula del paciente
+    - Motivo de consulta
+    - Enfermedad actual
+    - Observaciones
+    - Nombre del odontólogo
+    - Número de historia clínica
+    - Número de archivo
+    """
+    search_fields = [
+        # Paciente
+        'paciente__nombres',
+        'paciente__apellidos',
+        'paciente__nombre_completo',
+        'paciente__cedula_pasaporte',
+        
+        # Campos del historial
+        'motivo_consulta',
+        'enfermedad_actual',
+        'observaciones',
+        'numero_historia_clinica_unica',
+        'numero_archivo',
+        
+        # Odontólogo
+        'odontologo_responsable__nombres',
+        'odontologo_responsable__apellidos',
+    ]
     
-    def apply_search_filter(self, queryset, search_term, search_fields):
+    def get_queryset(self):
         """
-        Aplica filtros de búsqueda OR a múltiples campos
+        Aplica búsqueda con Q objects para mejor rendimiento
+        """
+        queryset = super().get_queryset()
+        search_query = self.request.query_params.get('search', None)
         
-        Args:
-            queryset: QuerySet base
-            search_term: Término de búsqueda
-            search_fields: Lista de campos para buscar (notación lookup)
+        if search_query:
+            # Búsqueda con OR en múltiples campos
+            q_objects = Q()
+            for field in self.search_fields:
+                q_objects |= Q(**{f"{field}__icontains": search_query})
             
-        Returns:
-            QuerySet filtrado
+            queryset = queryset.filter(q_objects).distinct()
+        
+        return queryset
+
+
+class DateRangeFilterMixin:
+    """
+    
+    Parámetros:
+    - fecha_desde: Fecha inicial (YYYY-MM-DD)
+    - fecha_hasta: Fecha final (YYYY-MM-DD)
+    """
+    
+    def get_queryset(self):
         """
-        from django.db.models import Q
+        Aplica filtros de fecha si están presentes
+        """
+        queryset = super().get_queryset()
         
-        if not search_term:
-            return queryset
+        fecha_desde = self.request.query_params.get('fecha_desde', None)
+        fecha_hasta = self.request.query_params.get('fecha_hasta', None)
         
-        q_objects = Q()
-        for field in search_fields:
-            q_objects |= Q(**{f"{field}__icontains": search_term})
+        if fecha_desde:
+            queryset = queryset.filter(fecha_atencion__gte=fecha_desde)
         
-        return queryset.filter(q_objects)
+        if fecha_hasta:
+            queryset = queryset.filter(fecha_atencion__lte=fecha_hasta)
+        
+        return queryset
 
 
 class ActiveFilterMixin:
-    """Mixin para filtrado de registros activos/inactivos"""
+    """
+    Filtra registros activos/inactivos
+    """
     
-    def apply_active_filter(self, queryset, request):
+    def get_queryset(self):
         """
-        Filtra por estado activo según parámetro de query
-        
-        Args:
-            queryset: QuerySet base
-            request: Request object
-            
-        Returns:
-            QuerySet filtrado
+        Filtra por estado activo si no se especifica lo contrario
         """
-        activo_param = request.query_params.get('activo')
+        queryset = super().get_queryset()
         
-        if activo_param is not None:
-            activo = activo_param.lower() == 'true'
-            return queryset.filter(activo=activo)
+        # Por defecto, solo mostrar activos
+        activo = self.request.query_params.get('activo', 'true')
         
-        # Por defecto, solo registros activos
-        return queryset.filter(activo=True)
+        if activo.lower() == 'true':
+            queryset = queryset.filter(activo=True)
+        elif activo.lower() == 'false':
+            queryset = queryset.filter(activo=False)
+        # Si es 'all', no filtra
+        
+        return queryset
 
 
 class LoggingMixin:
-    """Mixin para logging consistente de operaciones CRUD"""
+    """
+    Logging automático de acciones
+    """
     
-    def log_create(self, instance, user):
-        """Log de creación de instancia"""
+    def perform_create(self, serializer):
+        """
+        Log al crear
+        """
+        instance = serializer.save()
         logger.info(
-            f"{self.__class__.__name__}: "
-            f"Creado {instance._meta.model_name} {instance.id} "
-            f"por {user.username}"
+            f"Historial clínico creado: {instance.id} por "
+            f"{self.request.user.username}"
         )
+        return instance
     
-    def log_update(self, instance, user):
-        """Log de actualización de instancia"""
+    def perform_update(self, serializer):
+        """
+        Log al actualizar
+        """
+        instance = serializer.save()
         logger.info(
-            f"{self.__class__.__name__}: "
-            f"Actualizado {instance._meta.model_name} {instance.id} "
-            f"por {user.username}"
+            f"Historial clínico actualizado: {instance.id} por "
+            f"{self.request.user.username}"
         )
+        return instance
     
-    def log_delete(self, instance, user):
-        """Log de eliminación de instancia"""
+    def perform_destroy(self, instance):
+        """
+        Log al eliminar (borrado lógico)
+        """
+        instance.activo = False
+        instance.save()
         logger.info(
-            f"{self.__class__.__name__}: "
-            f"Eliminado {instance._meta.model_name} {instance.id} "
-            f"por {user.username}"
+            f"Historial clínico eliminado (lógico): {instance.id} por "
+            f"{self.request.user.username}"
         )
-    
-    def log_error(self, operation, error, user=None):
-        """Log de error en operación"""
-        user_info = f"Usuario: {user.username}" if user else "Sin usuario"
-        logger.error(
-            f"{self.__class__.__name__}: "
-            f"Error en {operation}: {str(error)} - {user_info}"
-        )
+
+
+# Importación necesaria
+from rest_framework.response import Response
