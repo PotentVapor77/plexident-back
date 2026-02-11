@@ -1,21 +1,10 @@
 version: 1.0
-runtime: python3
+runtime: python311
 build:
   commands:
-    pre-build:
-      - echo "Preparando build..."
     build:
-      - echo "Building Docker image..."
-    post-build:
-      - echo "Build completado exitosamente"
+      - pip install -r requirements.txt
 run:
-  runtime-version: 3.11
-  command: /app/start.sh
+  command: sh start.sh
   network:
     port: 8000
-    env: vpc-connector
-  env:
-    - name: PYTHONUNBUFFERED
-      value: "1"
-    - name: PORT
-      value: "8000"
