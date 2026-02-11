@@ -6,7 +6,7 @@ Configuración optimizada para desarrollo y producción.
 from pathlib import Path
 import os
 from datetime import timedelta
-from dotenv import load_dotenv  # pip install python-dotenv
+from dotenv import load_dotenv 
 from corsheaders.defaults import default_headers
 # Build paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,6 +23,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-CHANGE-THIS-IN-PRODUCTION'
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS.append('.awsapprunner.com') 
 # ============================================================================
 # STORAGE CONFIGURATION
 # ============================================================================
@@ -111,6 +112,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
     'authentication.middleware.LoginRateLimitMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
