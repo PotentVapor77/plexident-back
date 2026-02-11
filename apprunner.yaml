@@ -3,9 +3,9 @@ runtime: python311
 build:
   commands:
     pre_build:
-      - pip install --upgrade pip
+      - pip install --upgrade pip  # Opcional, si separas
     build:
-      - pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+      - pip install --no-cache-dir -r requirements.txt
 run:
   runtime-version: 3.11.10
   command: sh start.sh
