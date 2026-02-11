@@ -5,7 +5,7 @@ build:
     pre_build:
       - pip install --upgrade pip
     build:
-      - pip install -r requirements.txt
+      - pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 run:
   runtime-version: 3.11.10
   command: sh start.sh
