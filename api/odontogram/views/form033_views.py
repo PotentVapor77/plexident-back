@@ -71,28 +71,6 @@ def obtener_form033_html(request, paciente_id):
     return HttpResponse(html, content_type="text/html; charset=utf-8")
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def descargar_form033_pdf(request, paciente_id):
-    """
-    GET /api/odontogram/export/form033/{paciente_id}/pdf/
-
-    Genera y devuelve el PDF del Form 033 como archivo descargable.
-    """
-    service = Form033Service()
-    try:
-        pdf_bytes, filename = service.generar_pdf_form033(paciente_id)
-    except ValueError as e:
-        raise NotFound(detail=str(e))
-
-    response = FileResponse(
-        pdf_bytes,
-        as_attachment=True,
-        filename=filename,
-        content_type="application/pdf",
-    )
-    return response
-
 
 
 

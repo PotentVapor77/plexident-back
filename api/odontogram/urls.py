@@ -47,8 +47,6 @@ from api.odontogram.views import (
 from api.odontogram.views.form033_views import (
     obtener_form033_json,
     obtener_form033_html,
-    descargar_form033_pdf,
-    guardar_form033_pdf,
     listar_exports_form033,
     descargar_pdf_guardado,
 )
@@ -238,19 +236,8 @@ urlpatterns = [
         name="form033-html",
     ),
     
-    # GET /api/odontogram/export/form033/{paciente_id}/pdf/
-    path(
-        "export/form033/<str:paciente_id>/pdf/",
-        descargar_form033_pdf,
-        name="form033-pdf",
-    ),
-    
-    # POST /api/odontogram/export/form033/{paciente_id}/guardar-pdf/
-    path(
-        "export/form033/<str:paciente_id>/guardar-pdf/",
-        guardar_form033_pdf,
-        name="form033-guardar-pdf",
-    ),
+   
+   
     
     # GET /api/odontogram/export/form033/exports/
     path(
