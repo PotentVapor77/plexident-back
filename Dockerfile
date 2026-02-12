@@ -1,11 +1,13 @@
 FROM python:3.11-slim
 
+# Prevenir archivos .pyc y asegurar logs en tiempo real
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/usr/local/bin:$PATH"
 
 WORKDIR /app
 
-# Instalar dependencias del sistema
+# Instalar dependencias del sistema necesarias
 RUN apt-get update && apt-get install -y \
     gcc \
     python3-dev \
@@ -18,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     libopenjp2-7-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar dependencias Python
+# Instalar dependencias Python directamente aquí
 RUN pip install --upgrade pip
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
@@ -26,10 +28,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar el proyecto
 COPY . /app/
 
-# DAR PERMISOS AL SCRIPT (Importante)
+# Dar permisos al script de inicio
 RUN chmod +x /app/start.sh
 
 EXPOSE 8000
 
-# EJECUTAR EL SCRIPT DE INICIO
+# Usar bash para ejecutar el script que lanzará Gunicorn
 CMD ["/bin/bash", "/app/start.sh"]
