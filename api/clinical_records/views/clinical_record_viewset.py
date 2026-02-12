@@ -64,7 +64,6 @@ from .base import (
     logger,
 )
 
-
 class ClinicalRecordViewSet(
     BasePermissionMixin,
     QuerysetOptimizationMixin,
@@ -1079,8 +1078,7 @@ class ClinicalRecordViewSet(
 
         datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
         instancia = datos.get('antecedentes_familiares')
-        if not instancia:
-            return Response({'detail': 'No hay datos previos'}, status=404)
+
         
         return Response(WritableAntecedentesFamiliaresSerializer(instancia).data)
 
@@ -1640,23 +1638,6 @@ class ClinicalRecordViewSet(
             status=status.HTTP_404_NOT_FOUND
         )
     
-    def _validar_puede_recargar(self, pacienteid):
-        """
-        Busca el historial más reciente y valida que sea BORRADOR.
-        """
-        ultimo_historial = ClinicalRecord.objects.filter(
-            paciente_id=pacienteid,  
-            activo=True
-        ).order_by('-fecha_creacion').first()
-
-        if not ultimo_historial:
-            return None, None 
-
-        if ultimo_historial.estado != 'BORRADOR':
-            return None, f"El historial debe estar en BORRADOR. Actual: {ultimo_historial.estado}"
-
-        return ultimo_historial, None
-    
     # GET /api/clinical-records/planes-tratamiento?pacienteid=...&latest
     @action(detail=False, methods=['get'], url_path='planes-tratamiento')
     def latest_planes_tratamiento(self, request, pacienteid=None):
@@ -1670,11 +1651,6 @@ class ClinicalRecordViewSet(
                 {"detail": "El parámetro pacienteid es requerido"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        historial, error = self._validar_puede_recargar(pacienteid)
-        if error:
-            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
             planes = (
                 PlanTratamiento.objects.filter(paciente_id=pacienteid, activo=True)
