@@ -12,4 +12,4 @@ python manage.py collectstatic --noinput
 
 echo "==> Iniciando Gunicorn..."
 # config.wsgi debe coincidir con el nombre de tu carpeta de proyecto 
-python -m gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+exec python -m gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
