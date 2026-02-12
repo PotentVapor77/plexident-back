@@ -1,15 +1,12 @@
 #!/bin/bash
-
-# Salir inmediatamente si un comando falla
 set -e
 
-echo "==> Aplicando migraciones de base de datos..."
+echo "==> Aplicando migraciones..."
 python manage.py migrate --noinput
 
-echo "==> Recolectando archivos estáticos..."
-# Esto es necesario si usas librerías como Whitenoise o si subes a S3
+echo "==> Recolectando estáticos..."
 python manage.py collectstatic --noinput
 
-echo "==> Iniciando Gunicorn..."
-# config.wsgi debe coincidir con el nombre de tu carpeta de proyecto 
+echo "==> Iniciando Servidor..."
+# IMPORTANTE: Usamos 'python -m gunicorn' para evitar el error de "not found in PATH"
 exec python -m gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
