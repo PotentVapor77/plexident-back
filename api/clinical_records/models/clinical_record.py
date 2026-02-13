@@ -67,7 +67,6 @@ class ClinicalRecord(BaseModel):
     )
     
     # === REFERENCIAS A SECCIONES EXISTENTES ===
-    # Estas referencias cargan los últimos datos guardados
     antecedentes_personales = models.ForeignKey(
         AntecedentesPersonales,
         on_delete=models.SET_NULL,
@@ -105,7 +104,6 @@ class ClinicalRecord(BaseModel):
     )
     
     # === SECCIÓN B y C: DATOS CLÍNICOS ACTUALES ===
-    # Estos campos se copian del paciente pero pueden ser editados antes de guardar
     motivo_consulta = models.TextField(
         blank=True,
         verbose_name='Motivo de Consulta (Sección B)'
@@ -155,6 +153,7 @@ class ClinicalRecord(BaseModel):
         blank=True,
         verbose_name='Observaciones del Profesional'
     )
+
     indicadores_salud_bucal = models.ForeignKey(
         'odontogram.IndicadoresSaludBucal',
         on_delete=models.SET_NULL,
@@ -170,6 +169,7 @@ class ClinicalRecord(BaseModel):
         blank=True,
         verbose_name='Índices de Caries (CPO/ceo)'
     )
+
     diagnosticos_cie_cargados = models.BooleanField(
         default=False,
         verbose_name='Diagnósticos CIE Cargados',
@@ -188,6 +188,39 @@ class ClinicalRecord(BaseModel):
         verbose_name='Tipo de Carga de Diagnósticos'
     )
 
+    constantes_vitales_nuevas = models.BooleanField(
+        default=False,
+        verbose_name='¿Constantes vitales nuevas?'
+    )
+    
+    motivo_consulta_nuevo = models.BooleanField(
+        default=False,
+        verbose_name='¿Motivo de consulta nuevo?'
+    )
+    
+    enfermedad_actual_nueva = models.BooleanField(
+        default=False,
+        verbose_name='¿Enfermedad actual nueva?'
+    )
+
+    plan_tratamiento = models.ForeignKey(
+        PlanTratamiento,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historiales_clinicos',
+        verbose_name='Plan de Tratamiento'
+    )
+
+    examenes_complementarios = models.ForeignKey(
+        'patients.ExamenesComplementarios',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historiales_clinicos',
+        verbose_name='Exámenes Complementarios (Sección L)'
+    )
+
     class Meta:
         verbose_name = 'Historial Clínico'
         verbose_name_plural = 'Historiales Clínicos'
@@ -197,23 +230,20 @@ class ClinicalRecord(BaseModel):
             models.Index(fields=['estado', 'activo']),
             models.Index(fields=['odontologo_responsable', '-fecha_atencion']),
             models.Index(fields=['numero_historia_clinica_unica']),
-            
         ]
-        #constraints = [
-            #models.UniqueConstraint(
-              #  fields=['paciente', 'numero_archivo'],
-              #  name='unique_numero_archivo_per_paciente',
-              #  condition=models.Q(activo=True)
-            #),
-        #]
-        
-        
 
     def __str__(self):
         return f"HC-{self.paciente.nombre_completo} - {self.fecha_atencion.strftime('%Y-%m-%d')} - {self.numero_historia_clinica_unica}"
 
     def clean(self):
-        """Validaciones del modelo"""
+        """
+        Validaciones del modelo.
+
+        NOTA: este método solo se invoca explícitamente (e.g. desde formularios
+        de Admin o tests). El service ya ejecuta _validar_datos_previo_insert()
+        antes del INSERT, por lo que no es necesario llamar full_clean() dentro
+        de save() para el flujo normal de la API.
+        """
         super().clean()
         
         # No permitir edición si está cerrado (excepto observaciones)
@@ -221,11 +251,9 @@ class ClinicalRecord(BaseModel):
             try:
                 old_instance = ClinicalRecord.objects.get(pk=self.pk)
                 if old_instance.estado == 'CERRADO':
-                    # Verificar qué campos han cambiado
                     campos_modificados = []
                     for field in self._meta.fields:
                         field_name = field.name
-                        # Permitir cambios en estos campos específicos
                         if field_name in ['observaciones', 'actualizado_por', 'fecha_actualizacion']:
                             continue
                         old_value = getattr(old_instance, field_name)
@@ -250,14 +278,30 @@ class ClinicalRecord(BaseModel):
             raise ValidationError('Un paciente masculino no puede estar embarazado.')
 
     def save(self, *args, **kwargs):
-        """Sobrescribe save para aplicar validaciones"""
-        self.full_clean()
+        """
+        Sobrescribe save para aplicar validaciones en operaciones de UPDATE.
+
+        CAMBIO IMPORTANTE:
+        - Antes: siempre llamaba self.full_clean() → provocaba un SELECT extra
+          (para validar unicidad de numero_historia_clinica_unica) en CADA save,
+          incluyendo los save(update_fields=[...]) parciales → muy lento con BD remota.
+
+        - Ahora: solo llama full_clean() si se está haciendo un UPDATE completo
+          (no un update_fields parcial) y solo cuando el registro ya existe (pk).
+          El INSERT inicial usa objects.create() desde el service, que ya validó
+          antes con _validar_datos_previo_insert(), evitando el SELECT de unicidad.
+        """
+        update_fields = kwargs.get('update_fields')
+
+        # Solo ejecutar full_clean en UPDATEs completos (no parciales con update_fields)
+        # para proteger el Admin y otros usos directos del modelo.
+        if self.pk and update_fields is None:
+            self.full_clean()
+
         super().save(*args, **kwargs)
 
     def cerrar_historial(self, usuario):
-        """
-        Cierra el historial clínico, impidiendo futuras ediciones.
-        """
+        """Cierra el historial clínico, impidiendo futuras ediciones."""
         from django.utils import timezone
         
         if self.estado == 'CERRADO':
@@ -266,20 +310,17 @@ class ClinicalRecord(BaseModel):
         self.estado = 'CERRADO'
         self.fecha_cierre = timezone.now()
         self.actualizadopor = usuario
-        self.save()
+        self.save(update_fields=['estado', 'fecha_cierre', 'actualizadopor'])
 
     def reabrir_historial(self, usuario):
-        """
-        Reabre un historial cerrado (solo para casos excepcionales).
-        Requiere permisos especiales.
-        """
+        """Reabre un historial cerrado (solo para casos excepcionales)."""
         if self.estado != 'CERRADO':
             raise ValidationError('Solo se pueden reabrir historiales cerrados.')
         
         self.estado = 'ABIERTO'
         self.fecha_cierre = None
         self.actualizadopor = usuario
-        self.save()
+        self.save(update_fields=['estado', 'fecha_cierre', 'actualizadopor'])
 
     @property
     def puede_editar(self):
@@ -296,33 +337,3 @@ class ClinicalRecord(BaseModel):
             self.constantes_vitales,
             self.examen_estomatognatico
         ])
-    constantes_vitales_nuevas = models.BooleanField(
-        default=False,
-        verbose_name='¿Constantes vitales nuevas?'
-    )
-    
-    motivo_consulta_nuevo = models.BooleanField(
-        default=False,
-        verbose_name='¿Motivo de consulta nuevo?'
-    )
-    
-    enfermedad_actual_nueva = models.BooleanField(
-        default=False,
-        verbose_name='¿Enfermedad actual nueva?'
-    )
-    plan_tratamiento = models.ForeignKey(
-        PlanTratamiento,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='historiales_clinicos',
-        verbose_name='Plan de Tratamiento'
-    )
-    examenes_complementarios = models.ForeignKey(
-        'patients.ExamenesComplementarios',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='historiales_clinicos',
-        verbose_name='Exámenes Complementarios (Sección L)'
-    )

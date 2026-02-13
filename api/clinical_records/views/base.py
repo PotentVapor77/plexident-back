@@ -201,6 +201,31 @@ class LoggingMixin:
             f"Historial clínico eliminado (lógico): {instance.id} por "
             f"{self.request.user.username}"
         )
+        
+    def log_create(self, instance, user):
+        """Registra creación de historial"""
+        logger.info(
+            f"Historial clínico {instance.id} creado por {user.username}"
+        )
+
+    def log_update(self, instance, user):
+        """Registra actualización de historial"""
+        logger.info(
+            f"Historial clínico {instance.id} actualizado por {user.username}"
+        )
+
+    def log_delete(self, instance, user):
+        """Registra eliminación lógica de historial"""
+        logger.info(
+            f"Historial clínico {instance.id} eliminado (lógicamente) por {user.username}"
+        )
+
+    def log_error(self, action, error, user):
+        """Registra errores en operaciones"""
+        logger.error(
+            f"Error en {action} por {user.username}: {str(error)}",
+            exc_info=True
+        )
 
 
 # Importación necesaria

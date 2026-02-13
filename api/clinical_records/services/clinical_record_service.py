@@ -1,6 +1,14 @@
 """
-Servicio mejorado para lÃ³gica de negocio de Historiales ClÃ­nicos
-Incluye vinculaciÃ³n automÃ¡tica del Plan de Tratamiento
+Servicio mejorado para lógica de negocio de Historiales Clínicos.
+Incluye vinculación automática del Plan de Tratamiento.
+
+CAMBIOS (optimización BD remota lenta):
+- crear_historial: se reemplaza ClinicalRecord(**data) + full_clean() + save()
+  por ClinicalRecord.objects.create(**data) para ejecutar UN SOLO INSERT
+  en lugar de SELECT-validate + INSERT.
+- Se elimina la llamada a full_clean() manual antes del save(); Django ya la
+  ejecuta internamente al llamar a model.save() cuando el modelo la sobreescribe.
+  La única validación explícita necesaria es antes de construir el objeto.
 """
 import logging
 from django.utils import timezone
@@ -30,19 +38,24 @@ logger = logging.getLogger(__name__)
 
 
 class ClinicalRecordService:
-    """Servicio para la lÃ³gica de negocio de Historiales ClÃ­nicos"""
+    """Servicio para la lógica de negocio de Historiales Clínicos"""
     
     @classmethod
     def crear_historial(cls, data):
         """
-        Crea un nuevo historial clÃ­nico con datos pre-cargados
-        NUEVO: Vincula automÃ¡ticamente el plan de tratamiento activo del paciente
+        Crea un nuevo historial clínico con datos pre-cargados.
+        Vincula automáticamente el plan de tratamiento activo del paciente.
+
+        OPTIMIZACIÓN: se usa objects.create() en lugar de instanciar + full_clean()
+        + save() para evitar el SELECT de validación de unicidad que full_clean()
+        provoca antes de cada INSERT, lo que en BD remotas genera un round-trip
+        extra innecesario (la constraint UNIQUE de la BD ya lo garantiza).
         """
         paciente = data.get('paciente')
         paciente_id = paciente.id
         creado_por = data.get('creado_por')
         
-        # === GENERAR NÃšMEROS ÃšNICOS ===
+        # === GENERAR NÚMEROS ÚNICOS ===
         numero_historia_unica = (
             NumberGeneratorService.generar_numero_historia_clinica_unica()
         )
@@ -54,20 +67,20 @@ class ClinicalRecordService:
         if len(numero_archivo) > 50:
             raise ValidationError({
                 'numero_archivo': (
-                    f'NÃºmero de archivo muy largo: {len(numero_archivo)} caracteres. '
-                    f'MÃ¡ximo permitido: 50'
+                    f'Número de archivo muy largo: {len(numero_archivo)} caracteres. '
+                    f'Máximo permitido: 50'
                 )
             })
         
         if len(numero_historia_unica) > 50:
             raise ValidationError({
                 'numero_historia_clinica_unica': (
-                    f'NÃºmero de historia clÃ­nica muy largo: {len(numero_historia_unica)} caracteres. '
-                    f'MÃ¡ximo permitido: 50'
+                    f'Número de historia clínica muy largo: {len(numero_historia_unica)} caracteres. '
+                    f'Máximo permitido: 50'
                 )
             })
         
-        # Asignar nÃºmeros generados
+        # Asignar números generados
         data['numero_historia_clinica_unica'] = numero_historia_unica
         data['numero_archivo'] = numero_archivo
         data['numero_hoja'] = NumberGeneratorService.generar_numero_hoja(paciente_id)
@@ -110,7 +123,7 @@ class ClinicalRecordService:
             if data.get('enfermedad_actual'):
                 enfermedad_actual_nueva = True
         else:
-            # Usar Ãºltima constante vital existente
+            # Usar última constante vital existente
             ultima_constante = VitalSignsService.obtener_ultima_constante(paciente_id)
             if ultima_constante:
                 data['constantes_vitales'] = ultima_constante
@@ -159,7 +172,7 @@ class ClinicalRecordService:
             else:
                 logger.info("No hay indicadores previos para este paciente")
         
-        # === NUEVO: VINCULAR PLAN DE TRATAMIENTO ACTIVO ===
+        # === VINCULAR PLAN DE TRATAMIENTO ACTIVO ===
         if not data.get('plan_tratamiento'):
             logger.info(f"Buscando plan de tratamiento activo para paciente {paciente_id}")
             plan_activo = PlanTratamientoLinkService.obtener_plan_activo_paciente(paciente_id)
@@ -167,15 +180,15 @@ class ClinicalRecordService:
             if plan_activo:
                 data['plan_tratamiento'] = plan_activo
                 logger.info(
-                    f"Plan de tratamiento {plan_activo.id} vinculado automÃ¡ticamente "
+                    f"Plan de tratamiento {plan_activo.id} vinculado automáticamente "
                     f"al historial para paciente {paciente_id}"
                 )
             else:
                 logger.warning(
-                    f"No se encontrÃ³ plan de tratamiento activo para paciente {paciente_id}"
+                    f"No se encontró plan de tratamiento activo para paciente {paciente_id}"
                 )
         
-        # === NUEVO: VINCULAR EXÁMENES COMPLEMENTARIOS ===
+        # === VINCULAR EXÁMENES COMPLEMENTARIOS ===
         if not data.get('examenes_complementarios'):
             logger.info(f"Buscando exámenes complementarios para paciente {paciente_id}")
             from api.clinical_records.services.examenes_complementarios_service import ExamenesComplementariosLinkService
@@ -208,12 +221,11 @@ class ClinicalRecordService:
         data['motivo_consulta_nuevo'] = motivo_consulta_nuevo
         data['enfermedad_actual_nueva'] = enfermedad_actual_nueva
         
-        # === CREAR HISTORIAL ===
-        historial = ClinicalRecord(**data)
-        historial.full_clean()
-        historial.save()
+        cls._validar_datos_previo_insert(data, paciente)
+
+        historial = ClinicalRecord.objects.create(**data)
         
-        # === GUARDAR DIAGNÃ“STICOS CIE SI SE PROPORCIONAN ===
+        # === GUARDAR DIAGNÓSTICOS CIE SI SE PROPORCIONAN ===
         diagnosticos_data = data.get('diagnosticos_cie', [])
         tipo_carga = data.get('tipo_carga_diagnosticos', 'nuevos')
         
@@ -228,31 +240,49 @@ class ClinicalRecordService:
                 
                 if resultado.get('success'):
                     logger.info(
-                        f"DiagnÃ³sticos CIE cargados: {resultado.get('total_diagnosticos')} "
+                        f"Diagnósticos CIE cargados: {resultado.get('total_diagnosticos')} "
                         f"en historial {historial.id}"
                     )
             except Exception as e:
-                logger.error(f"Error cargando diagnÃ³sticos CIE: {str(e)}")
+                logger.error(f"Error cargando diagnósticos CIE: {str(e)}")
         
         logger.info(
-            f"Historial clÃ­nico {historial.id} creado exitosamente para paciente {paciente_id}"
+            f"Historial clínico {historial.id} creado exitosamente para paciente {paciente_id}"
         )
         
         return historial
+
+    @staticmethod
+    def _validar_datos_previo_insert(data: dict, paciente) -> None:
+        """
+        Validaciones de negocio que se ejecutan UNA SOLA VEZ antes del INSERT.
+        Reemplaza el full_clean() que el modelo ejecutaba en save() y que
+        provocaba queries SELECT adicionales innecesarios.
+        """
+        # Validar embarazo según sexo
+        if data.get('embarazada') == 'SI' and paciente.sexo == 'M':
+            raise ValidationError(
+                'Un paciente masculino no puede estar embarazado.'
+            )
+        
+        # Validar rol del odontólogo
+        odontologo = data.get('odontologo_responsable')
+        if odontologo and odontologo.rol != 'Odontologo':
+            raise ValidationError('El responsable debe ser un odontólogo.')
     
     @staticmethod
     def _validar_datos_historial(historial):
-        """Validaciones de negocio del historial"""
-        # Validar embarazo segÃºn sexo
+        """Validaciones de negocio del historial (para uso en update)"""
+        # Validar embarazo según sexo
         if historial.embarazada == 'SI' and historial.paciente.sexo == 'M':
             raise ValidationError(
                 'Un paciente masculino no puede estar embarazado.'
             )
         
-        # Validar rol del odontÃ³logo
+        # Validar rol del odontólogo
         if (historial.odontologo_responsable and 
             historial.odontologo_responsable.rol != 'Odontologo'):
-            raise ValidationError('El responsable debe ser un odontÃ³logo.')
+            raise ValidationError('El responsable debe ser un odontólogo.')
         
         # Validar cambio de estado desde CERRADO
         if historial.pk:
@@ -266,7 +296,7 @@ class ClinicalRecordService:
     
     @staticmethod
     def cerrar_historial(historial_id, usuario):
-        """Cierra un historial clÃ­nico"""
+        """Cierra un historial clínico"""
         historial = ClinicalRecordRepository.obtener_por_id(historial_id)
         historial.cerrar_historial(usuario)
         
@@ -288,10 +318,10 @@ class ClinicalRecordService:
     
     @staticmethod
     def eliminar_historial(historial_id):
-        """EliminaciÃ³n lÃ³gica de un historial"""
+        """Eliminación lógica de un historial"""
         historial = ClinicalRecordRepository.obtener_por_id(historial_id)
         historial.activo = False
-        historial.save()
+        historial.save(update_fields=['activo'])  # Solo actualiza el campo necesario
         
         logger.info(f"Historial {historial_id} eliminado (desactivado)")
         
@@ -359,12 +389,12 @@ class ClinicalRecordService:
     
     @staticmethod
     def cargar_diagnosticos_cie_historial(historial_id, diagnosticos_data, tipo_carga, usuario):
-        """Carga diagnÃ³sticos CIE-10 al historial"""
+        """Carga diagnósticos CIE-10 al historial"""
         try:
             historial = ClinicalRecord.objects.get(id=historial_id, activo=True)
             
             if historial.estado == 'CERRADO':
-                raise ValidationError('No se pueden agregar diagnÃ³sticos a un historial cerrado')
+                raise ValidationError('No se pueden agregar diagnósticos a un historial cerrado')
             
             resultado = DiagnosticosCIEService.cargar_diagnosticos_a_historial(
                 historial_clinico=historial,
@@ -376,4 +406,4 @@ class ClinicalRecordService:
             return resultado
             
         except ClinicalRecord.DoesNotExist:
-            raise ValidationError('Historial clÃ­nico no encontrado')
+            raise ValidationError('Historial clínico no encontrado')

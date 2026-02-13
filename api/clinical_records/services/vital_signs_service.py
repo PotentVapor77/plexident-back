@@ -66,17 +66,20 @@ class VitalSignsService:
     @classmethod
     def actualizar_constantes_existentes(cls, constante_vital, data):
         """
-        Actualiza constantes vitales existentes con nuevos datos
-        
-        Args:
-            constante_vital: Instancia existente de ConstantesVitales
-            data: Diccionario con nuevos datos
+        Actualiza constantes vitales existentes con nuevos datos.
         """
+        # Campos de texto
         if data.get('motivo_consulta') is not None:
             constante_vital.motivo_consulta = data['motivo_consulta']
         
         if data.get('enfermedad_actual') is not None:
             constante_vital.enfermedad_actual = data['enfermedad_actual']
+        
+        # ← AGREGAR: campos numéricos de signos vitales
+        for campo in cls.VITAL_FIELDS:
+            valor = data.get(campo)
+            if valor is not None:
+                setattr(constante_vital, campo, valor)
         
         constante_vital.save()
     

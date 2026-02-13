@@ -64,6 +64,7 @@ from .base import (
     logger,
 )
 
+
 class ClinicalRecordViewSet(
     BasePermissionMixin,
     QuerysetOptimizationMixin,
@@ -75,7 +76,6 @@ class ClinicalRecordViewSet(
 ):
     """
     ViewSet para gestión completa de historiales clínicos
-    
     """
     
     queryset = ClinicalRecord.objects.all()
@@ -86,7 +86,7 @@ class ClinicalRecordViewSet(
     ordering_fields = ['fecha_atencion', 'fecha_creacion', 'fecha_cierre']
     ordering = ['-fecha_atencion']
     
-    # Campos para optimización de queryset
+    # Campos para búsqueda (solo una definición)
     SEARCH_FIELDS = [
         # Paciente
         'paciente__nombres',
@@ -102,15 +102,6 @@ class ClinicalRecordViewSet(
         'numero_archivo',
         
         # Odontólogo
-        'odontologo_responsable__nombres',
-        'odontologo_responsable__apellidos',
-    ]
-    # Campos para búsqueda
-    SEARCH_FIELDS = [
-        'paciente__nombres',
-        'paciente__apellidos',
-        'paciente__cedula_pasaporte',
-        'motivo_consulta',
         'odontologo_responsable__nombres',
         'odontologo_responsable__apellidos',
     ]
@@ -131,7 +122,7 @@ class ClinicalRecordViewSet(
     
     def get_queryset(self):
         """
-        Queryset optimizado con prefetch de plan de tratamiento y sesiones
+        Queryset optimizado con filtro de activos/inactivos por defecto
         """
         qs = self.queryset.order_by('-fecha_atencion')
         
@@ -158,7 +149,8 @@ class ClinicalRecordViewSet(
                 'plan_tratamiento__sesiones__odontologo', 
             )
         
-        # Filtro de activo/inactivo
+        # APLICAR FILTRO POR ACTIVO/INACTIVO
+        # Por defecto, mostrar solo activos a menos que se solicite explícitamente inactivos
         qs = self.filter_by_active_status(qs, self.request)
         
         # Búsqueda
@@ -205,6 +197,7 @@ class ClinicalRecordViewSet(
             )
             output_serializer = ClinicalRecordDetailSerializer(historial)
             
+            # Usar el método del mixin
             self.log_create(historial, request.user)
             
             return Response(
@@ -219,21 +212,88 @@ class ClinicalRecordViewSet(
             )
     
     def update(self, request, *args, **kwargs):
-        """Actualización completa o parcial de historial"""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        
-        serializer = self.get_serializer(
-            instance,
-            data=request.data,
-            partial=partial
-        )
+
+        if instance.estado == 'CERRADO':
+            allowed_fields = {'observaciones', 'actualizado_por'}
+            if not set(request.data.keys()).issubset(allowed_fields):
+                return Response(
+                    {'detail': 'No se puede modificar un historial cerrado'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        data = request.data.copy()
+
+        # ── PLAN DE TRATAMIENTO (solo en BORRADOR) ─────────────────────
+        # Sacar el valor antes de pasarlo al serializer, que lo ignora
+        plan_id = data.pop('plan_tratamiento', None)
+        # Por si el frontend envía el nombre alternativo plan_tratamiento_id
+        if not plan_id:
+            plan_id = data.pop('plan_tratamiento_id', None)
+        # Si llegó como dict anidado {id: "..."}, extraer solo el id
+        if isinstance(plan_id, dict):
+            plan_id = plan_id.get('id')
+
+        if plan_id:
+            if instance.estado != 'BORRADOR':
+                return Response(
+                    {'detail': 'Solo se puede cambiar el plan de tratamiento cuando el historial está en BORRADOR'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            try:
+                plan = PlanTratamiento.objects.get(
+                    id=plan_id,
+                    paciente=instance.paciente,
+                    activo=True
+                )
+                instance.plan_tratamiento = plan
+                instance.save(update_fields=['plan_tratamiento'])
+                logger.info(
+                    f"Plan {plan.id} vinculado al historial {instance.pk} "
+                    f"por {request.user.username}"
+                )
+            except PlanTratamiento.DoesNotExist:
+                return Response(
+                    {'detail': 'Plan de tratamiento no encontrado o no pertenece al paciente'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        # ── FIN PLAN ───────────────────────────────────────────────────
+
+        # ── SIGNOS VITALES ─────────────────────────────────────────────
+        tiene_vitales_nuevos = VitalSignsService.tiene_datos_vitales(data)
+        tiene_texto = VitalSignsService.tiene_datos_texto(data)
+
+        if tiene_vitales_nuevos:
+            nueva_constante = VitalSignsService.crear_constantes_vitales(
+                paciente=instance.paciente,
+                data=data,
+                creado_por=request.user
+            )
+            instance.constantes_vitales = nueva_constante
+            instance.constantes_vitales_nuevas = True
+            instance.save(update_fields=['constantes_vitales', 'constantes_vitales_nuevas'])
+            logger.info(
+                f"Nuevas constantes vitales {nueva_constante.id} creadas "
+                f"para historial {instance.pk}"
+            )
+        elif tiene_texto and instance.constantes_vitales:
+            VitalSignsService.actualizar_constantes_existentes(
+                instance.constantes_vitales, data
+            )
+
+        VitalSignsService.limpiar_campos_del_dict(data)
+        # ── FIN VITALES ────────────────────────────────────────────────
+
+        serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        
         self.perform_update(serializer)
+        instance.refresh_from_db()
         self.log_update(instance, request.user)
-        
-        return Response(serializer.data)
+
+        output_serializer = self.get_serializer(instance)
+        return Response(output_serializer.data)
+
     
     def partial_update(self, request, *args, **kwargs):
         """Actualización parcial (PATCH)"""
@@ -244,11 +304,28 @@ class ClinicalRecordViewSet(
         """Eliminación lógica del historial"""
         instance = self.get_object()
         
-        ClinicalRecordService.eliminar_historial(instance.id)
+        # Validar que no esté cerrado
+        if instance.estado == 'CERRADO':
+            return Response(
+                {'detail': 'No se puede eliminar un historial cerrado'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Eliminación lógica
+        ClinicalRecordService.eliminar_historial(str(instance.id))
+        
+        # Refrescar para obtener el estado actualizado (activo=False)
+        instance.refresh_from_db()
+        
+        # Usar el método del mixin
         self.log_delete(instance, request.user)
         
         return Response(
-            {'id': str(instance.id)},
+            {
+                'success': True,
+                'message': 'Historial eliminado correctamente',
+                'id': str(instance.id)
+            },
             status=status.HTTP_200_OK
         )
     
@@ -650,24 +727,6 @@ class ClinicalRecordViewSet(
                 status=status.HTTP_400_BAD_REQUEST
             )
             
-            
-    def _validar_puede_recargar(self, pacienteid):
-        """
-        Busca el historial más reciente y valida que sea BORRADOR.
-        """
-        ultimohistorial = ClinicalRecord.objects.filter(
-            paciente_id=pacienteid,  
-            activo=True
-        ).order_by('-fecha_creacion').first()
-
-        if not ultimohistorial:
-            return None, None  
-
-        if ultimohistorial.estado != 'BORRADOR':
-            return None, f"El historial debe estar en BORRADOR. Actual: {ultimohistorial.estado}"
-
-        return ultimohistorial, None
-    
     @action(detail=True, methods=['get'], url_path='indicadores-salud-bucal')
     def obtener_indicadores_historial(self, request, pk=None):
         """
@@ -1078,7 +1137,8 @@ class ClinicalRecordViewSet(
 
         datos = ClinicalRecordRepository.obtener_ultimos_datos_paciente(paciente_id)
         instancia = datos.get('antecedentes_familiares')
-
+        if not instancia:
+            return Response({'detail': 'No hay datos previos'}, status=404)
         
         return Response(WritableAntecedentesFamiliaresSerializer(instancia).data)
 
@@ -1170,7 +1230,7 @@ class ClinicalRecordViewSet(
         
         serializer_data = WritableIndicesCariesSerializer(instancia).data
         
-        # logger.info(f"Retornando datos: {serializer_data}")
+        logger.info(f"Retornando datos: {serializer_data}")
         
         return Response(serializer_data)
     
@@ -1638,6 +1698,23 @@ class ClinicalRecordViewSet(
             status=status.HTTP_404_NOT_FOUND
         )
     
+    def _validar_puede_recargar(self, pacienteid):
+        """
+        Busca el historial más reciente y valida que sea BORRADOR.
+        """
+        ultimo_historial = ClinicalRecord.objects.filter(
+            paciente_id=pacienteid,  
+            activo=True
+        ).order_by('-fecha_creacion').first()
+
+        if not ultimo_historial:
+            return None, None 
+
+        if ultimo_historial.estado != 'BORRADOR':
+            return None, f"El historial debe estar en BORRADOR. Actual: {ultimo_historial.estado}"
+
+        return ultimo_historial, None
+    
     # GET /api/clinical-records/planes-tratamiento?pacienteid=...&latest
     @action(detail=False, methods=['get'], url_path='planes-tratamiento')
     def latest_planes_tratamiento(self, request, pacienteid=None):
@@ -1651,6 +1728,11 @@ class ClinicalRecordViewSet(
                 {"detail": "El parámetro pacienteid es requerido"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        historial, error = self._validar_puede_recargar(pacienteid)
+        if error:
+            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             planes = (
                 PlanTratamiento.objects.filter(paciente_id=pacienteid, activo=True)
@@ -2289,3 +2371,32 @@ class ClinicalRecordViewSet(
             'paciente_id': str(historial.paciente_id),
             'examenes': serializer.data,
         })
+        
+    def destroy(self, request, *args, **kwargs):
+        """Eliminación lógica del historial"""
+        instance = self.get_object()
+        
+        # Validar que no esté cerrado
+        if instance.estado == 'CERRADO':
+            return Response(
+                {'detail': 'No se puede eliminar un historial cerrado'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Eliminación lógica
+        ClinicalRecordService.eliminar_historial(str(instance.id))
+        
+        # Refrescar para obtener el estado actualizado (activo=False)
+        instance.refresh_from_db()
+        
+        # Usar el método del mixin
+        self.log_delete(instance, request.user)
+        
+        return Response(
+            {
+                'success': True,
+                'message': 'Historial eliminado correctamente',
+                'id': str(instance.id)
+            },
+            status=status.HTTP_200_OK
+        )

@@ -27,6 +27,11 @@ class ClinicalRecordWithPlanDetailSerializer(serializers.ModelSerializer):
     Incluye TODOS los datos del Plan de Tratamiento expandidos
     Usar en: retrieve, by-paciente
     """
+    plan_tratamiento = serializers.PrimaryKeyRelatedField(
+        queryset=PlanTratamiento.objects.filter(activo=True),
+        required=False,
+        allow_null=True
+    )
     
     # Información del paciente
     paciente_info = serializers.SerializerMethodField()
