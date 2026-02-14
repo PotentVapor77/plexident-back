@@ -335,23 +335,30 @@ else:
     # ✅ PRODUCCIÓN: Solo dominios específicos
     CORS_ALLOWED_ORIGINS = os.getenv(
         'CORS_ALLOWED_ORIGINS',
-        'https://tudominio.com,https://www.tudominio.com'
+        'http://217.216.85.169'
     ).split(',')
     
     CSRF_TRUSTED_ORIGINS = os.getenv(
         'CSRF_TRUSTED_ORIGINS',
-        'https://tudominio.com,https://www.tudominio.com'
+        'http://217.216.85.169'
     ).split(',')
     
     CORS_ALLOW_CREDENTIALS = True
     
-    # ✅ Cookies seguras en producción
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SESSION_COOKIE_SAMESITE = 'None'  # Para cross-site
-    CSRF_COOKIE_SAMESITE = 'None'
+    # SESSION_COOKIE_SECURE = True
+    # CSRF_COOKIE_SECURE = True
+    # SESSION_COOKIE_SAMESITE = 'None'  
+    # CSRF_COOKIE_SAMESITE = 'None'
+    # SESSION_COOKIE_HTTPONLY = True
+    # CSRF_COOKIE_HTTPONLY = True
+    
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False     
+    SESSION_COOKIE_SAMESITE = 'Lax'  
+    CSRF_COOKIE_SAMESITE = 'Lax'    
     SESSION_COOKIE_HTTPONLY = True
-    CSRF_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_HTTPONLY = False
+    
 
 # ✅ Headers permitidos (común para dev y prod)
 CORS_ALLOW_HEADERS = list(default_headers) + [
