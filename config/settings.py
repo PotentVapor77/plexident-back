@@ -236,14 +236,11 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'authentication.jwt_cookie_authentication.JWTCookieAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        #'rest_framework.authentication.SessionAuthentication',
     ],
     
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    
-    'EXCEPTION_HANDLER': 'api.utils.exception_handlers.custom_exception_handler',
     
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
@@ -279,9 +276,11 @@ SIMPLE_JWT = {
     
     'AUTH_COOKIE': 'access_token',
     'AUTH_COOKIE_REFRESH': 'refresh_token',
-    'AUTH_COOKIE_SECURE': False,
+    # ✅ CORREGIDO: True en producción para que las cookies viajen por HTTPS
+    'AUTH_COOKIE_SECURE': not DEBUG,
     'AUTH_COOKIE_HTTP_ONLY': True,
-    'AUTH_COOKIE_SAMESITE': 'Lax',
+    # ✅ CORREGIDO: None en producción para permitir cross-site con withCredentials
+    'AUTH_COOKIE_SAMESITE': 'Lax' if DEBUG else 'None',
     'AUTH_COOKIE_PATH': '/',
     'AUTH_COOKIE_DOMAIN': None,
     
@@ -299,7 +298,7 @@ SIMPLE_JWT = {
 }
 
 # ============================================================================
-# CORS Y CSRF CONFIGURATION - ✅ CORREGIDO
+# CORS Y CSRF CONFIGURATION
 # ============================================================================
 
 if DEBUG:
@@ -310,10 +309,8 @@ if DEBUG:
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:32768",
-        
     ]
     
-    # ✅ CSRF: Orígenes confiables
     CSRF_TRUSTED_ORIGINS = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -329,36 +326,31 @@ if DEBUG:
     SESSION_COOKIE_SAMESITE = 'Lax'
     CSRF_COOKIE_SAMESITE = 'Lax'
     SESSION_COOKIE_HTTPONLY = True
-    CSRF_COOKIE_HTTPONLY = False  # ✅ False para que JS pueda leer el token CSRF si es necesario
-    
+    CSRF_COOKIE_HTTPONLY = False
+
 else:
-    # ✅ PRODUCCIÓN: Solo dominios específicos
+    # ✅ PRODUCCIÓN: dominios con HTTPS
     CORS_ALLOWED_ORIGINS = os.getenv(
         'CORS_ALLOWED_ORIGINS',
-        'http://217.216.85.169'
+        'https://plexident.org'
     ).split(',')
     
     CSRF_TRUSTED_ORIGINS = os.getenv(
         'CSRF_TRUSTED_ORIGINS',
-        'http://217.216.85.169'
+        'https://plexident.org'
     ).split(',')
     
     CORS_ALLOW_CREDENTIALS = True
     
-    # SESSION_COOKIE_SECURE = True
-    # CSRF_COOKIE_SECURE = True
-    # SESSION_COOKIE_SAMESITE = 'None'  
-    # CSRF_COOKIE_SAMESITE = 'None'
-    # SESSION_COOKIE_HTTPONLY = True
-    # CSRF_COOKIE_HTTPONLY = True
-    
-    SESSION_COOKIE_SECURE = False
-    CSRF_COOKIE_SECURE = False     
-    SESSION_COOKIE_SAMESITE = 'Lax'  
-    CSRF_COOKIE_SAMESITE = 'Lax'    
+    # ✅ CORREGIDO: Secure=True + SameSite=None obligatorio para HTTPS cross-site
+    # SameSite=None requiere Secure=True, de lo contrario el browser descarta la cookie.
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SAMESITE = 'None'
     SESSION_COOKIE_HTTPONLY = True
-    CSRF_COOKIE_HTTPONLY = False
-    
+    CSRF_COOKIE_HTTPONLY = False   # False para que el frontend pueda leer el CSRF token
+
 
 # ✅ Headers permitidos (común para dev y prod)
 CORS_ALLOW_HEADERS = list(default_headers) + [
@@ -382,26 +374,14 @@ CORS_ALLOW_METHODS = [
 
 # ✅ Cache de preflight requests
 CORS_PREFLIGHT_MAX_AGE = 86400  # 24 horas
+
 # ============================================================================
-# 🔥 SEPARACIÓN DE COOKIES: ADMIN vs API (NUEVO)
+# COOKIE PATHS
 # ============================================================================
 
-# ✅ Cookie de sesión SOLO para Django Admin
-# SESSION_COOKIE_NAME = 'admin_sessionid'  
-# SESSION_COOKIE_PATH = '/admin/'   
-SESSION_COOKIE_PATH = '/'  
+SESSION_COOKIE_PATH = '/'
 CSRF_COOKIE_PATH = '/'
-# Solo funciona en /admin
-
-# ✅ CSRF de admin separado
-# CSRF_COOKIE_NAME = 'admin_csrftoken'   
-# CSRF_COOKIE_PATH = '/admin/'
-
 CSRF_COOKIE_NAME = 'csrftoken'
-CSRF_COOKIE_PATH = '/'
-
-# En producción, podrías agregar:
-# CSRF_COOKIE_PATH = '/admin/'           # Descomentar si tienes problemas
 
 # ============================================================================
 # CACHE CONFIGURATION
@@ -511,13 +491,22 @@ LOGGING = {
 # ============================================================================
 
 if not DEBUG:
+    # ✅ False porque el SSL lo maneja el nginx del host, no Django directamente.
+    # Si fuera True, Django intentaría redirigir a HTTPS internamente y entraría
+    # en un loop de redirecciones dentro de Docker.
     SECURE_SSL_REDIRECT = False
+
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_BROWSER_XSS_FILTER = True
     X_FRAME_OPTIONS = 'DENY'
+
+    # ✅ CRÍTICO: le dice a Django que confíe en el header X-Forwarded-Proto=https
+    # que envía el nginx del contenedor frontend. Sin esto, Django no sabe que
+    # la petición original fue HTTPS y no marca las cookies como Secure.
+    USE_X_FORWARDED_HOST = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # ============================================================================
@@ -525,7 +514,6 @@ if not DEBUG:
 # ============================================================================
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-# URL del frontend para enlaces en emails
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
@@ -538,7 +526,6 @@ DEFAULT_FROM_EMAIL = os.getenv(
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
-
 # CONFIGURACIÓN DE RECORDATORIOS
 RECORDATORIO_TIPO_DEFAULT = "EMAIL" 
 RECORDATORIO_HORAS_ANTES = 24
@@ -547,4 +534,3 @@ RECORDATORIO_ENVIAR_A = "AMBOS"
 # ============================================================================
 # S3 AWS CONFIGURATION
 # ============================================================================
-
