@@ -49,6 +49,7 @@ from api.clinical_records.serializers.plan_tratamiento_serializers import (
 )
 from api.clinical_records.serializers.examenes_complementarios import WritableExamenesComplementariosSerializer
 from api.clinical_records.services.examenes_complementarios_service import ExamenesComplementariosLinkService
+from api.clinical_records.views.pdf_viewset import ClinicalRecordPDFMixin
 
 
 
@@ -67,6 +68,7 @@ from .base import (
 
 class ClinicalRecordViewSet(
     BasePermissionMixin,
+    ClinicalRecordPDFMixin,
     QuerysetOptimizationMixin,
     SearchFilterMixin,
     ActiveFilterMixin,

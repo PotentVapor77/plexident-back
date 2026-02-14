@@ -14,6 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Cargar variables de entorno
 load_dotenv(BASE_DIR / '.env')
 
+
 # ============================================================================
 # SECURITY SETTINGS
 # ============================================================================
@@ -257,8 +258,8 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour'
+        'anon': '500/hour',
+        'user': '5000/hour'
     },
 }
 
@@ -309,6 +310,7 @@ if DEBUG:
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:32768",
         
     ]
     
