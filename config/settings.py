@@ -387,8 +387,11 @@ CORS_PREFLIGHT_MAX_AGE = 86400  # 24 horas
 # ============================================================================
 
 # ✅ Cookie de sesión SOLO para Django Admin
-SESSION_COOKIE_NAME = 'admin_sessionid'  # Nombre único para admin
-SESSION_COOKIE_PATH = '/admin/'          # Solo funciona en /admin
+# SESSION_COOKIE_NAME = 'admin_sessionid'  
+# SESSION_COOKIE_PATH = '/admin/'   
+SESSION_COOKIE_PATH = '/'  
+CSRF_COOKIE_PATH = '/'
+# Solo funciona en /admin
 
 # ✅ CSRF de admin separado
 CSRF_COOKIE_NAME = 'admin_csrftoken'    # Nombre único para CSRF de admin
