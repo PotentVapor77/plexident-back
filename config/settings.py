@@ -394,8 +394,12 @@ CSRF_COOKIE_PATH = '/'
 # Solo funciona en /admin
 
 # ✅ CSRF de admin separado
-CSRF_COOKIE_NAME = 'admin_csrftoken'    # Nombre único para CSRF de admin
-CSRF_COOKIE_PATH = '/admin/'
+# CSRF_COOKIE_NAME = 'admin_csrftoken'   
+# CSRF_COOKIE_PATH = '/admin/'
+
+CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_COOKIE_PATH = '/'
+
 # En producción, podrías agregar:
 # CSRF_COOKIE_PATH = '/admin/'           # Descomentar si tienes problemas
 
