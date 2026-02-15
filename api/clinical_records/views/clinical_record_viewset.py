@@ -226,7 +226,22 @@ class ClinicalRecordViewSet(
                 )
 
         data = request.data.copy()
-
+        
+        # SACAR CAMPOS QUE NO SE PUEDEN MODIFICAR
+        
+        CAMPOS_SOLO_LECTURA = {
+        'examen_estomatognatico_id',
+        'indicadores_salud_bucal_id', 
+        'indices_caries_id',
+        'plan_tratamiento_id',      
+        'plan_tratamiento_titulo',
+        'plan_tratamiento_descripcion',
+        'plan_tratamiento_sesiones',
+        'plan_tratamiento_odontograma_id',
+    }
+        for campo in CAMPOS_SOLO_LECTURA:
+            data.pop(campo, None)
+            
         # ── PLAN DE TRATAMIENTO (solo en BORRADOR) ─────────────────────
         # Sacar el valor antes de pasarlo al serializer, que lo ignora
         plan_id = data.pop('plan_tratamiento', None)

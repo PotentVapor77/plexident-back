@@ -136,6 +136,13 @@ class ClinicalRecordWithPlanDetailSerializer(serializers.ModelSerializer):
             'fecha_cierre',
             'fecha_creacion',
             'fecha_modificacion',
+            # Prueba de desactivación
+            'antecedentes_personales',
+            'antecedentes_familiares',
+            'constantes_vitales',
+            'examen_estomatognatico',
+            'indicadores_salud_bucal',
+            'indices_caries',
         ]
     
     def get_paciente_info(self, obj):
