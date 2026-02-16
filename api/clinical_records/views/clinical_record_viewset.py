@@ -45,7 +45,8 @@ from api.odontogram.views.diagnostico_cie_views import DiagnosticoCIEViewSet
 from api.clinical_records.models.diagnostico_cie import DiagnosticoCIEHistorial
 from api.clinical_records.serializers.plan_tratamiento_serializers import (
     PlanTratamientoCompletoSerializer,
-    PlanTratamientoResumenSerializer
+    PlanTratamientoResumenSerializer,
+    SesionTratamientoDetalleCompletoSerializer,
 )
 from api.clinical_records.serializers.examenes_complementarios import WritableExamenesComplementariosSerializer
 from api.clinical_records.services.examenes_complementarios_service import ExamenesComplementariosLinkService
@@ -1735,10 +1736,12 @@ class ClinicalRecordViewSet(
     # GET /api/clinical-records/planes-tratamiento?pacienteid=...&latest
     @action(detail=False, methods=['get'], url_path='planes-tratamiento')
     def latest_planes_tratamiento(self, request, pacienteid=None):
-        """
-        Obtiene los planes de tratamiento activos de un paciente CON SESIONES
-        GET: /api/clinical-records/planes-tratamiento/?pacienteid={uuid}
-        """
+        pacienteid = pacienteid or request.query_params.get('pacienteid')
+        
+        # Prints DESPUÉS de la asignación:
+        print(f"[DEBUG] pacienteid FINAL: '{pacienteid}'")
+        print(f"[DEBUG] query_params: {dict(request.query_params)}")
+        
         pacienteid = pacienteid or request.query_params.get('pacienteid')
         if not pacienteid:
             return Response(
@@ -1746,17 +1749,9 @@ class ClinicalRecordViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        historial, error = self._validar_puede_recargar(pacienteid)
-        if error:
-            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            planes = (
-                PlanTratamiento.objects.filter(paciente_id=pacienteid, activo=True)
-                .select_related('paciente', 'creado_por')
-                .prefetch_related('sesiones', 'sesiones__odontologo')
-                .order_by('-fecha_creacion')
-            )
+            planes = PlanTratamiento.objects.filter(paciente_id=pacienteid, activo=True)
 
             # Serializar manualmente para incluir sesiones
             from api.clinical_records.serializers.plan_tratamiento_serializers import (
@@ -1778,7 +1773,7 @@ class ClinicalRecordViewSet(
                     'notas_generales': plan.notas_generales,
                     'fecha_creacion': plan.fecha_creacion.isoformat() if plan.fecha_creacion else None,
                     'activo': plan.activo,
-                    'sesiones': sesiones_serializer.data,  # ← Incluir sesiones
+                    'sesiones': sesiones_serializer.data,  
                     'total_sesiones': sesiones.count(),
                     'paciente_info': {
                         'id': str(plan.paciente.id),
@@ -1790,9 +1785,11 @@ class ClinicalRecordViewSet(
             return Response(planes_data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Error obteniendo planes para paciente {pacienteid}: {str(e)}")
+            import traceback
+            print(f"[DEBUG] EXCEPCIÓN COMPLETA:")
+            traceback.print_exc()        
             return Response(
-                {"detail": f"Error obteniendo planes: {str(e)}"},
+                {"success": False, "message": f"Error: {str(e)}", "data": []},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

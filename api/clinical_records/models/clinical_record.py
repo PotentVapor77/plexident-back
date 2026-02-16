@@ -309,8 +309,8 @@ class ClinicalRecord(BaseModel):
         
         self.estado = 'CERRADO'
         self.fecha_cierre = timezone.now()
-        self.actualizadopor = usuario
-        self.save(update_fields=['estado', 'fecha_cierre', 'actualizadopor'])
+        self.actualizado_por = usuario
+        self.save(update_fields=['estado', 'fecha_cierre', 'actualizado_por'])
 
     def reabrir_historial(self, usuario):
         """Reabre un historial cerrado (solo para casos excepcionales)."""
@@ -319,8 +319,8 @@ class ClinicalRecord(BaseModel):
         
         self.estado = 'ABIERTO'
         self.fecha_cierre = None
-        self.actualizadopor = usuario
-        self.save(update_fields=['estado', 'fecha_cierre', 'actualizadopor'])
+        self.actualizado_por = usuario
+        self.save(update_fields=['estado', 'fecha_cierre', 'actualizado_por'])
 
     @property
     def puede_editar(self):

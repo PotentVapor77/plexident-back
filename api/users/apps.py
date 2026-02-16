@@ -5,5 +5,4 @@ class UsersConfig(AppConfig):
     name = 'api.users'
 
     def ready(self):
-        # Importa las señales cuando la aplicación se inicie
         import api.users.signals
