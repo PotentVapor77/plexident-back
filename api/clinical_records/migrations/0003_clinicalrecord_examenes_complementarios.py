@@ -18,3 +18,4 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='historiales_clinicos', to='patients.examenescomplementarios', verbose_name='Exámenes Complementarios (Sección L)'),
         ),
     ]
+

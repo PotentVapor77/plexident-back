@@ -159,3 +159,4 @@ class Migration(migrations.Migration):
             index=models.Index(fields=['capturado_por', '-fecha_captura'], name='clinical_re_captura_d32764_idx'),
         ),
     ]
+    
