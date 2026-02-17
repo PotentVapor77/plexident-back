@@ -29,3 +29,4 @@ class Migration(migrations.Migration):
             index=models.Index(fields=['snapshot_version'], name='clinical_fi_snapsho_95c9b8_idx'),
         ),
     ]
+    

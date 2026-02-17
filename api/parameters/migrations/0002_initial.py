@@ -52,3 +52,4 @@ class Migration(migrations.Migration):
             unique_together={('dia_semana',)},
         ),
     ]
+    
