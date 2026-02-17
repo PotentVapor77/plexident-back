@@ -83,7 +83,13 @@ class Form033Snapshot(BaseModel):
             models.Index(fields=['fecha_captura']),
             models.Index(fields=['capturado_por', '-fecha_captura']),
         ]
-    
+    imagen_odontograma = models.ImageField(
+        upload_to='clinical_records/odontogramas/%Y/%m/',
+        null=True,
+        blank=True,
+        verbose_name='Imagen del Odontograma',
+        help_text='Captura PNG del odontograma 2D renderizado en el frontend'
+    )
     
     def __str__(self):
         return f"Form033 - HC: {self.historial_clinico.numero_historia_clinica_unica} - {self.fecha_captura.strftime('%Y-%m-%d %H:%M')}"

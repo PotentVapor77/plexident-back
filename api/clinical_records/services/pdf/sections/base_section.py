@@ -6,23 +6,25 @@ Cada sección es independiente y produce su propio bloque de elementos ReportLab
 from abc import ABC, abstractmethod
 from typing import List
 
-from reportlab.platypus import Flowable, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import Flowable, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+import os
 
 
-# ─── Paleta de colores del sistema ─────────────────────────────────────────
-COLOR_PRIMARIO    = colors.HexColor('#1B4F72')   # Azul oscuro cabeceras
-COLOR_SECUNDARIO  = colors.HexColor('#2E86C1')   # Azul medio subencabezados
-COLOR_ACENTO      = colors.HexColor('#D6EAF8')   # Azul muy claro fondo filas
-COLOR_BORDE       = colors.HexColor('#AED6F1')   # Borde tablas
-COLOR_TEXTO       = colors.HexColor('#1C2833')   # Texto principal
-COLOR_SUBTEXTO    = colors.HexColor('#5D6D7E')   # Texto secundario
-COLOR_VACIO       = colors.HexColor('#F2F3F4')   # Fondo cuando sin datos
-COLOR_EXITO       = colors.HexColor('#1E8449')   # Verde para valores normales
-COLOR_ADVERTENCIA = colors.HexColor('#B7950B')   # Amarillo advertencia
+# ─── Paleta de colores VERDE MÉDICO ─────────────────────────────────────────
+COLOR_PRIMARIO    = colors.HexColor('#117A65')   # Verde oscuro (cabeceras principales)
+COLOR_SECUNDARIO  = colors.HexColor('#16A085')   # Verde medio (subencabezados)
+COLOR_TERCIARIO   = colors.HexColor('#1ABC9C')   # Verde claro (acentos)
+COLOR_ACENTO      = colors.HexColor('#D0ECE7')   # Verde muy claro (fondo filas alternas)
+COLOR_BORDE       = colors.HexColor('#A3E4D7')   # Verde claro (bordes)
+COLOR_TEXTO       = colors.HexColor('#1C2833')   # Texto principal (se mantiene oscuro)
+COLOR_SUBTEXTO    = colors.HexColor('#5D6D7E')   # Texto secundario (se mantiene)
+COLOR_VACIO       = colors.HexColor('#F2F3F4')   # Fondo sin datos (se mantiene)
+COLOR_EXITO       = colors.HexColor('#27AE60')   # Verde éxito
+COLOR_ADVERTENCIA = colors.HexColor('#F39C12')   # Amarillo advertencia
 
 
 def _build_styles() -> dict:

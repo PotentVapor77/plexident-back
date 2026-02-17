@@ -166,15 +166,22 @@ class CitaService:
         if not cita:
             raise ValidationError("Cita no encontrada")
         
-        # ✅ MEJORA: Loggear el estado actual para diagnóstico
-        logger = logging.getLogger(__name__)
-        logger.info(f"Intentando cancelar cita {cita_id} con estado actual: {cita.estado}")
+        # ✅ CORRECCIÓN DIRECTA: Estados permitidos explícitamente
+        estados_permitidos = ['PROGRAMADA', 'CONFIRMADA', 'REPROGRAMADA']
         
-        # ✅ CORRECCIÓN: Usar la propiedad del modelo directamente
-        if not cita.puede_ser_cancelada:
+        if cita.estado not in estados_permitidos:
             raise ValidationError(
                 f"Esta cita no puede ser cancelada (estado actual: {cita.estado})"
             )
+        
+        # Validar que no sea en el pasado (opcional, depende de requisitos)
+        fecha_hora_cita = timezone.make_aware(
+            datetime.combine(cita.fecha, cita.hora_inicio)
+        )
+        if fecha_hora_cita < timezone.now():
+            # Si quieres permitir cancelar citas pasadas, quita esta validación
+            # o hazla opcional
+            pass
         
         data = {
             'estado': EstadoCita.CANCELADA,
@@ -381,24 +388,38 @@ class RecordatorioService:
                                 destinatario: str = "PACIENTE", 
                                 mensaje: str = "") -> dict:
         """Envío manual desde frontend. Permite múltiples recordatorios."""
+        
+        # ✅ CORRECCIÓN: Asegurarnos de que cita_id es string
+        cita_id = str(cita_id) if cita_id else None
+        
         cita = CitaRepository.obtener_por_id(cita_id)
         if not cita:
             raise ValidationError("Cita no encontrada")
         
-        # Verificar puede enviar
+        # Verificar que la cita puede recibir recordatorios
         if not cita.activo:
             raise ValidationError("La cita no está activa")
         
-        # ❌ ELIMINAR esta validación para permitir múltiples recordatorios
-        # if cita.recordatorio_enviado:
-        #     raise ValidationError("La cita ya tiene un recordatorio enviado")
-        
-        if cita.estado not in (EstadoCita.PROGRAMADA, EstadoCita.CONFIRMADA):
-            raise ValidationError("Solo las citas PROGRAMADAS o CONFIRMADAS permiten recordatorios")
+        if cita.estado not in (EstadoCita.PROGRAMADA, EstadoCita.CONFIRMADA, EstadoCita.REPROGRAMADA):
+            raise ValidationError(
+                f"Solo las citas PROGRAMADAS, CONFIRMADAS o REPROGRAMADAS permiten recordatorios. "
+                f"Estado actual: {cita.estado}"
+            )
         
         fecha_hora = timezone.make_aware(datetime.combine(cita.fecha, cita.hora_inicio))
         if fecha_hora <= timezone.now():
             raise ValidationError("No se puede enviar recordatorio para una cita pasada")
+        
+        # ✅ CORRECCIÓN: Validar emails según destinatario
+        if destinatario == "PACIENTE" and not cita.paciente.correo:
+            raise ValidationError("El paciente no tiene email configurado")
+        
+        if destinatario == "ODONTOLOGO" and not cita.odontologo.correo:
+            raise ValidationError("El odontólogo no tiene email configurado")
+        
+        if destinatario == "AMBOS":
+            if not cita.paciente.correo and not cita.odontologo.correo:
+                raise ValidationError("Ni el paciente ni el odontólogo tienen email configurado")
         
         # Enviar notificación por EMAIL
         exito, mensaje_envio = RecordatorioService._enviar_notificacion(
@@ -417,54 +438,17 @@ class RecordatorioService:
         }
         recordatorio = RecordatorioCitaRepository.crear(recordatorio_data)
         
-        # ❌ OPCIONAL: Ya no actualizar recordatorio_enviado, o hacerlo de otra forma
-        # Solo actualizar la fecha del último recordatorio
+        # Actualizar fecha del último recordatorio
         if exito:
             CitaRepository.actualizar(cita, {
-                'fecha_recordatorio': timezone.now()  # Solo actualizar fecha
+                'fecha_recordatorio': timezone.now()
             })
         
         return {
             'exito': exito,
             'mensaje': "✅ Recordatorio enviado exitosamente" if exito else f"❌ Error: {mensaje_envio}",
-            'recordatorio': RecordatorioCitaSerializer(recordatorio).data
+            'recordatorio': recordatorio
         }
-    # Añade este método en la clase RecordatorioService, justo después de los métodos _crear_html_email_paciente y _crear_html_email_odontologo:
-
-    @staticmethod
-    def _enviar_email_html(destinatario, asunto, html_content):
-        """Envía email HTML usando Django"""
-        try:
-            email = EmailMultiAlternatives(
-                subject=asunto,
-                body='Por favor, vea este mensaje en un cliente de correo que soporte HTML.',
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[destinatario]
-            )
-            email.attach_alternative(html_content, "text/html")
-            email.send(fail_silently=False)
-            
-            logger.info(f"Email HTML enviado a {destinatario}")
-            return True, "Email enviado correctamente"
-        except Exception as e:
-            logger.error(f"Error enviando email HTML a {destinatario}: {str(e)}")
-            
-            # Fallback texto plano
-            try:
-                import re
-                text_content = re.sub('<[^<]+?>', '', html_content).strip()
-                send_mail(
-                    asunto,
-                    text_content,
-                    settings.DEFAULT_FROM_EMAIL,
-                    [destinatario],
-                    fail_silently=False
-                )
-                logger.info(f"Email texto enviado a {destinatario} (respaldo)")
-                return True, "Email enviado correctamente (texto)"
-            except Exception as e2:
-                logger.error(f"Error enviando email texto a {destinatario}: {str(e2)}")
-                return False, f"Error enviando email: {str(e)}"
 
     @staticmethod
     def enviar_recordatorios_automaticos(horas_antes: int = 24) -> int:
@@ -522,7 +506,40 @@ class RecordatorioService:
         inicio = fecha_hora - timedelta(hours=horas_antes)
         fin = fecha_hora - timedelta(hours=horas_antes - 1)
         return inicio <= ahora <= fin
-    
+    @staticmethod
+    def _enviar_email_html(destinatario, asunto, html_content):
+        """Envía email HTML usando Django"""
+        try:
+            email = EmailMultiAlternatives(
+                subject=asunto,
+                body='Por favor, vea este mensaje en un cliente de correo que soporte HTML.',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[destinatario]
+            )
+            email.attach_alternative(html_content, "text/html")
+            email.send(fail_silently=False)
+            
+            logger.info(f"Email HTML enviado a {destinatario}")
+            return True, "Email enviado correctamente"
+        except Exception as e:
+            logger.error(f"Error enviando email HTML a {destinatario}: {str(e)}")
+            
+            # Fallback texto plano
+            try:
+                import re
+                text_content = re.sub('<[^<]+?>', '', html_content).strip()
+                send_mail(
+                    asunto,
+                    text_content,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [destinatario],
+                    fail_silently=False
+                )
+                logger.info(f"Email texto enviado a {destinatario} (respaldo)")
+                return True, "Email enviado correctamente (texto)"
+            except Exception as e2:
+                logger.error(f"Error enviando email texto a {destinatario}: {str(e2)}")
+                return False, f"Error enviando email: {str(e)}"
     @staticmethod
     def _enviar_notificacion(cita: Cita, tipo: str, destinatario: str = "PACIENTE", 
                            mensaje: str = "") -> tuple[bool, str]:
@@ -554,9 +571,9 @@ class RecordatorioService:
             return RecordatorioService._enviar_email_html(contacto_email, asunto, html_content)
         
         elif destinatario == "AMBOS":
-            # Enviar a ambos
+            # ✅ CORRECCIÓN: Manejar mejor el caso AMBOS
             resultados = []
-            exito_total = True
+            exito_parcial = False
             
             # Enviar al paciente
             if cita.paciente.correo:
@@ -565,8 +582,11 @@ class RecordatorioService:
                 exito_paciente, msg_paciente = RecordatorioService._enviar_email_html(
                     cita.paciente.correo, asunto_paciente, html_paciente
                 )
-                resultados.append(f"Paciente: {'✅' if exito_paciente else '❌'}")
-                exito_total = exito_total and exito_paciente
+                resultados.append(f"Paciente: {'✅' if exito_paciente else '❌'} - {msg_paciente}")
+                if exito_paciente:
+                    exito_parcial = True
+            else:
+                resultados.append("Paciente: ⚠️ No tiene email configurado")
             
             # Enviar al odontólogo
             if cita.odontologo.correo:
@@ -575,18 +595,19 @@ class RecordatorioService:
                 exito_odontologo, msg_odontologo = RecordatorioService._enviar_email_html(
                     cita.odontologo.correo, asunto_odontologo, html_odontologo
                 )
-                resultados.append(f"Odontólogo: {'✅' if exito_odontologo else '❌'}")
-                exito_total = exito_total and exito_odontologo
-            
-            mensaje = f"Enviado a ambos: {', '.join(resultados)}"
-            
-            # Si al menos uno se envió, consideramos éxito parcial
-            if cita.paciente.correo or cita.odontologo.correo:
-                return exito_total, mensaje
+                resultados.append(f"Odontólogo: {'✅' if exito_odontologo else '❌'} - {msg_odontologo}")
+                if exito_odontologo:
+                    exito_parcial = True
             else:
-                return False, "Ningún destinatario tiene email configurado"
+                resultados.append("Odontólogo: ⚠️ No tiene email configurado")
+            
+            mensaje_final = " | ".join(resultados)
+            
+            # Si al menos un envío fue exitoso, consideramos éxito
+            return exito_parcial, mensaje_final
         
         return False, f"Destinatario '{destinatario}' no válido"
+
 
     @staticmethod
     def _crear_html_email_paciente(cita, mensaje=''):

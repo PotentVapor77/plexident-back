@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.exceptions import ValidationError
-
+from rest_framework.parsers import MultiPartParser, FormParser
 from api.clinical_records.serializers.clinical_record_with_plan_serializer import (
     ClinicalRecordWithPlanDetailSerializer,
     ClinicalRecordListSerializer,
@@ -2414,3 +2414,167 @@ class ClinicalRecordViewSet(
             },
             status=status.HTTP_200_OK
         )
+        
+    @action(
+        detail=True, 
+        methods=['post'],
+        url_path='capturar-odontograma',
+        parser_classes=[MultiPartParser, FormParser]
+    )
+    def capturar_odontograma(self, request, pk=None):
+        """
+        Recibe la imagen del odontograma capturada desde el frontend
+        y la asocia al snapshot del Form033.
+        
+        PAYLOAD:
+            - Opción 1: archivo 'imagen' (multipart/form-data)
+            - Opción 2: string 'imagen_base64' (data:image/png;base64,...)
+        
+        EJEMPLO FRONTEND:
+            const formData = new FormData();
+            formData.append('imagen', blobImage, 'odontograma.png');
+            
+            await api.post(
+                `/clinical-records/${historialId}/capturar-odontograma/`,
+                formData
+            );
+        """
+        historial = self.get_object()
+        
+        try:
+            # Opción 1: Archivo directo (multipart)
+            if 'imagen' in request.FILES:
+                imagen_file = request.FILES['imagen']
+                
+                # Validar que sea imagen
+                if not imagen_file.content_type.startswith('image/'):
+                    return Response({
+                        'success': False,
+                        'message': 'El archivo debe ser una imagen'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Validar tamaño (máx 10MB)
+                if imagen_file.size > 10 * 1024 * 1024:
+                    return Response({
+                        'success': False,
+                        'message': 'La imagen no debe superar 10MB'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                imagen_procesada = imagen_file
+            
+            # Opción 2: Base64
+            elif 'imagen_base64' in request.data:
+                base64_string = request.data['imagen_base64']
+                
+                # Remover el prefijo data:image/png;base64,
+                if ',' in base64_string:
+                    base64_string = base64_string.split(',')[1]
+                
+                # Decodificar
+                imagen_bytes = base64.b64decode(base64_string)
+                
+                # Convertir a archivo Django
+                imagen_procesada = ContentFile(
+                    imagen_bytes,
+                    name=f'odontograma_{historial.id}.png'
+                )
+            
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'Debe proporcionar "imagen" o "imagen_base64"'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Obtener o crear snapshot
+            from api.clinical_records.models import Form033Snapshot
+            
+            snapshot, created = Form033Snapshot.objects.get_or_create(
+                historial_clinico=historial,
+                defaults={
+                    'datos_form033': {
+                        'odontograma_permanente': {'dientes': [], 'movilidad': [], 'recesion': []},
+                        'odontograma_temporal': {'dientes': [], 'movilidad': [], 'recesion': []},
+                    }
+                }
+            )
+            
+            # Guardar la imagen
+            snapshot.imagen_odontograma = imagen_procesada
+            
+            # Actualizar observaciones si se proporcionan
+            if 'observaciones' in request.data:
+                snapshot.observaciones = request.data['observaciones']
+            
+            snapshot.save()
+            
+            logger.info(
+                f"Imagen de odontograma capturada para historial {historial.id}"
+            )
+            
+            return Response({
+                'success': True,
+                'message': 'Imagen del odontograma guardada exitosamente',
+                'data': {
+                    'snapshot_id': snapshot.id,
+                    'fecha_captura': snapshot.fecha_captura,
+                    'tiene_imagen': snapshot.tiene_imagen(),
+                    'imagen_url': snapshot.get_imagen_url() if snapshot.tiene_imagen() else None
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(
+                f"Error al capturar odontograma para historial {pk}: {str(e)}",
+                exc_info=True
+            )
+            return Response({
+                'success': False,
+                'message': f'Error al procesar la imagen: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(
+        detail=True,
+        methods=['delete'],
+        url_path='eliminar-imagen-odontograma'
+    )
+    def eliminar_imagen_odontograma(self, request, pk=None):
+        """
+        Elimina la imagen del odontograma del snapshot sin borrar los datos JSON.
+        """
+        historial = self.get_object()
+        
+        try:
+            from api.clinical_records.models import Form033Snapshot
+            
+            snapshot = Form033Snapshot.objects.filter(
+                historial_clinico=historial
+            ).first()
+            
+            if not snapshot:
+                return Response({
+                    'success': False,
+                    'message': 'No existe snapshot para este historial'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            if snapshot.imagen_odontograma:
+                # Eliminar el archivo físico
+                snapshot.imagen_odontograma.delete(save=False)
+                snapshot.imagen_odontograma = None
+                snapshot.save()
+                
+                return Response({
+                    'success': True,
+                    'message': 'Imagen del odontograma eliminada'
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'No hay imagen asociada'
+                }, status=status.HTTP_404_NOT_FOUND)
+                
+        except Exception as e:
+            logger.error(f"Error al eliminar imagen odontograma: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error al eliminar imagen: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

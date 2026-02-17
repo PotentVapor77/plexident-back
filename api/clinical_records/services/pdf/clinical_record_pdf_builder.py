@@ -23,18 +23,32 @@ AGREGAR UNA NUEVA SECCIÓN:
 """
 import io
 import logging
+import os
 from typing import List, Optional
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 )
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
-from .sections.base_section import COLOR_PRIMARIO, COLOR_SUBTEXTO, ESTILOS
+from api.clinical_records.services.pdf.sections.seccion_a_establecimiento_paciente import SeccionAEstablecimientoPaciente
+from api.clinical_records.services.pdf.sections.seccion_b_motivo_consulta import SeccionBMotivoConsulta
+from api.clinical_records.services.pdf.sections.seccion_c_enfermedad_actual import SeccionCEnfermedadActual
+from api.clinical_records.services.pdf.sections.seccion_d_antecedentes_personales import SeccionDAntecedentesPersonales
+from api.clinical_records.services.pdf.sections.seccion_e_antecedentes_familiares import SeccionEAntecedentesFamiliares
+from api.clinical_records.services.pdf.sections.seccion_f_constantes_vitales import SeccionFConstantesVitales
+from api.clinical_records.services.pdf.sections.seccion_g_examen_estomatognatico import SeccionGExamenEstomatognatico
+from api.clinical_records.services.pdf.sections.seccion_h_odontograma import SeccionHOdontograma
+from api.clinical_records.services.pdf.sections.seccion_i_indicadores_salud_bucal import SeccionIIndicadoresSaludBucal
+from api.clinical_records.services.pdf.sections.seccion_j_indices_cpo_ceo import SeccionJIndicesCPOceo
+
+from .sections.base_section import COLOR_BORDE, COLOR_PRIMARIO, COLOR_SECUNDARIO, COLOR_SUBTEXTO, ESTILOS
 from .sections.secciones import (
     SeccionEstablecimientoPaciente,
     SeccionMotivoConsulta,
@@ -51,6 +65,9 @@ from .sections.secciones import (
 
 logger = logging.getLogger(__name__)
 
+# Ruta del logo
+RUTA_LOGO = os.path.join(os.path.dirname(__file__), 'src', 'logo.png')
+
 
 class ClinicalRecordPDFBuilder:
     """
@@ -65,18 +82,21 @@ class ClinicalRecordPDFBuilder:
     # El orden aquí es el orden en que aparecen en el PDF.
     # Clave (str) → Clase de sección
     SECCIONES_DISPONIBLES = {
-        'establecimiento_paciente':  SeccionEstablecimientoPaciente,
-        'motivo_consulta':           SeccionMotivoConsulta,
-        'constantes_vitales':        SeccionConstantesVitales,
-        'antecedentes_personales':   SeccionAntecedentesPersonales,
-        'antecedentes_familiares':   SeccionAntecedentesFamiliares,
+        'establecimiento_paciente': SeccionAEstablecimientoPaciente,
+        'motivo_consulta': SeccionBMotivoConsulta,
+
+        'enfermedad_actual': SeccionCEnfermedadActual,
+        'antecedentes_personales': SeccionDAntecedentesPersonales,
+        'antecedentes_familiares': SeccionEAntecedentesFamiliares,
+        'constantes_vitales': SeccionFConstantesVitales,
+        'examen_estomatognatico': SeccionGExamenEstomatognatico,
+        'odontograma': SeccionHOdontograma,
+        'indicadores_salud_bucal':   SeccionIIndicadoresSaludBucal,   
+        'indices_caries':            SeccionJIndicesCPOceo,            
         'plan_tratamiento':          SeccionPlanTratamiento,
-        'indicadores_salud_bucal':   SeccionIndicadoresSaludBucal,
-        'indices_caries':            SeccionIndicesCaries,
         'diagnosticos_cie':          SeccionDiagnosticosCIE,
         'examenes_complementarios':  SeccionExamenesComplementarios,
         'observaciones':             SeccionObservaciones,
-        # ← Aquí se añaden nuevas secciones en el futuro
     }
 
     @classmethod
@@ -103,7 +123,7 @@ class ClinicalRecordPDFBuilder:
             pagesize=A4,
             leftMargin=20 * mm,
             rightMargin=20 * mm,
-            topMargin=18 * mm,
+            topMargin=25 * mm,  # Aumentado para dar espacio al logo
             bottomMargin=20 * mm,
             title=f"Historia Clínica {historial.numero_historia_clinica_unica or ''}",
             author='Sistema Odontológico',
@@ -124,6 +144,9 @@ class ClinicalRecordPDFBuilder:
     def _construir_story(cls, historial, secciones: Optional[List[str]]) -> list:
         """Construye la lista de elementos (story) del PDF."""
         story = []
+
+        # Agregar encabezado con logo
+        story.extend(cls._encabezado_logo(historial))
 
         # Determinar qué secciones generar y en qué orden
         claves = secciones if secciones else list(cls.SECCIONES_DISPONIBLES.keys())
@@ -154,6 +177,96 @@ class ClinicalRecordPDFBuilder:
         # Firma al final
         story.extend(cls._firma(historial))
         return story
+
+    @classmethod
+    def _encabezado_logo(cls, historial) -> list:
+        """
+        Crea el encabezado con logo y título del documento.
+        """
+        elementos = []
+
+        # Intentar cargar el logo
+        try:
+            if os.path.exists(RUTA_LOGO):
+                logo = Image(RUTA_LOGO)
+                logo.drawHeight = 15 * mm
+                logo.drawWidth = 40 * mm
+            else:
+                # Fallback si no existe el logo
+                logo = Paragraph("FamysALUD<br/>CENTROMEDICO", ParagraphStyle(
+                    'LogoFallback',
+                    fontSize=14,
+                    fontName='Helvetica-Bold',
+                    textColor=COLOR_PRIMARIO,
+                    alignment=TA_LEFT,
+                ))
+        except Exception as e:
+            logger.warning(f"No se pudo cargar el logo: {e}")
+            logo = Paragraph("FamysALUD<br/>CENTROMEDICO", ParagraphStyle(
+                'LogoFallback',
+                fontSize=14,
+                fontName='Helvetica-Bold',
+                textColor=COLOR_PRIMARIO,
+                alignment=TA_LEFT,
+            ))
+
+        # Crear tabla de encabezado con 3 columnas: logo, título, fecha/HC
+        estilo_titulo = ParagraphStyle(
+            'TituloDocumento',
+            fontSize=14,
+            fontName='Helvetica-Bold',
+            textColor=COLOR_PRIMARIO,
+            alignment=TA_CENTER,
+            leading=16,
+        )
+
+        estilo_info = ParagraphStyle(
+            'InfoDocumento',
+            fontSize=8,
+            fontName='Helvetica',
+            textColor=COLOR_SUBTEXTO,
+            alignment=TA_RIGHT,
+            leading=10,
+        )
+
+        # Información de la derecha
+        fecha_atencion = str(historial.fecha_atencion)[:10] if historial.fecha_atencion else '—'
+        info_derecha = f"""<b>H.C. Única:</b> {historial.numero_historia_clinica_unica or '—'}<br/>
+<b>Fecha Atención:</b> {fecha_atencion}<br/>
+<b>Documento:</b> Formulario 033"""
+
+        encabezado = Table(
+            [[
+                logo,
+                Paragraph("HISTORIA CLÍNICA ODONTOLÓGICA<br/><font size=10>Registro de Atención</font>", estilo_titulo),
+                Paragraph(info_derecha, estilo_info),
+            ]],
+            colWidths=[50 * mm, 70 * mm, 50 * mm],
+        )
+
+        encabezado.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+            ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ]))
+
+        elementos.append(encabezado)
+
+        # Línea decorativa
+        elementos.append(HRFlowable(
+            width='100%',
+            thickness=1,
+            color=COLOR_SECUNDARIO,
+            spaceBefore=2,
+            spaceAfter=8,
+        ))
+
+        return elementos
 
     @classmethod
     def _bloque_error_seccion(cls, nombre: str):
@@ -191,7 +304,7 @@ class ClinicalRecordPDFBuilder:
 
         return [
             Spacer(1, 14),
-            HRFlowable(width='100%', thickness=0.5, color=colors.HexColor('#AED6F1')),
+            HRFlowable(width='100%', thickness=0.5, color=COLOR_BORDE),
             Spacer(1, 8),
             linea,
             Paragraph(f"Firma Odontólogo: {nombre_od}", estilo_firma),
@@ -214,7 +327,7 @@ class ClinicalRecordPDFBuilder:
         y = 12 * mm
 
         # Izquierda: nombre del sistema
-        canvas.drawString(20 * mm, y, 'Sistema Odontológico — Formulario 033')
+        canvas.drawString(20 * mm, y, 'FamysALUD CENTROMEDICO — Formulario 033')
 
         # Centro: número de HC
         hc = getattr(doc, 'title', '')

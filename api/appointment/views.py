@@ -316,7 +316,7 @@ class CitaViewSet(viewsets.ModelViewSet):
         except ValidationError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], url_path='cambiar-estado')
+    @action(detail=True, methods=['post', 'patch'], url_path='cambiar-estado')
     def cambiar_estado(self, request, pk=None):
         """Cambiar el estado de una cita"""
         instance = self.get_object()
@@ -499,6 +499,82 @@ class CitaViewSet(viewsets.ModelViewSet):
                 {'detail': 'No se encontraron citas para este paciente'},
                 status=status.HTTP_404_NOT_FOUND
             )
+            
+    @action(detail=True, methods=['post'], url_path='recordatorio')
+    def enviar_recordatorio(self, request, pk=None):
+        """
+        Envía un recordatorio manual para una cita específica.
+        POST /api/appointment/citas/{cita_id}/recordatorio/
+        """
+        cita = self.get_object()
+        
+        # Validar que la cita puede recibir recordatorios
+        if cita.estado not in [EstadoCita.PROGRAMADA, EstadoCita.CONFIRMADA, EstadoCita.REPROGRAMADA]:
+            return Response(
+                {'detail': f'No se pueden enviar recordatorios para citas en estado {cita.get_estado_display()}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        fecha_hora_cita = timezone.make_aware(
+            datetime.combine(cita.fecha, cita.hora_inicio)
+        )
+        if fecha_hora_cita < timezone.now():
+            return Response(
+                {'detail': 'No se pueden enviar recordatorios para citas pasadas'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = RecordatorioEnvioSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        try:
+            resultado = RecordatorioService.enviar_recordatorio_manual(
+                cita_id=str(cita.id),
+                tipo_recordatorio=serializer.validated_data['tipo_recordatorio'],
+                destinatario=serializer.validated_data['destinatario'],
+                mensaje=serializer.validated_data.get('mensaje', '')
+            )
+            
+            if resultado['exito']:
+                # Serializar el recordatorio creado
+                recordatorio_data = RecordatorioCitaSerializer(resultado['recordatorio']).data
+                return Response({
+                    'exito': True,
+                    'mensaje': resultado['mensaje'],
+                    'recordatorio': recordatorio_data
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'exito': False,
+                    'mensaje': resultado['mensaje'],
+                    'recordatorio': None
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except ValidationError as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error inesperado enviando recordatorio: {str(e)}")
+            return Response(
+                {'detail': 'Error interno del servidor'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            
+    @action(detail=True, methods=['get'], url_path='recordatorios')
+    def listar_recordatorios(self, request, pk=None):
+        """
+        Obtiene todos los recordatorios enviados para una cita.
+        GET /api/appointment/citas/{cita_id}/recordatorios/
+        """
+        cita = self.get_object()
+        recordatorios = RecordatorioCita.objects.filter(
+            cita=cita
+        ).order_by('-fecha_envio')
+        
+        serializer = RecordatorioCitaSerializer(recordatorios, many=True)
+        return Response(serializer.data)
 
 
 # =============================================================================
