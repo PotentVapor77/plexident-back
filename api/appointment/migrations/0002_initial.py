@@ -103,3 +103,4 @@ class Migration(migrations.Migration):
             unique_together={('odontologo', 'dia_semana', 'hora_inicio')},
         ),
     ]
+    
