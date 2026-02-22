@@ -300,7 +300,12 @@ class CitaViewSet(viewsets.ModelViewSet):
     def reprogramar(self, request, pk=None):
         """Reprogramar una cita"""
         instance = self.get_object()
-        serializer = CitaReprogramarSerializer(data=request.data)
+        
+        # Crear el serializer con el contexto que incluye la cita original
+        serializer = CitaReprogramarSerializer(
+            data=request.data,
+            context={'cita': instance}  # ← Esto es lo que faltaba
+        )
         serializer.is_valid(raise_exception=True)
 
         try:
@@ -308,7 +313,7 @@ class CitaViewSet(viewsets.ModelViewSet):
                 instance.id,
                 serializer.validated_data['nueva_fecha'],
                 serializer.validated_data['nueva_hora_inicio'],
-                serializer.validated_data.get('duracion', instance.duracion)
+                request.user  # ← Necesitas pasar el usuario también
             )
             output_serializer = CitaDetailSerializer(nueva_cita)
             logger.info(f"Cita {instance.id} reprogramada por {request.user.username}")
@@ -695,3 +700,97 @@ class RecordatorioCitaViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['cita', 'tipo_recordatorio', 'enviado_exitosamente']
     ordering = ['-fecha_envio']
+    
+    @action(detail=False, methods=['get'], url_path='estadisticas')
+    def estadisticas(self, request):
+        """
+        Obtiene estadísticas de recordatorios.
+        GET /api/appointment/recordatorios/estadisticas/
+        """
+        try:
+            from django.db.models import Count, Q
+            from django.db.models.functions import TruncMonth
+            from datetime import timedelta
+            from django.utils import timezone
+            
+            # Obtener todos los recordatorios
+            recordatorios = self.get_queryset()
+            
+            # Calcular estadísticas básicas
+            total_enviados = recordatorios.count()
+            exitosos = recordatorios.filter(enviado_exitosamente=True).count()
+            fallidos = recordatorios.filter(enviado_exitosamente=False).count()
+            
+            # Tasa de éxito (evitar división por cero)
+            tasa_exito = (exitosos / total_enviados * 100) if total_enviados > 0 else 0
+            
+            # Estadísticas por destinatario
+            por_destinatario = recordatorios.values('destinatario').annotate(
+                total=Count('id'),
+                exitosos=Count('id', filter=Q(enviado_exitosamente=True))
+            ).order_by('destinatario')
+            
+            # Convertir a diccionario para la respuesta
+            por_destinatario_dict = {
+                'PACIENTE': 0,
+                'ODONTOLOGO': 0,
+                'AMBOS': 0
+            }
+            
+            for item in por_destinatario:
+                destinatario = item['destinatario']
+                if destinatario in por_destinatario_dict:
+                    por_destinatario_dict[destinatario] = item['total']
+            
+            # Estadísticas por mes usando TruncMonth (compatible con PostgreSQL)
+            seis_meses_atras = timezone.now() - timedelta(days=180)
+            recordatorios_meses = recordatorios.filter(
+                fecha_envio__gte=seis_meses_atras
+            ).annotate(
+                mes=TruncMonth('fecha_envio')
+            ).values('mes').annotate(
+                total=Count('id'),
+                exitosos=Count('id', filter=Q(enviado_exitosamente=True))
+            ).order_by('mes')
+            
+            # Formatear los meses para la respuesta
+            por_mes = []
+            for item in recordatorios_meses:
+                if item['mes']:
+                    por_mes.append({
+                        'mes': item['mes'].strftime('%Y-%m'),
+                        'total': item['total'],
+                        'exitosos': item['exitosos']
+                    })
+            
+            # Últimos 10 recordatorios
+            ultimos_recordatorios = recordatorios.order_by('-fecha_envio')[:10]
+            
+            return Response({
+                'total_enviados': total_enviados,
+                'exitosos': exitosos,
+                'fallidos': fallidos,
+                'tasa_exito': round(tasa_exito, 2),
+                'por_destinatario': por_destinatario_dict,
+                'por_mes': por_mes,
+                'ultimos_recordatorios': RecordatorioCitaSerializer(
+                    ultimos_recordatorios, many=True, context={'request': request}
+                ).data
+            })
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo estadísticas de recordatorios: {str(e)}")
+            # Devolver estadísticas vacías en caso de error
+            return Response({
+                'total_enviados': 0,
+                'exitosos': 0,
+                'fallidos': 0,
+                'tasa_exito': 0,
+                'por_destinatario': {
+                    'PACIENTE': 0,
+                    'ODONTOLOGO': 0,
+                    'AMBOS': 0
+                },
+                'por_mes': [],
+                'ultimos_recordatorios': []
+            })

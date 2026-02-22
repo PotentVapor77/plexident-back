@@ -47,18 +47,16 @@ from api.clinical_records.services.pdf.sections.seccion_g_examen_estomatognatico
 from api.clinical_records.services.pdf.sections.seccion_h_odontograma import SeccionHOdontograma
 from api.clinical_records.services.pdf.sections.seccion_i_indicadores_salud_bucal import SeccionIIndicadoresSaludBucal
 from api.clinical_records.services.pdf.sections.seccion_j_indices_cpo_ceo import SeccionJIndicesCPOceo
+from api.clinical_records.services.pdf.sections.seccion_k_simbologia_odontograma import SeccionKSimbologiaOdontograma
+from api.clinical_records.services.pdf.sections.seccion_l_pedido_examenes import SeccionLPedidoExamenes
+from api.clinical_records.services.pdf.sections.seccion_m_informe_examenes import SeccionMInformeExamenes
+from api.clinical_records.services.pdf.sections.seccion_n_diagnostico_cie import SeccionNDiagnosticoCIE
+from api.clinical_records.services.pdf.sections.seccion_o_profesional_responsable import SeccionOProfesionalResponsable
+from api.clinical_records.services.pdf.sections.seccion_p_tratamiento import SeccionPTratamiento
 
 from .sections.base_section import COLOR_BORDE, COLOR_PRIMARIO, COLOR_SECUNDARIO, COLOR_SUBTEXTO, ESTILOS
 from .sections.secciones import (
-    SeccionEstablecimientoPaciente,
-    SeccionMotivoConsulta,
-    SeccionConstantesVitales,
-    SeccionAntecedentesPersonales,
-    SeccionAntecedentesFamiliares,
-    SeccionPlanTratamiento,
-    SeccionIndicadoresSaludBucal,
-    SeccionIndicesCaries,
-    SeccionDiagnosticosCIE,
+
     SeccionExamenesComplementarios,
     SeccionObservaciones,
 )
@@ -92,11 +90,14 @@ class ClinicalRecordPDFBuilder:
         'examen_estomatognatico': SeccionGExamenEstomatognatico,
         'odontograma': SeccionHOdontograma,
         'indicadores_salud_bucal':   SeccionIIndicadoresSaludBucal,   
-        'indices_caries':            SeccionJIndicesCPOceo,            
-        'plan_tratamiento':          SeccionPlanTratamiento,
-        'diagnosticos_cie':          SeccionDiagnosticosCIE,
-        'examenes_complementarios':  SeccionExamenesComplementarios,
-        'observaciones':             SeccionObservaciones,
+        'indices_caries':            SeccionJIndicesCPOceo, 
+        'simbologia_odontograma': SeccionKSimbologiaOdontograma,
+        'pedido_examenes': SeccionLPedidoExamenes,
+        'informe_examenes': SeccionMInformeExamenes,
+        'diagnostico_cie': SeccionNDiagnosticoCIE,
+        'profesional_responsable': SeccionOProfesionalResponsable,
+        'tratamiento': SeccionPTratamiento,
+
     }
 
     @classmethod
@@ -304,16 +305,7 @@ class ClinicalRecordPDFBuilder:
 
         return [
             Spacer(1, 14),
-            HRFlowable(width='100%', thickness=0.5, color=COLOR_BORDE),
-            Spacer(1, 8),
-            linea,
-            Paragraph(f"Firma Odontólogo: {nombre_od}", estilo_firma),
-            Spacer(1, 4),
-            Paragraph(
-                f"Generado el: "
-                f"{str(historial.fecha_atencion)[:10] if historial.fecha_atencion else '—'}",
-                estilo_firma,
-            ),
+            
         ]
 
     @staticmethod

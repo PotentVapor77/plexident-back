@@ -529,7 +529,7 @@ class RecordatorioEstadisticaSerializer(serializers.Serializer):
     fallidos = serializers.IntegerField(read_only=True)
     tasa_exito = serializers.FloatField(read_only=True)
     por_destinatario = serializers.DictField(read_only=True)
-    por_mes = serializers.ListField(read_only=True)
+    por_mes = serializers.ListField(read_only=True, required=False)
     ultimos_recordatorios = RecordatorioCitaSerializer(many=True, read_only=True)
 
 

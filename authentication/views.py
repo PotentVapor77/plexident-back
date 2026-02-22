@@ -359,3 +359,5 @@ def password_reset_confirm_view(request):
         
     except (Usuario.DoesNotExist, TypeError, ValueError):
         raise ValidationError({'detail': 'Token inválido o expirado'})
+    
+

@@ -223,13 +223,13 @@ class CitaService:
                 f"El odontólogo ya tiene una cita de {cita_conflicto.hora_inicio} a {cita_conflicto.hora_fin}"
             )
         
-        # ✅ CORRECCIÓN CRÍTICA: Marcar cita actual como reprogramada y desactivarla
+        # Marcar cita actual como reprogramada y desactivarla
         CitaRepository.actualizar(cita, {
             'estado': EstadoCita.REPROGRAMADA,
             'activo': False  # Desactivar la cita original
         })
         
-        # ✅ CORRECCIÓN CRÍTICA: Crear nueva cita con estado REPROGRAMADA (no PROGRAMADA)
+        # Crear nueva cita con estado REPROGRAMADA
         nueva_cita_data = {
             'paciente': cita.paciente,
             'odontologo': cita.odontologo,
@@ -241,15 +241,12 @@ class CitaService:
             'motivo_consulta': cita.motivo_consulta,
             'observaciones': f"Reprogramada desde {cita.fecha} {cita.hora_inicio}. {cita.observaciones}",
             'cita_original': cita,
-            'estado': EstadoCita.REPROGRAMADA,  # ✅ CAMBIO AQUÍ: Estado REPROGRAMADA
-            'activo': True
+            'estado': EstadoCita.REPROGRAMADA,
+            'activo': True,
+            'creado_por': usuario  # ← Asegurar que se guarde quién reprogramó
         }
         
         nueva_cita = CitaRepository.crear(nueva_cita_data)
-        
-        # ✅ Asegurar que el estado display sea correcto
-        nueva_cita.estado = EstadoCita.REPROGRAMADA
-        nueva_cita.save()
         
         return nueva_cita
     

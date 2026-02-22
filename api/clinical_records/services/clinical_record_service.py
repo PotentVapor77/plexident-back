@@ -131,7 +131,13 @@ class ClinicalRecordService:
                 # Extraer los datos de texto antes de limpiarlos
                 motivo_consulta = data.get('motivo_consulta')
                 enfermedad_actual = data.get('enfermedad_actual')
-                
+
+                VitalSignsService.limpiar_campos_del_dict(data)
+                if motivo_consulta is not None:
+                    data['motivo_consulta'] = motivo_consulta
+                if enfermedad_actual is not None:
+                    data['enfermedad_actual'] = enfermedad_actual
+                    
                 # Actualizar motivo/enfermedad si se proporcionan
                 if VitalSignsService.tiene_datos_texto(data):
                     # Actualizar la constante vital existente

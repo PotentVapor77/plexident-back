@@ -91,11 +91,17 @@ class VitalSignsService:
             activo=True
         ).order_by('-fecha_consulta', '-fecha_creacion').first()
     
-    @classmethod
-    def limpiar_campos_del_dict(cls, data):
+    @staticmethod
+    def limpiar_campos_del_dict(data: dict) -> None:
         """
-        Elimina campos de constantes vitales del diccionario
-        para evitar errores al crear ClinicalRecord
+        Elimina del diccionario 'data' los campos que corresponden a signos vitales
         """
-        for campo in cls.VITAL_FIELDS + cls.TEXT_FIELDS:
+        campos_vitales = [
+            'temperatura',
+            'pulso',
+            'frecuencia_respiratoria',
+            'presion_arterial',
+            'constantes_vitales', 
+        ]
+        for campo in campos_vitales:
             data.pop(campo, None)
