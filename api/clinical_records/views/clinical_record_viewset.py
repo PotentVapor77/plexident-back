@@ -2415,4 +2415,182 @@ class ClinicalRecordViewSet(
             status=status.HTTP_200_OK
         )
         
-    
+    @action(
+        detail=True,
+        methods=['patch'],
+        url_path='diagnosticos-cie/(?P<diagnostico_id>[^/]+)/actualizar-codigo'
+    )
+    def actualizar_codigo_cie(self, request, pk=None, diagnostico_id=None):
+        """
+        Permite al profesional personalizar el código CIE-10 de un diagnóstico
+        mientras el historial está en estado BORRADOR.
+
+        PATCH /api/clinical-records/{historial_id}/diagnosticos-cie/{diagnostico_id}/actualizar-codigo/
+        Body:
+            {
+                "codigo_cie_personalizado": "K08.1"   // null o "" para restaurar catálogo
+            }
+
+        Restricciones:
+          - El historial debe estar en estado BORRADOR (no ABIERTO ni CERRADO).
+          - Solo afecta al registro DiagnosticoCIEHistorial (la fila de la HC).
+          - El DiagnosticoDental y el catálogo NO se modifican.
+        """
+        from api.clinical_records.serializers.diagnosticos_cie_individual_serializers import (
+            DiagnosticoCIECodigoPersonalizadoSerializer,
+        )
+        from api.clinical_records.models.diagnostico_cie import DiagnosticoCIEHistorial
+
+        historial = self.get_object()
+
+        # Solo en BORRADOR
+        if historial.estado != 'BORRADOR':
+            return Response(
+                {
+                    'success': False,
+                    'message': (
+                        'El código CIE-10 solo puede personalizarse mientras el '
+                        'historial está en estado BORRADOR.'
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Obtener el diagnóstico CIE del historial
+        try:
+            diagnostico_cie = DiagnosticoCIEHistorial.objects.get(
+                id=diagnostico_id,
+                historial_clinico=historial,
+                activo=True,
+            )
+        except DiagnosticoCIEHistorial.DoesNotExist:
+            return Response(
+                {'success': False, 'message': 'Diagnóstico CIE no encontrado en este historial'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = DiagnosticoCIECodigoPersonalizadoSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'success': False, 'message': 'Error de validación', 'errors': serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        nuevo_codigo = serializer.validated_data['codigo_cie_personalizado']
+
+        # Guardar (vacío → restaura catálogo, valor → personaliza)
+        diagnostico_cie.codigo_cie_personalizado = nuevo_codigo if nuevo_codigo else None
+        diagnostico_cie.actualizado_por = request.user
+        diagnostico_cie.save(update_fields=['codigo_cie_personalizado', 'actualizado_por', 'fecha_modificacion'])
+
+        logger.info(
+            f"Código CIE actualizado: diagnóstico {diagnostico_id} del historial {pk} "
+            f"→ '{diagnostico_cie.codigo_cie_efectivo}' por {request.user.username}"
+        )
+
+        return Response(
+            {
+                'success': True,
+                'message': 'Código CIE-10 actualizado exitosamente',
+                'data': {
+                    'id': str(diagnostico_cie.id),
+                    'codigo_cie_efectivo': diagnostico_cie.codigo_cie_efectivo,
+                    'codigo_cie_personalizado': diagnostico_cie.codigo_cie_personalizado,
+                    'codigo_cie_original': diagnostico_cie.codigo_cie_original,
+                    'tiene_codigo_personalizado': diagnostico_cie.tiene_codigo_personalizado,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+# =============================================================================
+# ACTUALIZACIÓN – en sincronizar_diagnosticos_cie, dentro del mismo ViewSet.
+# Reemplaza el método existente para que también persista codigo_cie_personalizado.
+# =============================================================================
+
+    @action(detail=True, methods=['post'], url_path='sincronizar-diagnosticos-cie')
+    def sincronizar_diagnosticos_cie(self, request, pk=None):
+        """
+        Sincroniza los diagnósticos CIE de un historial.
+        Ahora también acepta y persiste 'codigo_cie_personalizado' por diagnóstico.
+
+        POST /api/clinical-records/{historial_id}/sincronizar-diagnosticos-cie/
+        Body:
+        {
+            "diagnosticos_finales": [
+                {
+                    "diagnostico_dental_id": "<uuid>",
+                    "tipo_cie": "PRE" | "DEF",
+                    "codigo_cie_personalizado": "K08.1"   // opcional
+                }
+            ],
+            "tipo_carga": "nuevos" | "todos"
+        }
+        """
+        from api.clinical_records.serializers.diagnosticos_cie_individual_serializers import (
+            SincronizarDiagnosticosSerializer,
+        )
+
+        historial = self.get_object()
+
+        if historial.estado == 'CERRADO':
+            return Response(
+                {'success': False, 'message': 'No se pueden sincronizar diagnósticos de un historial cerrado'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = SincronizarDiagnosticosSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'success': False, 'message': 'Error de validación', 'errors': serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            resultado = DiagnosticosCIEService.sincronizar_diagnosticos_historial(
+                historial_id=pk,
+                diagnosticos_finales=serializer.validated_data['diagnosticos_finales'],
+                tipo_carga=serializer.validated_data['tipo_carga'],
+                usuario=request.user,
+            )
+
+            # Persistir códigos personalizados si el historial está en BORRADOR
+            if resultado.get('success') and historial.estado == 'BORRADOR':
+                from api.clinical_records.models.diagnostico_cie import DiagnosticoCIEHistorial
+
+                codigos_map = {
+                    str(d.get('diagnostico_dental_id')): d.get('codigo_cie_personalizado', '')
+                    for d in serializer.validated_data['diagnosticos_finales']
+                    if d.get('codigo_cie_personalizado')
+                }
+
+                if codigos_map:
+                    for diag_cie in DiagnosticoCIEHistorial.objects.filter(
+                        historial_clinico=historial,
+                        activo=True,
+                    ).select_related('diagnostico_dental'):
+                        dental_id = str(diag_cie.diagnostico_dental_id)
+                        if dental_id in codigos_map:
+                            nuevo = codigos_map[dental_id].strip().upper() or None
+                            diag_cie.codigo_cie_personalizado = nuevo
+                            diag_cie.actualizado_por = request.user
+                            diag_cie.save(
+                                update_fields=[
+                                    'codigo_cie_personalizado',
+                                    'actualizado_por',
+                                    'fecha_modificacion',
+                                ]
+                            )
+
+            if resultado.get('success'):
+                return Response(resultado, status=status.HTTP_200_OK)
+            else:
+                return Response(resultado, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            logger.error(f"Error sincronizando diagnósticos CIE para historial {pk}: {str(e)}")
+            return Response(
+                {'success': False, 'message': f'Error sincronizando diagnósticos: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
