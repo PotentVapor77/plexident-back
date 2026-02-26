@@ -360,24 +360,40 @@ class ClinicalRecordListSerializer(serializers.ModelSerializer):
 
 class ClinicalRecordCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer para crear Clinical Record
-    Permite especificar plan_tratamiento o se vincula automáticamente
+    Serializer para crear y actualizar Clinical Record.
+    Permite especificar plan_tratamiento o se vincula automáticamente.
+    Incluye el campo 'estado' con validación de transiciones permitidas.
     """
-    
+
+    # Transiciones de estado permitidas vía este serializer
+    # (cerrar/reabrir tienen sus propios endpoints dedicados)
+    TRANSICIONES_PERMITIDAS = {
+        'BORRADOR': ['BORRADOR', 'ABIERTO'],
+        'ABIERTO':  ['ABIERTO'],
+        # CERRADO no puede cambiarse por aquí; usar /cerrar/ y /reabrir/
+        'CERRADO':  ['CERRADO'],
+    }
+
     # Permitir especificar el plan (opcional)
     plan_tratamiento = serializers.PrimaryKeyRelatedField(
         queryset=PlanTratamiento.objects.filter(activo=True),
         required=False,
         allow_null=True
     )
-    
+
     # Permitir especificar exámenes complementarios (opcional)
     examenes_complementarios = serializers.PrimaryKeyRelatedField(
         queryset=ExamenesComplementarios.objects.filter(activo=True),
         required=False,
         allow_null=True
     )
-    
+
+    # Estado editable con validación de transición en validate()
+    estado = serializers.ChoiceField(
+        choices=['BORRADOR', 'ABIERTO', 'CERRADO'],
+        required=False,
+    )
+
     class Meta:
         model = ClinicalRecord
         fields = [
@@ -397,4 +413,27 @@ class ClinicalRecordCreateSerializer(serializers.ModelSerializer):
             'observaciones',
             'establecimiento_salud',
             'unicodigo',
+            # ← NUEVO: campo estado ahora aceptado
+            'estado',
         ]
+
+    def validate(self, attrs):
+        """
+        Valida que la transición de estado sea permitida.
+        Solo aplica en actualizaciones (instance ya existe).
+        """
+        nuevo_estado = attrs.get('estado')
+
+        if nuevo_estado and self.instance is not None:
+            estado_actual = self.instance.estado
+            permitidos = self.TRANSICIONES_PERMITIDAS.get(estado_actual, [])
+
+            if nuevo_estado not in permitidos:
+                raise serializers.ValidationError({
+                    'estado': (
+                        f"Transición de estado no permitida: '{estado_actual}' → '{nuevo_estado}'. "
+                        f"Use los endpoints /cerrar/ o /reabrir/ para cambios de estado especiales."
+                    )
+                })
+
+        return super().validate(attrs)

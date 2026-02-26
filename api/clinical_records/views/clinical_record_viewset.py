@@ -94,7 +94,6 @@ class ClinicalRecordViewSet(
         # Paciente
         'paciente__nombres',
         'paciente__apellidos',
-        'paciente__nombre_completo',
         'paciente__cedula_pasaporte',
         
         # Campos del historial
@@ -125,11 +124,15 @@ class ClinicalRecordViewSet(
     
     def get_queryset(self):
         """
-        Queryset optimizado con filtro de activos/inactivos por defecto
+        Queryset optimizado. La cadena super() delega en orden MRO a:
+        SearchFilterMixin → ActiveFilterMixin → DateRangeFilterMixin → ModelViewSet
+        Cada mixin aplica su filtro llamando a super() internamente.
+        Este método solo agrega las optimizaciones de SQL (select_related / prefetch).
         """
-        qs = self.queryset.order_by('-fecha_atencion')
-        
-        # Optimización base con select_related
+        # Los mixins (búsqueda, activo, fechas) se aplican via super()
+        qs = super().get_queryset()
+
+        # Optimización: traer relaciones en una sola query
         qs = qs.select_related(
             'paciente',
             'odontologo_responsable',
@@ -138,29 +141,21 @@ class ClinicalRecordViewSet(
             'constantes_vitales',
             'examen_estomatognatico',
             'indicadores_salud_bucal',
-            'indices_caries',  
+            'indices_caries',
             'creado_por',
-            'plan_tratamiento',  
-            'plan_tratamiento__paciente', 
-            'plan_tratamiento__creado_por', 
+            'plan_tratamiento',
+            'plan_tratamiento__paciente',
+            'plan_tratamiento__creado_por',
             'examenes_complementarios',
         )
-        
+
+        # Prefetch adicional solo para vistas de detalle
         if self.action in ['retrieve', 'by_paciente']:
             qs = qs.prefetch_related(
-                'plan_tratamiento__sesiones', 
-                'plan_tratamiento__sesiones__odontologo', 
+                'plan_tratamiento__sesiones',
+                'plan_tratamiento__sesiones__odontologo',
             )
-        
-        # APLICAR FILTRO POR ACTIVO/INACTIVO
-        # Por defecto, mostrar solo activos a menos que se solicite explícitamente inactivos
-        qs = self.filter_by_active_status(qs, self.request)
-        
-        # Búsqueda
-        search = self.request.query_params.get('search', '').strip()
-        if search:
-            qs = self.apply_search_filter(qs, search, self.SEARCH_FIELDS)
-        
+
         return qs
     
 
@@ -195,9 +190,12 @@ class ClinicalRecordViewSet(
         serializer.is_valid(raise_exception=True)
         
         try:
-            historial = ClinicalRecordService.crear_historial(
-                serializer.validated_data
-            )
+            data = dict(serializer.validated_data)
+            # Inyectar el usuario autenticado para auditoría y generación de números
+            data['creado_por'] = request.user
+            # Estado: respetar el valor enviado (por defecto BORRADOR vía modelo)
+            # ya viene validado por el serializer si fue incluido
+            historial = ClinicalRecordService.crear_historial(data)
             output_serializer = ClinicalRecordDetailSerializer(historial)
             
             # Usar el método del mixin
@@ -305,7 +303,8 @@ class ClinicalRecordViewSet(
 
         serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+        # Inyectar usuario para auditoría antes de guardar
+        serializer.save(actualizado_por=request.user)
         instance.refresh_from_db()
         self.log_update(instance, request.user)
 

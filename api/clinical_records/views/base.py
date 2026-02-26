@@ -68,50 +68,39 @@ class QuerysetOptimizationMixin:
 
 class SearchFilterMixin:
     """
-    Permite buscar por:
-    - Nombre del paciente (nombres, apellidos, nombre completo)
-    - Cédula del paciente
-    - Motivo de consulta
-    - Enfermedad actual
-    - Observaciones
-    - Nombre del odontólogo
-    - Número de historia clínica
-    - Número de archivo
+    Aplica búsqueda full-text con Q objects sobre los campos definidos en
+    SEARCH_FIELDS (atributo de clase del ViewSet, en mayúsculas).
+    Si el ViewSet no define SEARCH_FIELDS, usa search_fields como fallback.
     """
     search_fields = [
-        # Paciente
         'paciente__nombres',
         'paciente__apellidos',
-        'paciente__nombre_completo',
         'paciente__cedula_pasaporte',
-        
-        # Campos del historial
         'motivo_consulta',
         'enfermedad_actual',
         'observaciones',
         'numero_historia_clinica_unica',
         'numero_archivo',
-        
-        # Odontólogo
         'odontologo_responsable__nombres',
         'odontologo_responsable__apellidos',
     ]
-    
+
     def get_queryset(self):
         """
-        Aplica búsqueda con Q objects para mejor rendimiento
+        Aplica búsqueda con Q objects para mayor flexibilidad.
+        Usa SEARCH_FIELDS del ViewSet (mayúsculas) con fallback a search_fields.
         """
         queryset = super().get_queryset()
-        search_query = self.request.query_params.get('search', None)
-        
+        search_query = self.request.query_params.get('search', '').strip()
+
         if search_query:
-            # Búsqueda con OR en múltiples campos
+            # Preferir SEARCH_FIELDS (convención del ViewSet) sobre search_fields
+            fields = getattr(self, 'SEARCH_FIELDS', None) or self.search_fields
             q_objects = Q()
-            for field in self.search_fields:
+            for field in fields:
                 q_objects |= Q(**{f"{field}__icontains": search_query})
-            
             queryset = queryset.filter(q_objects).distinct()
-        
+
         return queryset
 
 

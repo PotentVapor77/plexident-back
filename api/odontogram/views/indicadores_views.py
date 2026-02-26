@@ -8,10 +8,95 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
+from django.db.models import Q
 
 from api.odontogram.services.piezas_service import PiezasIndiceService
-from api.odontogram.models import Paciente
+from api.odontogram.models import Paciente, IndicadoresSaludBucal
+from api.odontogram.serializers import IndicadoresSaludBucalSerializer  # ajusta la ruta si es distinta
+
+
+# ============================================================================
+# PAGINACIÓN ESTÁNDAR
+# ============================================================================
+
+class IndicadoresPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        return Response({
+            "success": True,
+            "status_code": status.HTTP_200_OK,
+            "message": "Indicadores obtenidos correctamente",
+            "data": {
+                "count": self.page.paginator.count,
+                "total_pages": self.page.paginator.num_pages,
+                "current_page": self.page.number,
+                "page_size": self.get_page_size(self.request),
+                "next": self.get_next_link(),
+                "previous": self.get_previous_link(),
+                "results": data,
+            },
+            "errors": None,
+        })
+
+
+# ============================================================================
+# ENDPOINTS DE INDICADORES
+# ============================================================================
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def listar_indicadores(request):
+    """
+    GET /api/odontogram/indicadores/
+    Lista indicadores con soporte de búsqueda y paginación.
+
+    Query params:
+      - paciente   (UUID)   : filtra por paciente
+      - search     (str)    : busca en fecha, enf. periodontal, oclusión, fluorosis
+      - page       (int)    : número de página
+      - page_size  (int)    : tamaño de página (máx 100)
+    """
+    queryset = IndicadoresSaludBucal.objects.filter(activo=True).select_related("paciente")
+
+    # Filtro por paciente
+    paciente_id = request.query_params.get("paciente")
+    if paciente_id:
+        queryset = queryset.filter(paciente_id=paciente_id)
+
+    # Búsqueda global
+    search = request.query_params.get("search", "").strip()
+    if search:
+        queryset = queryset.filter(
+            Q(fecha__icontains=search)
+            | Q(enfermedad_periodontal__icontains=search)
+            | Q(tipo_oclusion__icontains=search)
+            | Q(nivel_fluorosis__icontains=search)
+            | Q(paciente__nombres__icontains=search)
+            | Q(paciente__apellidos__icontains=search)
+            | Q(paciente__cedula_pasaporte__icontains=search)
+        )
+
+    queryset = queryset.order_by("-fecha")
+
+    paginator = IndicadoresPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    if page is not None:
+        serializer = IndicadoresSaludBucalSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    serializer = IndicadoresSaludBucalSerializer(queryset, many=True)
+    return Response({
+        "success": True,
+        "status_code": status.HTTP_200_OK,
+        "message": "Indicadores obtenidos correctamente",
+        "data": serializer.data,
+        "errors": None,
+    })
 
 
 class IndicadoresPiezasView:

@@ -274,9 +274,14 @@ class DiagnosticosCIEService:
                         if puede_personalizar:
                             if codigo_personalizado and codigo_personalizado.strip():
                                 diag_existente.codigo_cie_personalizado = codigo_personalizado.strip().upper()
-                            elif codigo_personalizado == '' or codigo_personalizado is None:
-                                # Cadena vacía o None explícito → restaurar catálogo
-                                diag_existente.codigo_cie_personalizado = None
+                            codigo_personalizado = diag_data.get('codigo_cie_personalizado')  # None si no viene
+
+                            if puede_personalizar:
+                                if codigo_personalizado is not None:  # Solo tocar si fue enviado explícitamente
+                                    if codigo_personalizado.strip():
+                                        diag_existente.codigo_cie_personalizado = codigo_personalizado.strip().upper()
+                                    else:
+                                        diag_existente.codigo_cie_personalizado = None 
                         diag_existente.save()
                         diag_cie = diag_existente
                     else:

@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.pagination import PageNumberPagination
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -25,6 +26,33 @@ from api.odontogram.services.plan_tratamiento_service import PlanTratamientoServ
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# PAGINACIÓN ESTÁNDAR - Mismo envelope que el resto del proyecto
+# ============================================================================
+
+class TreatmentPlanPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        return Response({
+            "success": True,
+            "status_code": status.HTTP_200_OK,
+            "message": "Datos obtenidos correctamente",
+            "data": {
+                "count": self.page.paginator.count,
+                "total_pages": self.page.paginator.num_pages,
+                "current_page": self.page.number,
+                "page_size": self.get_page_size(self.request),
+                "next": self.get_next_link(),
+                "previous": self.get_previous_link(),
+                "results": data,
+            },
+            "errors": None,
+        })
+
+
 class PlanTratamientoViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar Planes de Tratamiento Dental
@@ -37,6 +65,7 @@ class PlanTratamientoViewSet(viewsets.ModelViewSet):
     destroy: Eliminación lógica de un plan
     """
     permission_classes = [IsAuthenticated]
+    pagination_class = TreatmentPlanPagination
     
     def get_queryset(self):
         """
@@ -49,6 +78,18 @@ class PlanTratamientoViewSet(viewsets.ModelViewSet):
         paciente_id = self.request.query_params.get('paciente_id')
         if paciente_id:
             queryset = queryset.filter(paciente_id=paciente_id)
+        
+        # Búsqueda global
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(titulo__icontains=search)
+                | Q(paciente__nombres__icontains=search)
+                | Q(paciente__apellidos__icontains=search)
+                | Q(paciente__cedula_pasaporte__icontains=search)
+                | Q(creado_por__nombres__icontains=search)
+                | Q(creado_por__apellidos__icontains=search)
+            )
         
         # Filtro por odontólogo creador (útil para "mis planes")
         creado_por_mi = self.request.query_params.get('creado_por_mi')
@@ -306,6 +347,7 @@ class SesionTratamientoViewSet(viewsets.ModelViewSet):
     - cancelar: Cancela la sesión
     """
     permission_classes = [IsAuthenticated]
+    pagination_class = TreatmentPlanPagination
     
     def get_queryset(self):
         """Queryset con filtros avanzados"""
@@ -317,6 +359,9 @@ class SesionTratamientoViewSet(viewsets.ModelViewSet):
         estado = self.request.query_params.get('estado')
         fecha_desde = self.request.query_params.get('fecha_desde')
         fecha_hasta = self.request.query_params.get('fecha_hasta')
+
+        # Búsqueda global
+        search = self.request.query_params.get('search', '').strip()
         
         if plan_id:
             queryset = queryset.filter(plan_tratamiento_id=plan_id)
@@ -332,6 +377,15 @@ class SesionTratamientoViewSet(viewsets.ModelViewSet):
         
         if fecha_hasta:
             queryset = queryset.filter(fecha_programada__lte=fecha_hasta)
+
+        if search:
+            queryset = queryset.filter(
+                Q(estado__icontains=search)
+                | Q(notas__icontains=search)
+                | Q(observaciones__icontains=search)
+                | Q(odontologo__nombres__icontains=search)
+                | Q(odontologo__apellidos__icontains=search)
+            )
         
         # Optimizaciones
         return queryset.select_related(
