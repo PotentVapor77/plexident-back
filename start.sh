@@ -11,6 +11,10 @@ echo "Base de datos detectada!"
 echo "Aplicando migraciones..."
 python manage.py migrate --noinput 
 
+# Cargar catálogo del odontograma desde CSV (idempotente, no duplica)
+echo "Cargando catálogo del odontograma (CSV)..."
+python manage.py cargar_odontograma_csv --quiet
+
 # Recolectar archivos estáticos para Whitenoise
 echo "Recolectando archivos estáticos..."
 python manage.py collectstatic --noinput 

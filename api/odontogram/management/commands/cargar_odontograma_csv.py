@@ -1,6 +1,7 @@
 # api/odontogram/management/commands/cargar_odontograma_csv.py
 # python manage.py cargar_odontograma_csv --clear
 import csv
+import io
 import json
 import os
 from pathlib import Path
@@ -46,8 +47,17 @@ class Command(BaseCommand):
             action='store_true',
             help='Solo valida los CSV sin cargar datos',
         )
+        parser.add_argument(
+            '--quiet',
+            action='store_true',
+            help='No muestra salida detallada (uso automático en migraciones/startup)',
+        )
 
     def handle(self, *args, **options):
+        # Silenciar salida para invocaciones automáticas (migraciones/startup)
+        if options.get('quiet'):
+            self.stdout = io.StringIO()
+
         self.stdout.write(self.style.SUCCESS('\n' + '='*60))
         self.stdout.write(self.style.SUCCESS('   CARGA DE DATOS DEL ODONTOGRAMA - FORMULARIO 033'))
         self.stdout.write(self.style.SUCCESS('='*60 + '\n'))
