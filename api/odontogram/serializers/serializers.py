@@ -791,6 +791,10 @@ class IndicadoresSaludBucalSerializer(serializers.ModelSerializer):
     Contiene solo los campos del modelo
     """
     
+    paciente_nombre = serializers.SerializerMethodField()
+    paciente_apellido = serializers.SerializerMethodField()
+    paciente_cedula = serializers.SerializerMethodField()
+    
     class Meta:
         model = IndicadoresSaludBucal
         fields = "__all__"
@@ -836,6 +840,15 @@ class IndicadoresSaludBucalSerializer(serializers.ModelSerializer):
                     )
         
         return data
+    
+    def get_paciente_nombre(self, obj):
+        return obj.paciente.nombres if obj.paciente else None
+    
+    def get_paciente_apellido(self, obj):
+        return obj.paciente.apellidos if obj.paciente else None
+    
+    def get_paciente_cedula(self, obj):
+        return obj.paciente.cedula_pasaporte if obj.paciente else None
 
 
 class IndicadoresSaludBucalListSerializer(IndicadoresSaludBucalSerializer):
